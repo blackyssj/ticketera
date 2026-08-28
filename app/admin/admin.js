@@ -167,7 +167,8 @@ async function abrirEvento(id) {
         <input id="fTope" type="number" min="1" max="50" value="${e.tope_entradas_orden}"></label>
       <div class="acciones">
         <button class="btn primario" id="btnGuardar">Guardar</button>
-        ${id ? `<button type="button" class="btn plano" id="btnEntradas">Entradas y precios →</button>
+        ${id ? `<button type="button" class="btn plano" id="btnTablero">Tablero →</button>
+               <button type="button" class="btn plano" id="btnEntradas">Entradas y precios →</button>
                <button type="button" class="btn plano" id="btnRrpp">Relacionadores →</button>` : ""}
       </div>
       <p class="error" id="fError"></p>
@@ -177,6 +178,7 @@ async function abrirEvento(id) {
   $("#btnVolver").onclick = () => mostrar("eventos");
   $("#fSlug").oninput = ev => $("#vistaSlug").textContent = ev.target.value || "…";
   if (id) {
+    $("#btnTablero").onclick = () => pantallaTablero(id);
     $("#btnEntradas").onclick = () => pantallaEntradas(id);
     $("#btnRrpp").onclick = () => pantallaRelacionadores(id);
     cablearArte(e);   // solo con evento guardado: sin slug no hay carpeta donde subir
@@ -773,6 +775,212 @@ async function pantallaRelacionadores(eventoId) {
         por un ?r=.</p>`}`;
 
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
+}
+
+/* ══ el tablero del evento ════════════════════════════════════════
+   No está para que el número de lo vendido quede lindo: está para ver
+   dónde se está escapando la plata. Por eso el orden es lo grande arriba
+   —manillas, recaudado y cuánta gente ya entró— y ENSEGUIDA las alertas,
+   sin scrollear: son las cifras que hay que dejar en cero antes de que
+   abra la puerta, y cualquier total que las promedie con lo cobrado las
+   esconde. Los desgloses van al final: se miran una vez, no cada rato.
+
+   resumen_evento() exige puede_editar() y a cualquier otro le contesta
+   'Sin permiso'. Acá no se vuelve a preguntar: el rrpp ni siquiera tiene
+   la pestaña de eventos, y si llegara por consola la que decide es la
+   base. */
+
+const num = n => Number(n || 0).toLocaleString("es-BO");
+const pct = n => (Number(n || 0) % 1 ? Number(n).toFixed(1) : Number(n || 0).toFixed(0)) + "%";
+/* Una manilla es una persona, y "1 manillas" en una lista que se lee de
+   corrido delata que el texto lo armó una máquina justo donde hay que
+   confiar en lo que dice. */async function pantallaTablero(eventoId) {
+  $("#main").innerHTML = `<p class="cargando">Cargando el tablero…</p>`;
+  const ev = await sb.from("eventos").select("id,nombre").eq("id", eventoId).single();
+  if (ev.error || !ev.data) {
+    avisar("Ese evento ya no existe.");
+    mostrar("eventos");
+    return;
+  }
+
+  $("#main").innerHTML = `
+    <div class="cab-seccion">
+      <button class="btn plano chico" id="btnVolver">← ${esc(ev.data.nombre)}</button>
+      <h2>Tablero</h2>
+    </div>
+    <div id="zonaResumen"><p class="cargando">Cargando…</p></div>`;
+
+  $("#btnVolver").onclick = () => abrirEvento(eventoId);
+  await refrescarResumen(eventoId);
+}
+
+async function refrescarResumen(eventoId) {
+  const z = $("#zonaResumen");
+  if (!z) return;
+  const { data, error } = await sb.rpc("resumen_evento", { p_evento: eventoId });
+  if (error) { z.innerHTML = `<p class="error">${esc(error.message)}</p>`; return; }
+  /* {} en vez de error: resumen_evento() devuelve lo mismo para "no es de
+     tu organizador" que para "no existe", a propósito, para que no sirva
+     de oráculo de qué uuids hay en la base del vecino. */
+  if (!data || !data.vendido) {
+    z.innerHTML = `<p class="vacio">No hay datos de este evento.</p>`;
+    return;
+  }
+  z.innerHTML = bloqueCifras(data) + bloqueAlertas(data.alertas) + bloqueDesgloses(data);
+}
+
+/* Tres números y ninguno es el mismo dato: lo que se vendió, lo que entró
+   a la caja y cuánta gente ya está adentro. El tercero es el que cambia
+   toda la noche y es el que nadie puede calcular de memoria. */
+function bloqueCifras(r) {
+  const v = r.vendido, p = r.puerta;
+  const avance = Math.max(0, Math.min(100, Number(p.porcentaje) || 0));
+  return `<div class="cifras">
+    <div class="cifra-grande">
+      <span class="valor">${num(v.manillas)}</span>
+      <span class="rotulo">Manillas vendidas</span>
+      <span class="pie">${num(v.ordenes)} ${v.ordenes === 1 ? "orden pagada" : "órdenes pagadas"}
+        · ${num(v.unidades)} ${v.unidades === 1 ? "unidad" : "unidades"}</span>
+    </div>
+    <div class="cifra-grande plata">
+      <span class="valor">${bs(v.recaudado)}</span>
+      <span class="rotulo">Recaudado</span>
+      <span class="pie">ticket promedio ${bs(v.ticket_promedio)} · el fee de ${bs(v.fee)} viaja aparte</span>
+    </div>
+    <div class="cifra-grande">
+      <span class="valor">${num(p.usadas)}<i> de ${num(p.emitidas)}</i></span>
+      <span class="rotulo">Ya entraron</span>
+      <span class="pie">${pct(p.porcentaje)} · faltan ${num(p.faltan)}</span>
+      <span class="avance"><i style="width:${avance}%"></i></span>
+    </div>
+  </div>`;
+}
+
+/* Una alerta en cero no es una alerta. Si la que está resuelta grita igual
+   que la que tiene algo pendiente, a la tercera noche no se mira ninguna:
+   la de cero se apaga y dice que está hecha, que es información distinta
+   de "acá no hay dato". Y ninguno de estos montos se suma a lo recaudado:
+   son plata que no entró, o que entró mal. */
+function bloqueAlertas(a) {
+  const filas = [
+    { cifra: a.mesas_sin_asignar.ordenes,
+      titulo: "Mesas sin asignar",
+      pie: `${num(a.mesas_sin_asignar.manillas)} manillas · ${bs(a.mesas_sin_asignar.monto)} ya cobrados`,
+      viva: "Compras de mesa pagadas a las que todavía nadie les dijo dónde se sientan. Este es el número que va a cero antes de que abra la puerta.",
+      hecha: "Toda compra de mesa tiene su lugar.",
+      nivel: "peligro" },
+    { cifra: a.revision_manual.ordenes,
+      titulo: "En revisión manual",
+      pie: `${bs(a.revision_manual.monto)} cobrados`,
+      viva: "La pasarela cobró un monto distinto al esperado. Hay que mirarlas de a una: es plata que entró y no tiene entrada del otro lado.",
+      hecha: "Nadie pagó de más ni de menos.",
+      nivel: "aviso" },
+    { cifra: a.pendientes_vencidas.ordenes,
+      titulo: "Pendientes vencidas",
+      pie: `${bs(a.pendientes_vencidas.monto)} que no entraron`,
+      viva: "Retuvieron cupo y nunca pagaron. Siguen diciendo «pendiente» hasta que pase el barrido.",
+      hecha: "Ninguna reserva quedó colgada.",
+      nivel: "aviso" },
+  ];
+  /* Esta cuarta no existe cuando está en cero, ni apagada: en una base sana
+     es cero SIEMPRE, y una tarjeta permanente que dice "✓ 0" entrena a
+     pasarla de largo justo el día que deja de ser cero. Si aparece, hay
+     gente que puede pasar el molinete con una entrada que nadie cobró. */
+  if (a.manillas_sin_orden_pagada) filas.push({
+    cifra: a.manillas_sin_orden_pagada,
+    titulo: "Manillas sin orden pagada",
+    pie: "revisá antes de abrir",
+    viva: "Hay entradas válidas cuya orden no está pagada: pasan el molinete igual.",
+    hecha: "", nivel: "peligro" });
+
+  return `<div class="alertas">${filas.map(f => `
+    <div class="alerta ${f.cifra ? "viva " + f.nivel : "hecha"}">
+      <span class="alerta-cifra">${f.cifra ? num(f.cifra) : "✓"}</span>
+      <div class="alerta-txt">
+        <h4>${esc(f.titulo)}</h4>
+        <p>${esc(f.cifra ? f.viva : f.hecha)}</p>
+        ${f.cifra ? `<span class="alerta-pie">${esc(f.pie)}</span>` : ""}
+      </div>
+    </div>`).join("")}</div>`;
+}
+
+const CANAL_TXT = { publico: "Público", rrpp: "Relacionadores",
+                    puerta: "Puerta", cortesia: "Cortesías" };
+const ESTADO_TXT = { pagada: "Pagadas", pendiente: "Pendientes", vencida: "Vencidas",
+                     revision_manual: "En revisión manual", anulada: "Anuladas" };
+
+/* `quedan` en null dice dos cosas distintas y `en_venta` las separa: sin
+   tope, o directamente no se vende en la fase de hoy. Mostrar el 0 que
+   devuelve disponibilidad_tipo() cuando no encuentra la fila de precio
+   haría leer "agotado" donde lo que pasa es que nunca salió a la venta. */
+function quedanTxt(p) {
+  if (p.quedan == null) return p.en_venta ? `<i>sin tope</i>` : `<i>fuera de fase</i>`;
+  return Number(p.quedan) === 0 ? `<b class="agotado">agotado</b>` : num(p.quedan);
+}
+
+function bloqueDesgloses(r) {
+  return `
+  <h3 class="titulo-bloque">Por producto</h3>
+  <p class="ayuda bajo-titulo">Las unidades son lo que compró el cliente y miden el cupo;
+    las manillas son la gente que entra. Un combo de 10 vendido una vez es 1 unidad y 10 manillas.</p>
+  <div class="grilla-envoltorio">
+    <table class="tabla">
+      <thead><tr>
+        <th>Producto</th><th class="n">Unidades</th><th class="n">Manillas</th>
+        <th class="n">Cupo</th><th class="n">Quedan</th>
+        <th class="n">Precio</th><th class="n">Recaudado</th>
+      </tr></thead>
+      <tbody>${r.productos.map(p => `
+        <tr${p.activo ? "" : ' class="apagada"'}>
+          <td><span class="prod-nombre">${esc(p.nombre)}</span>
+            <em>${esc(p.categoria)}${p.manillas_por_unidad > 1
+                  ? ` · ${num(p.manillas_por_unidad)} manillas por unidad` : ""}${
+                  p.activo ? "" : " · inactivo"}</em></td>
+          <td class="n">${num(p.unidades)}</td>
+          <td class="n">${num(p.manillas)}${p.manillas_anuladas
+              ? `<em>${num(p.manillas_anuladas)} anuladas</em>` : ""}</td>
+          <td class="n">${p.cupo == null ? `<i>sin tope</i>` : num(p.cupo)}</td>
+          <td class="n">${quedanTxt(p)}</td>
+          <td class="n">${p.precio == null ? `<i>—</i>` : bs(p.precio)}</td>
+          <td class="n">${bs(p.recaudado)}</td>
+        </tr>`).join("")}</tbody>
+    </table>
+  </div>
+
+  <div class="dos-tablas">
+    <div>
+      <h3 class="titulo-bloque">Por canal</h3>
+      <div class="grilla-envoltorio">
+        <table class="tabla">
+          <thead><tr><th>Canal</th><th class="n">Órdenes</th>
+            <th class="n">Manillas</th><th class="n">Usadas</th></tr></thead>
+          <tbody>${r.canales.map(c => `
+            <tr${Number(c.manillas) ? "" : ' class="apagada"'}>
+              <td>${esc(CANAL_TXT[c.canal] || c.canal)}</td>
+              <td class="n">${num(c.ordenes)}</td>
+              <td class="n">${num(c.manillas)}</td>
+              <td class="n">${num(c.manillas_usadas)}</td>
+            </tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <h3 class="titulo-bloque">Por estado de orden</h3>
+      <div class="grilla-envoltorio">
+        <table class="tabla">
+          <thead><tr><th>Estado</th><th class="n">Órdenes</th>
+            <th class="n">Subtotal</th><th class="n">Total con fee</th></tr></thead>
+          <tbody>${r.estados.map(e => `
+            <tr${Number(e.ordenes) ? "" : ' class="apagada"'}>
+              <td>${esc(ESTADO_TXT[e.estado] || e.estado)}</td>
+              <td class="n">${num(e.ordenes)}</td>
+              <td class="n">${bs(e.subtotal)}</td>
+              <td class="n">${bs(e.total)}</td>
+            </tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
 }
 
 /* ── arranque: si ya había sesión, entrar directo ── */

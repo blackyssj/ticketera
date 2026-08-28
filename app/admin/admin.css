@@ -357,6 +357,121 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 .arte-estado.ok{color:var(--ok)}
 .arte-estado.mal{color:var(--peligro)}
 
+/* ─── el tablero ───
+   Tres cifras grandes y enseguida las alertas, sin scrollear. El orden es
+   el argumento: lo vendido dice cómo viene la noche, las alertas dicen qué
+   hay que ir a hacer, y los desgloses se miran una vez. */
+.cifras{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:12px;margin-bottom:14px;
+}
+.cifra-grande{
+  background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
+  padding:18px 20px;display:flex;flex-direction:column;gap:6px;min-width:0;
+}
+.cifra-grande .valor{
+  font-family:var(--display);font-size:44px;line-height:.9;
+  font-variant-numeric:tabular-nums;overflow-wrap:anywhere;
+}
+/* Lo recaudado es la única cifra en dorado: la plata se distingue de las
+   personas sin tener que leer el rótulo. */
+.cifra-grande.plata .valor{color:var(--dorado);font-size:38px}
+.cifra-grande .valor i{font-style:normal;font-size:24px;color:var(--txt-3)}
+.cifra-grande .rotulo{
+  font-family:var(--dato);font-size:10.5px;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--txt-2);
+}
+.cifra-grande .pie{font-family:var(--dato);font-size:11.5px;color:var(--txt-3);line-height:1.45}
+/* El avance de la puerta se lee de un vistazo: "38 de 55" es una cuenta,
+   la barra es una imagen. */
+.cifra-grande .avance{
+  height:5px;border-radius:999px;background:var(--sup-3);overflow:hidden;margin-top:2px;
+}
+.cifra-grande .avance i{display:block;height:100%;background:var(--ok);border-radius:999px}
+
+/* ─── las alertas ───
+   La que está en cero se apaga. Si gritara igual que la que tiene algo
+   pendiente, a la tercera noche no se mira ninguna. */
+.alertas{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));
+  gap:12px;margin-bottom:30px;
+}
+.alerta{
+  display:flex;align-items:flex-start;gap:14px;padding:16px 18px;
+  border-radius:var(--r);border:1px solid var(--linea);background:var(--sup);
+}
+.alerta-cifra{
+  font-family:var(--display);font-size:34px;line-height:.9;
+  font-variant-numeric:tabular-nums;flex:0 0 auto;
+}
+.alerta-txt{min-width:0;flex:1 1 auto}
+.alerta h4{margin:0;font-family:var(--display);font-size:19px;text-transform:uppercase;letter-spacing:.01em}
+.alerta p{margin:4px 0 0;font-size:13px;line-height:1.45;color:var(--txt-2)}
+.alerta-pie{
+  display:block;margin-top:7px;font-family:var(--dato);font-size:11.5px;
+  font-variant-numeric:tabular-nums;
+}
+.alerta>.btn{flex:0 0 auto;align-self:center}
+
+.alerta.hecha{background:transparent;border-style:dashed}
+.alerta.hecha .alerta-cifra{color:var(--ok);font-size:26px}
+.alerta.hecha h4{color:var(--txt-2)}
+.alerta.hecha p{color:var(--txt-3);font-size:12.5px}
+
+.alerta.viva.peligro{
+  border-color:rgba(251,113,133,.4);background:linear-gradient(var(--sup),var(--peligro-bg));
+}
+.alerta.viva.peligro .alerta-cifra,.alerta.viva.peligro .alerta-pie{color:var(--peligro)}
+.alerta.viva.aviso{
+  border-color:rgba(246,180,74,.34);background:linear-gradient(var(--sup),var(--aviso-bg));
+}
+.alerta.viva.aviso .alerta-cifra,.alerta.viva.aviso .alerta-pie{color:var(--aviso)}
+
+/* ─── tablas de lectura ───
+   La grilla de precios se opera; estas se leen. Sin celdas hundidas ni
+   columna fija: lo que hace falta es que la columna de números esté
+   alineada a la derecha y en cifras de ancho fijo, para poder compararlas
+   de arriba abajo sin leerlas. */
+.tabla{border-collapse:separate;border-spacing:0;min-width:100%;background:var(--sup)}
+.tabla th,.tabla td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--linea);vertical-align:top}
+.tabla tr:last-child td{border-bottom:0}
+.tabla thead th{
+  background:var(--sup-2);position:sticky;top:0;z-index:1;white-space:nowrap;
+  font-family:var(--dato);font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--txt-3);font-weight:400;
+}
+.tabla tbody tr:hover td{background:var(--sup-2)}
+.tabla td.n,.tabla th.n{text-align:right;font-family:var(--dato);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tabla td.n{font-size:13.5px;color:var(--txt)}
+.tabla td.dato{font-family:var(--dato);font-size:12.5px;color:var(--txt-2)}
+.tabla td em,.tabla td.n em{
+  display:block;margin-top:3px;font-style:normal;font-family:var(--dato);
+  font-size:10.5px;color:var(--txt-3);text-transform:none;letter-spacing:0;
+}
+.tabla td i{font-style:normal;color:var(--txt-3);font-size:12.5px}
+.tabla .prod-nombre{font-weight:600;font-size:14.5px}
+.tabla .agotado{font-weight:400;color:var(--aviso)}
+/* Un tipo inactivo sigue teniendo historia de ventas: esconderlo
+   descuadraría los totales, así que se apaga en vez de irse. */
+.tabla tr.apagada td{color:var(--txt-3)}
+.tabla tr.apagada .prod-nombre{font-weight:400;color:var(--txt-2)}
+.tabla .sin-nada{
+  padding:26px 14px;text-align:center;font-family:var(--dato);
+  font-size:12.5px;color:var(--txt-3);
+}
+.tabla .tenue{color:var(--txt-3)}
+.tabla .detalle{max-width:270px;font-size:13.5px;color:var(--txt-2)}
+
+.dos-tablas{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start;margin-top:8px}
+.ayuda.bajo-titulo{display:block;margin:-6px 0 10px;max-width:640px}
+@media (max-width:860px){
+  .dos-tablas{grid-template-columns:1fr}
+}
+@media (max-width:760px){
+  .cifra-grande .valor{font-size:36px}
+  .cifra-grande.plata .valor{font-size:30px}
+}
+
 /* ─── botones ───
    El primario lleva sombra de su propio color: eso es lo que le da peso y lo
    separa de un rectángulo pintado. */
