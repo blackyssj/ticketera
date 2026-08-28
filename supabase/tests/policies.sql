@@ -1727,4 +1727,352 @@ begin
   raise notice 'OK el tablero cuenta unidades y manillas por separado, y cada rol ve lo suyo';
 end $$;
 
+-- ============================================================
+-- 0034 — la bitácora de la puerta
+--
+-- El agujero que este bloque cuida es uno solo y es de adentro: hasta 0034,
+-- deshacer borraba `used_at` y `portero_id` de la fila, así que una entrada
+-- que pasó diez personas —validar, deshacer, validar, deshacer— quedaba
+-- idéntica a una que entró una sola vez. La prueba central no es que exista
+-- una fila `deshecha`: es que ESA fila conserve el valor exacto que se borró.
+-- Una bitácora que anota "alguien deshizo algo" sin decir qué había ahí no
+-- sirve para reclamarle nada a nadie, y pasaría un test que solo cuente filas.
+--
+-- Lo demás que se prueba acá:
+--
+-- 1) Validar deja `validada` con el portero que escaneó.
+-- 2) Deshacer deja `deshecha` CON el used_at y el portero_id que la entrada
+--    tenía antes de que se los borraran — se comparan los valores.
+-- 3) Validar de nuevo deja `reingreso`, distinguible de la primera validación
+--    sin tener que reconstruir la secuencia.
+-- 4) El modo filtro deja `rechazada` y la entrada sigue 'valida'.
+-- 5) Un `authenticated` no puede hacer update ni delete sobre la bitácora.
+--    Se prueban los dos y el test falla si alguno pasa.
+-- 6) Un portero de otro organizador no ve ni una fila de este. El cero
+--    significa algo porque antes se le hace anotar una fila propia: si la RLS
+--    estuviera rota al revés y le escondiera todo, también se nota.
+-- 7) Un portero llamando a bitacora_puerta() sin p_entrada ve solo lo suyo,
+--    no lo del otro portero del mismo evento; el staff ve los dos.
+--
+-- Las filas se leen con el rol reseteado a propósito cuando lo que se
+-- verifica es el contenido: leídas desde la sesión del portero, la RLS ya
+-- filtró y un test que cuenta sobre lo filtrado se aprueba solo.
+-- ============================================================
+do $$
+declare v_org   uuid := '03400034-0034-4034-8034-000000000001';
+        v_org2  uuid := '03400034-0034-4034-8034-000000000002';
+        v_p1    uuid := '03400034-0034-4034-8034-000000000003';  -- portero uno
+        v_p2    uuid := '03400034-0034-4034-8034-000000000004';  -- portero dos, mismo org
+        v_staff uuid := '03400034-0034-4034-8034-000000000005';
+        v_rrpp  uuid := '03400034-0034-4034-8034-000000000006';
+        v_pb    uuid := '03400034-0034-4034-8034-000000000007';  -- portero del otro org
+        v_ev    uuid := '03400034-0034-4034-8034-000000000008';
+        v_ev2   uuid := '03400034-0034-4034-8034-000000000009';
+        v_tipo  uuid := '03400034-0034-4034-8034-00000000000a';
+        v_fase  uuid := '03400034-0034-4034-8034-00000000000b';
+        v_e1    uuid := '03400034-0034-4034-8034-00000000000c';  -- validar/deshacer/reingreso
+        v_e2    uuid := '03400034-0034-4034-8034-00000000000d';  -- filtro
+        v_e3    uuid := '03400034-0034-4034-8034-00000000000e';  -- la del portero dos
+        v_e4    uuid := '03400034-0034-4034-8034-00000000000f';  -- la del otro organizador
+        c_uno    text := 'BCDFGH340034';
+        c_dos    text := 'JKLMNP340034';
+        c_tres   text := 'QRSTVW340034';
+        c_cuatro text := 'WXZBCD340034';
+        v_r jsonb; v_n int; v_bit uuid; v_paso boolean;
+        v_used timestamptz; v_port uuid;
+        v_used_previo timestamptz; v_portero_previo uuid; v_estado_previo text;
+        v_accion text; v_actor uuid;
+begin
+  insert into organizadores (id, slug, nombre) values
+    (v_org,  'prueba-0034',  'Prueba 0034'),
+    (v_org2, 'prueba-0034b', 'Prueba 0034 otro');
+  insert into auth.users (id, email) values
+    (v_p1,    'portero1-0034@ticketera.local'),
+    (v_p2,    'portero2-0034@ticketera.local'),
+    (v_staff, 'staff-0034@ticketera.local'),
+    (v_rrpp,  'rrpp-0034@ticketera.local'),
+    (v_pb,    'porterob-0034@ticketera.local');
+  insert into perfiles (id, organizador_id, nombre, rol) values
+    (v_p1,    v_org,  'Portero Uno',  'portero'),
+    (v_p2,    v_org,  'Portero Dos',  'portero'),
+    (v_staff, v_org,  'Staff 0034',   'staff'),
+    (v_rrpp,  v_org,  'Rrpp 0034',    'rrpp'),
+    (v_pb,    v_org2, 'Portero Ajeno','portero');
+  insert into eventos (id, organizador_id, slug, nombre, fecha, estado) values
+    (v_ev,  v_org,  'evento-0034',  'Evento 0034',   current_date + 10, 'publicado'),
+    (v_ev2, v_org2, 'evento-0034b', 'Evento 0034 B', current_date + 10, 'publicado');
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre) values
+    (v_tipo, v_org, v_ev, 'General');
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta) values
+    (v_fase, v_org, v_ev, 'F1', now() - interval '1 hour', now() + interval '10 days');
+  insert into entradas (id, organizador_id, evento_id, code, canal, tipo_id, fase_id,
+                        cliente, precio, estado) values
+    (v_e1, v_org, v_ev, c_uno,  'publico', v_tipo, v_fase, 'Ana Perez',   100, 'valida'),
+    (v_e2, v_org, v_ev, c_dos,  'publico', v_tipo, v_fase, 'Beto Filtro', 100, 'valida'),
+    (v_e3, v_org, v_ev, c_tres, 'publico', v_tipo, v_fase, 'Cami Otra',   100, 'valida');
+  insert into entradas (id, organizador_id, evento_id, code, canal, precio, estado) values
+    (v_e4, v_org2, v_ev2, c_cuatro, 'publico', 100, 'valida');
+
+  -- ── 1) validar deja su fila, con el portero que escaneó ──
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_p1::text, true);
+  v_r := validar_entrada(v_ev, c_uno);
+  if v_r->>'resultado' <> 'valida' then
+    raise exception 'TEST_FAIL: el primer escaneo deberia dar valida, dio %', v_r;
+  end if;
+
+  reset role;
+  select count(*) into v_n from puerta_bitacora where entrada_id = v_e1;
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: validar tenia que dejar UNA fila en la bitacora, dejo %', v_n;
+  end if;
+  select accion, actor_id, estado_previo into v_accion, v_actor, v_estado_previo
+    from puerta_bitacora where entrada_id = v_e1;
+  if v_accion <> 'validada' then
+    raise exception 'TEST_FAIL: la accion tenia que ser validada, es %', v_accion;
+  end if;
+  if v_actor <> v_p1 then
+    raise exception 'TEST_FAIL: la bitacora no anoto al portero que escaneo (esperaba %, anoto %)',
+      v_p1, v_actor;
+  end if;
+  if v_estado_previo <> 'valida' then
+    raise exception 'TEST_FAIL: el estado previo de una validacion tenia que ser valida, es %', v_estado_previo;
+  end if;
+
+  -- La huella que la entrada tiene AHORA, que es la que deshacer va a borrar.
+  select used_at, portero_id into v_used, v_port from entradas where id = v_e1;
+  if v_used is null or v_port <> v_p1 then
+    raise exception 'TEST_FAIL: la entrada no quedo con su hora y su portero: % / %', v_used, v_port;
+  end if;
+
+  -- ── 2) deshacer conserva la huella que borra ─────────────
+  -- La prueba que importa de toda la tarea. No alcanza con que la fila
+  -- exista: tiene que traer el valor exacto que desapareció de `entradas`.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_p1::text, true);
+  v_r := descheckin_entrada(v_ev, c_uno);
+  if v_r->>'resultado' <> 'valida' then
+    raise exception 'TEST_FAIL: deshacer deberia devolverla a valida, dio %', v_r;
+  end if;
+
+  reset role;
+  select count(*) into v_n from puerta_bitacora where entrada_id = v_e1 and accion = 'deshecha';
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: deshacer no dejo su fila en la bitacora (encontre %)', v_n;
+  end if;
+  select used_at_previo, portero_previo, actor_id, estado_previo
+    into v_used_previo, v_portero_previo, v_actor, v_estado_previo
+    from puerta_bitacora where entrada_id = v_e1 and accion = 'deshecha';
+  if v_used_previo is distinct from v_used then
+    raise exception 'TEST_FAIL: la fila deshecha perdio la hora del ingreso que borro (esperaba %, guardo %)',
+      v_used, v_used_previo;
+  end if;
+  if v_portero_previo is distinct from v_port then
+    raise exception 'TEST_FAIL: la fila deshecha perdio al portero que habia marcado el ingreso (esperaba %, guardo %)',
+      v_port, v_portero_previo;
+  end if;
+  if v_actor <> v_p1 then
+    raise exception 'TEST_FAIL: la bitacora no anoto quien deshizo';
+  end if;
+  if v_estado_previo <> 'usada' then
+    raise exception 'TEST_FAIL: el estado previo de un deshacer tenia que ser usada, es %', v_estado_previo;
+  end if;
+  -- y la entrada, efectivamente, ya no los tiene: por eso la copia importa
+  if exists (select 1 from entradas
+              where id = v_e1 and (used_at is not null or portero_id is not null)) then
+    raise exception 'TEST_FAIL: deshacer dejo la fila a medio camino — el test de arriba no probaria nada';
+  end if;
+
+  -- ── 3) validar de nuevo: reingreso, no otra validada ─────
+  -- Lo valida el OTRO portero a propósito: la fila tiene que decir quién la
+  -- dejó entrar la segunda vez, no repetir al de la primera.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_p2::text, true);
+  v_r := validar_entrada(v_ev, c_uno);
+  if v_r->>'resultado' <> 'valida' then
+    raise exception 'TEST_FAIL: despues de deshacer tendria que poder validarse de nuevo, dio %', v_r;
+  end if;
+
+  reset role;
+  select count(*) into v_n from puerta_bitacora
+   where entrada_id = v_e1 and accion = 'reingreso' and actor_id = v_p2;
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: la segunda validacion tenia que quedar como reingreso del portero dos (encontre %)', v_n;
+  end if;
+  select count(*) into v_n from puerta_bitacora where entrada_id = v_e1 and accion = 'validada';
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: el reingreso se anoto tambien como validada — dejan de distinguirse';
+  end if;
+  select count(*) into v_n from puerta_bitacora where entrada_id = v_e1;
+  if v_n <> 3 then
+    raise exception 'TEST_FAIL: validar+deshacer+validar tenian que dejar 3 filas, dejaron %', v_n;
+  end if;
+
+  -- ── 4) el filtro deja su fila y no consume ───────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_p1::text, true);
+  v_r := marcar_filtro_entrada(v_ev, c_dos);
+  if (v_r->>'filtro')::boolean is not true then
+    raise exception 'TEST_FAIL: el modo filtro deberia decir que filtro: %', v_r;
+  end if;
+
+  reset role;
+  select count(*) into v_n from puerta_bitacora
+   where entrada_id = v_e2 and accion = 'rechazada' and actor_id = v_p1
+     and estado_previo = 'valida';
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: el rechazo del modo filtro no quedo escrito (encontre %)', v_n;
+  end if;
+  select count(*) into v_n from entradas
+   where id = v_e2 and estado = 'valida' and used_at is null;
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: anotar el rechazo consumio la entrada — tenia que quedar valida';
+  end if;
+
+  -- un code que no existe no ensucia la bitacora: no hay entrada a la cual
+  -- colgarle la fila
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_p1::text, true);
+  v_r := marcar_filtro_entrada(v_ev, 'ZZZZZZZZZZZZ');
+  if v_r->>'resultado' <> 'no_existe' then
+    raise exception 'TEST_FAIL: un code inventado tiene que decir no_existe, dijo %', v_r;
+  end if;
+  reset role;
+  select count(*) into v_n from puerta_bitacora where organizador_id = v_org;
+  if v_n <> 4 then
+    raise exception 'TEST_FAIL: un code inventado dejo fila en la bitacora (van %, tenian que ser 4)', v_n;
+  end if;
+
+  -- el portero dos suma una fila propia, para que el aislamiento de (7)
+  -- tenga de qué distinguirse
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_p2::text, true);
+  perform validar_entrada(v_ev, c_tres);
+
+  -- ── 5) la bitacora no se edita ni se borra ───────────────
+  reset role;
+  select id into v_bit from puerta_bitacora where entrada_id = v_e1 and accion = 'validada';
+
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_p1::text, true);
+
+  v_paso := true;
+  begin
+    update puerta_bitacora set accion = 'rechazada' where id = v_bit;
+  exception when others then v_paso := false;
+  end;
+  if v_paso then
+    raise exception 'TEST_FAIL: un authenticated hizo UPDATE sobre la bitacora';
+  end if;
+
+  v_paso := true;
+  begin
+    delete from puerta_bitacora where id = v_bit;
+  exception when others then v_paso := false;
+  end;
+  if v_paso then
+    raise exception 'TEST_FAIL: un authenticated hizo DELETE sobre la bitacora';
+  end if;
+
+  reset role;
+  if not exists (select 1 from puerta_bitacora where id = v_bit and accion = 'validada') then
+    raise exception 'TEST_FAIL: la fila de la bitacora cambio o desaparecio';
+  end if;
+
+  -- ── 6) el portero de otro organizador no ve ni una fila ──
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_pb::text, true);
+  -- primero lo suyo, para que el cero de abajo signifique "la RLS lo corta" y
+  -- no "la tabla estaba vacia para todos"
+  v_r := validar_entrada(v_ev2, c_cuatro);
+  if v_r->>'resultado' <> 'valida' then
+    raise exception 'TEST_FAIL: el portero del otro organizador no pudo validar lo suyo: %', v_r;
+  end if;
+  select count(*) into v_n from puerta_bitacora where organizador_id = v_org;
+  if v_n <> 0 then
+    raise exception 'TEST_FAIL: un portero de otro organizador vio % filas de la bitacora ajena', v_n;
+  end if;
+  select count(*) into v_n from puerta_bitacora;
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: el portero ajeno tendria que ver exactamente la suya, ve %', v_n;
+  end if;
+  -- y por la funcion, preguntando derecho por el evento ajeno, tampoco
+  v_r := bitacora_puerta(v_ev);
+  if (v_r->>'total')::int <> 0 or jsonb_array_length(v_r->'filas') <> 0 then
+    raise exception 'TEST_FAIL: bitacora_puerta() le mostro el evento de otro organizador: %', v_r;
+  end if;
+
+  -- ── 7) un portero no audita a los otros porteros ─────────
+  perform set_config('request.jwt.claim.sub', v_p1::text, true);
+  v_r := bitacora_puerta(v_ev);
+  if v_r->>'alcance' <> 'mios' then
+    raise exception 'TEST_FAIL: sin puede_editar() el alcance tenia que decir mios, dijo %', v_r->>'alcance';
+  end if;
+  if (v_r->>'total')::int <> 3 then
+    raise exception 'TEST_FAIL: el portero uno hizo 3 cosas y la funcion contó %: %',
+      v_r->>'total', v_r;
+  end if;
+  if exists (select 1 from jsonb_array_elements(v_r->'filas') f
+              where (f->>'actor_id')::uuid <> v_p1) then
+    raise exception 'TEST_FAIL: un portero vio en bitacora_puerta() lo que hizo otro portero: %', v_r;
+  end if;
+
+  -- el staff sí la lee entera
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  v_r := bitacora_puerta(v_ev);
+  if v_r->>'alcance' <> 'evento' then
+    raise exception 'TEST_FAIL: con puede_editar() el alcance tenia que decir evento, dijo %', v_r->>'alcance';
+  end if;
+  if (v_r->>'total')::int <> 5 then
+    raise exception 'TEST_FAIL: el resumen del admin tenia que ver las 5 filas del evento, vio %', v_r->>'total';
+  end if;
+  if (v_r->>'cortada')::boolean is not false or (v_r->>'tope')::int is null then
+    raise exception 'TEST_FAIL: la respuesta tiene que declarar tope y si corto: %', v_r;
+  end if;
+
+  -- la historia de UNA entrada, lo mas nuevo primero, y con la huella adentro
+  v_r := bitacora_puerta(v_ev, v_e1);
+  if (v_r->>'total')::int <> 3 then
+    raise exception 'TEST_FAIL: la historia de la entrada tenia 3 filas, trajo %', v_r->>'total';
+  end if;
+  if v_r->'filas'->0->>'accion' <> 'reingreso' then
+    raise exception 'TEST_FAIL: lo mas nuevo tenia que venir primero, vino %', v_r->'filas'->0->>'accion';
+  end if;
+  if not exists (select 1 from jsonb_array_elements(v_r->'filas') f
+                  where f->>'accion' = 'deshecha'
+                    and (f->>'used_at_previo')::timestamptz = v_used
+                    and (f->>'portero_previo')::uuid = v_port) then
+    raise exception 'TEST_FAIL: la lectura no expone la huella que deshacer borro: %', v_r;
+  end if;
+
+  -- un rrpp no la lee: no trabaja la puerta
+  perform set_config('request.jwt.claim.sub', v_rrpp::text, true);
+  begin
+    perform bitacora_puerta(v_ev);
+    raise exception 'TEST_FAIL: un rrpp pudo leer la bitacora de la puerta';
+  exception when others then
+    if sqlerrm <> 'Sin permiso' then raise; end if;
+  end;
+
+  -- ── 8) a mano no se puede firmar con el nombre de otro ───
+  -- La policy de insert existe porque el grant de insert existe. Lo que tiene
+  -- que garantizar es que una fila escrita a mano quede firmada por quien la
+  -- escribió: si se pudiera anotar a nombre del compañero, la bitácora
+  -- serviría para acusarlo en vez de para auditarlo.
+  perform set_config('request.jwt.claim.sub', v_p1::text, true);
+  v_paso := true;
+  begin
+    insert into puerta_bitacora (organizador_id, evento_id, entrada_id, accion,
+                                 actor_id, estado_previo)
+    values (v_org, v_ev, v_e2, 'validada', v_p2, 'valida');
+  exception when others then v_paso := false;
+  end;
+  if v_paso then
+    raise exception 'TEST_FAIL: se pudo anotar una fila de la bitacora a nombre de otro portero';
+  end if;
+
+  reset role;
+  raise notice 'OK deshacer deja huella: la bitacora guarda used_at y portero previos, distingue reingreso, y no se edita ni se borra';
+end $$;
+
 rollback;
