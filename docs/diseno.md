@@ -69,8 +69,9 @@ nunca en el bundle.
   tira el know-how de `app.js`, incluido `ticketImage()`.
 - *RPC directo con `anon` ejecutando funciones `security definer`.* Es
   exactamente lo que causó los agujeros del traspaso §4. Esas funciones no pasan
-  por RLS: un `where` olvidado es una fuga pública. Ya pasó con `v_stats_rrpp` —
-  2.410 filas legibles sin login.
+  por RLS: un `where` olvidado es una fuga pública. Ya pasó en un sistema
+  anterior del grupo: una vista perdió `security_invoker` en un `create or
+  replace` y quedó legible sin autenticación.
 
 **Raíz del tenant: `organizadores`.** Toda tabla lleva `organizador_id not null`,
 sin excepciones; la excepción es el olvido que después no se ve.
@@ -330,15 +331,16 @@ cliente externo.
 `sitcom-cafe` y `barra-demo` se turnan. Este sería el tercero: o se pausa uno, o
 esto arranca pagando.
 
-**Superficie ajena que estaríamos usando.** `consulta_transaccion_v2.php:25` arma
-el SQL interpolando la variable directo en el string. Mandando solo un UUID
-nuestro en `so_extra1` no lo tocamos, pero queda anotado. No se arregla en este
-proyecto.
+**Superficie ajena que estaríamos usando.** El endpoint de consulta de la
+pasarela tiene una debilidad conocida en el armado de su SQL. Mandando solo un
+UUID nuestro no la tocamos, pero queda anotada. No se arregla en este proyecto;
+el detalle está en las notas internas, fuera del repo.
 
-**Deuda heredada que no se hereda.** Los cuatro agujeros del traspaso §4
-(`v_stats_rrpp` sin `security_invoker`, signup abierto, bucket `comprobantes`
-público y listable, `SUPABASE_PAT` sin rotar) son de Puerta y **no se arrastran**
-acá porque la base es nueva. Siguen abiertos en Puerta y siguen pendientes.
+**Deuda heredada que no se hereda.** El sistema anterior del grupo tiene
+pendientes de seguridad propios, anotados en las notas internas fuera de este
+repo. **No se arrastran acá porque la base es nueva**, y por eso este proyecto
+nace con el registro cerrado, sin permisos para `anon` y con los invariantes
+que impiden repetirlos.
 
 ---
 

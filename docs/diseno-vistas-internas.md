@@ -226,9 +226,10 @@ llegar juntos y sale una sola emisión.
 `ordenes.total`, no se emite nada y la orden va a `revision_manual`. Emitir por
 un monto distinto al cobrado no se deshace: la persona ya entró.
 
-**Cuidado heredado:** `consulta_transaccion_v2.php:25` arma el SQL interpolando
-la variable en el string. Mandando solo un UUID nuestro en `so_extra1` no lo
-tocamos, pero es superficie ajena que estaríamos usando. No se arregla acá.
+**Cuidado heredado:** el endpoint de consulta de la pasarela tiene una
+debilidad conocida en el armado de su SQL. Mandando solo un UUID nuestro no la
+tocamos, pero es superficie ajena que estaríamos usando. El detalle está en las
+notas internas, fuera del repo.
 
 ---
 
