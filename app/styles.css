@@ -364,3 +364,28 @@ body.sin-rail .lienzo-col{padding-bottom:0}
   background:var(--rojo-hondo);color:var(--espuma);
   font-family:var(--dato);font-size:11.5px;letter-spacing:.06em;line-height:1.4;
 }
+
+/* ─── pasarela simulada ───
+   Se parece a un cobro real a propósito: si la demo no muestra este paso,
+   nadie entiende dónde entra el fee ni por qué hay que verificar después. */
+.pasarela{
+  width:min(360px,100%);border:1.5px solid var(--tinta-16);border-radius:6px;
+  background:#fff;padding:20px;text-align:center;
+}
+.pasarela-cab{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:14px}
+.pasarela-marca{font-family:var(--display);font-size:22px;text-transform:uppercase;letter-spacing:.04em}
+.pasarela-sim{
+  font-family:var(--dato);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  border:1px solid var(--rojo);color:var(--rojo);padding:2px 7px;border-radius:3px;
+}
+.pasarela-monto{font-family:var(--dato);font-size:32px;font-weight:500;letter-spacing:-.02em}
+.pasarela-a{font-size:13px;color:var(--tinta-60);margin-top:2px}
+.pasarela-metodos{display:flex;gap:6px;justify-content:center;margin:16px 0 14px;flex-wrap:wrap}
+.metodo{
+  font-family:var(--dato);font-size:11.5px;padding:7px 12px;border-radius:3px;
+  border:1.5px solid var(--tinta-16);color:var(--tinta-60);transition:all .14s ease;
+}
+.metodo[aria-pressed="true"]{background:var(--tinta);border-color:var(--tinta);color:var(--espuma)}
+.pasarela-qr{display:grid;place-items:center;min-height:150px}
+.pasarela-qr svg{width:150px;height:150px}
+.pasarela-ref{font-family:var(--dato);font-size:11px;color:var(--tinta-40);margin-top:12px}

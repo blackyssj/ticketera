@@ -94,11 +94,11 @@ function apiDemo() {
       };
     },
     async iniciarPago(orden) {
-      await esperar(1200);
-      return { pago_ref: "SIM-" + orden.id.slice(0, 8).toUpperCase() };
+      await esperar(700);
+      return { pago_ref: "SIM-" + orden.id.slice(0, 8).toUpperCase(), url: null };
     },
     async estadoOrden() {
-      await esperar(1800);
+      await esperar(900);
       return { estado: "pagada" };
     },
     async emitir(orden) {
@@ -413,8 +413,6 @@ function pagoDice(html) { $("#pagoEstado").innerHTML = html; }
 
 async function pagar() {
   irA("pago");
-  const { total } = cotizar();
-
   try {
     pagoDice(`<div class="girador"></div><h3>Reservando tu lugar</h3>
       <p>Guardamos lo que elegiste por 10 minutos mientras pagás.</p>`);
@@ -423,28 +421,91 @@ async function pagar() {
     S.mesas.forEach(et => items.push({ mesa_id: idMesa(et) }));
     S.orden = await API.crearOrden(items, { ...S.comprador });
 
-    pagoDice(`<div class="girador"></div><h3>Yendo a la pasarela</h3>
-      <p>Vas a pagar ${bs(total)} a nombre de ${esc(S.comprador.nombre)}.</p>
-      <div class="pago-metodos"><b>QR simple</b><b>Tarjeta</b><b>Débito</b></div>`);
-    const { pago_ref } = await API.iniciarPago(S.orden);
-    S.orden.pago_ref = pago_ref;
+    pagoDice(`<div class="girador"></div><h3>Abriendo la pasarela</h3>
+      <p>Un segundo.</p>`);
+    const r = await API.iniciarPago(S.orden);
+    S.orden.pago_ref = r.pago_ref;
+    if (r.url) { location.href = r.url; return; }   // pasarela real: se va y vuelve
+    pasarelaSimulada();
+  } catch (err) {
+    pagoFallo(err.message, "datos");
+  }
+}
 
-    pagoDice(`<div class="girador"></div><h3>Esperando la confirmación</h3>
-      <p>No cierres esta pantalla. Si se corta, entrá de nuevo con el mismo link
-         y la compra sigue donde estaba.</p>`);
+/* La pasarela simulada. En producción esta pantalla no existe: el comprador
+   se va a v2pro y vuelve. Acá se queda, y "Verificar pago" hace lo mismo que
+   hace el retorno real — preguntarle a la pasarela, no creerle al navegador. */
+function pasarelaSimulada() {
+  const { total } = cotizar();
+  pagoDice(`
+    <div class="pasarela">
+      <div class="pasarela-cab">
+        <span class="pasarela-marca">BeePay</span>
+        <span class="pasarela-sim">Simulada · no cobra</span>
+      </div>
+      <p class="pasarela-monto">${bs(total)}</p>
+      <p class="pasarela-a">a ${esc(D.organizador.nombre)}</p>
+      <div class="pasarela-metodos">
+        <button type="button" class="metodo" data-m="qr" aria-pressed="true">QR simple</button>
+        <button type="button" class="metodo" data-m="tarjeta" aria-pressed="false">Tarjeta</button>
+        <button type="button" class="metodo" data-m="debito" aria-pressed="false">Débito</button>
+      </div>
+      <div class="pasarela-qr" id="pasarelaQr"></div>
+      <p class="pasarela-ref">Referencia ${esc(S.orden.pago_ref || "—")}</p>
+    </div>
+    <button class="btn primario" id="btnVerificar">Verificar pago</button>
+    <p class="letra-chica">Apretá cuando hayas pagado. Es lo mismo que pasa al volver
+      de la pasarela real: se le pregunta a ella, no al navegador.</p>`);
+
+  dibujarQrPasarela();
+  document.querySelectorAll(".metodo").forEach(b => b.onclick = () => {
+    document.querySelectorAll(".metodo").forEach(x =>
+      x.setAttribute("aria-pressed", String(x === b)));
+    $("#pasarelaQr").hidden = b.dataset.m !== "qr";
+  });
+  $("#btnVerificar").onclick = verificarPago;
+}
+
+/* Un QR de mentira sería peor que ninguno: este lleva la referencia real de
+   la orden, así que escanearlo muestra exactamente lo que se está pagando. */
+function dibujarQrPasarela() {
+  const caja = $("#pasarelaQr");
+  if (!caja || typeof qrcode !== "function") return;
+  const q = qrcode(0, "M");
+  q.addData(`BEEPAY:${S.orden.pago_ref}:${cotizar().total}`);
+  q.make();
+  caja.innerHTML = q.createSvgTag({ cellSize: 4, margin: 2 });
+}
+
+async function verificarPago() {
+  const btn = $("#btnVerificar");
+  if (btn) { btn.disabled = true; btn.textContent = "Consultando…"; }
+  try {
     const r = await API.estadoOrden(S.orden);
-    if (r.estado !== "pagada") throw new Error("El pago no se confirmó.");
-    // en modo real ya vienen en la misma respuesta; en demo hay que pedirlas
+    if (r.estado === "revision_manual") {
+      pagoFallo("El monto cobrado no coincide con la compra. Lo estamos revisando.", null);
+      return;
+    }
+    if (r.estado !== "pagada") {
+      pagoDice(`<h3>Todavía no figura pagado</h3>
+        <p>La pasarela dice que la orden sigue <b>${esc(r.estado)}</b>. Si ya pagaste,
+           esperá unos segundos y volvé a verificar.</p>
+        <button class="btn primario" id="btnVerificar">Verificar de nuevo</button>`);
+      $("#btnVerificar").onclick = verificarPago;
+      return;
+    }
     S.entradas = r.entradas && r.entradas.length ? r.entradas : await API.emitir(S.orden);
     await mostrarListo();
-
   } catch (err) {
-    pagoDice(`<h3>No se pudo completar</h3>
-      <p>${esc(err.message)}</p>
-      <button class="btn plano" id="btnReintentar">Volver a intentar</button>`);
-    const r = $("#btnReintentar");
-    if (r) r.onclick = () => irA("datos");
+    pagoFallo(err.message, null);
   }
+}
+
+/* Un solo lugar donde se dibuja un fallo, para que digan todos lo mismo. */
+function pagoFallo(motivo, volverA) {
+  pagoDice(`<h3>No se pudo completar</h3><p>${esc(motivo)}</p>
+    <button class="btn plano" id="btnReintentar">${volverA ? "Volver a intentar" : "Verificar de nuevo"}</button>`);
+  $("#btnReintentar").onclick = volverA ? () => irA(volverA) : verificarPago;
 }
 
 /* ── el ticket ───────────────────────────────────────────────────
