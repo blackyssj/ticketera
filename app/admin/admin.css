@@ -369,6 +369,32 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 
 .puerta-cartel.neutro{background:var(--sup-3);color:var(--txt)}
 
+/* ─── el conteo ───
+   Un número grande arriba del escáner y nada más. La tentación es una
+   tabla por tipo con su porcentaje: en la puerta no se lee una tabla, se
+   mira de reojo entre dos escaneos y con el teléfono a la altura de la
+   cintura. Lo que no entre en un vistazo no sirve. */
+.puerta-conteo{
+  display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+  margin-bottom:12px;padding:14px 17px;border-radius:var(--r);
+  background:var(--sup);border:1px solid var(--linea);
+}
+.puerta-conteo-num{
+  font-family:var(--display);font-size:clamp(38px,11vw,54px);line-height:.85;
+  font-variant-numeric:tabular-nums;color:var(--txt);
+}
+/* El total en apagado y más chico: lo que cambia toda la noche es el de
+   la izquierda, y son dos números pegados que a igual peso se leen como
+   uno solo de cuatro cifras. */
+.puerta-conteo-num i{
+  font-style:normal;font-size:.46em;color:var(--txt-3);margin-left:7px;
+}
+.puerta-conteo-pie{
+  font-family:var(--dato);font-size:12px;color:var(--txt-3);line-height:1.5;
+}
+.puerta-conteo-pie b{color:var(--txt-2);font-weight:500}
+body[data-filtro="1"] .puerta-conteo{border-color:rgba(246,180,74,.35)}
+
 /* ─── el interruptor del filtro ───
    Del tamaño de un botón que se aprieta con guantes, no de un checkbox. */
 .puerta-filtro{

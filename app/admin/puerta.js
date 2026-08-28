@@ -78,6 +78,7 @@ const P = {
   filtro: false,                      // ver el bloque "modo filtro"
   deshacer: null,                     // solo el ÚLTIMO ingreso, y por poco
   tDeshacer: null,
+  tConteo: null,
 };
 
 /* ── el sonido ──────────────────────────────────────────────────
@@ -230,6 +231,8 @@ function dibujar() {
         </label>
       </div>
 
+      <div class="puerta-conteo" id="pConteo" aria-live="polite"></div>
+
       <button type="button" class="puerta-filtro" id="pFiltro" aria-pressed="false">
         <span class="puerta-filtro-luz" aria-hidden="true"></span>
         <span class="puerta-filtro-txt">
@@ -267,10 +270,20 @@ function dibujar() {
        descheckin_entrada la buscaría en el nuevo y no la encontraría. */
     soltarDeshacer();
     ocultarCartel();
+    refrescarConteo();
   };
+
+  /* Una puerta grande tiene dos teléfonos. Actualizar el número solo con
+     los ingresos de ESTE escáner lo deja contando la mitad de la noche y
+     nadie se entera, porque un número que sube parece un número que
+     anda. Una vez por minuto es barato y alcanza para lo que se usa:
+     saber si falta mucha gente. */
+  clearInterval(P.tConteo);
+  P.tConteo = setInterval(refrescarConteo, 60000);
 
   $("#pFiltro").onclick = () => { despertarAudio(); cambiarFiltro(!P.filtro); };
   pintarFiltro();
+  refrescarConteo();
 
   $("#pFormMano").onsubmit = ev => {
     ev.preventDefault();
@@ -462,7 +475,10 @@ async function resolver(code, { aMano }) {
     /* El deshacer se arma solo cuando ESTE escaneo consumió la entrada.
        Con filtro no hay nada que deshacer, y sobre una 'usada' el botón
        devolvería un ingreso que hizo otro. */
-    if (!P.filtro && data && data.resultado === "valida") armarDeshacer(data);
+    if (!P.filtro && data && data.resultado === "valida") {
+      armarDeshacer(data);
+      refrescarConteo();       // solo cuando ENTRÓ alguien: el número cambió
+    }
     if (aMano) $("#pCodigo") && $("#pCodigo").focus();
   } catch (err) {
     /* Sin señal la puerta no puede decidir. Se dice así, no con un
@@ -477,6 +493,51 @@ async function resolver(code, { aMano }) {
     P.ultimo.visto = Date.now();
     P.ocupado = false;
   }
+}
+
+/* ══ el conteo ════════════════════════════════════════════════════
+   Un número grande y una línea abajo. Sin tabla y sin gráfico: esto se
+   mira de reojo entre dos escaneos, con el teléfono a la altura de la
+   cintura, y cualquier cosa que haya que leer no se va a leer.
+
+   conteo_puerta() es una función aparte de resumen_evento() porque esa
+   exige puede_editar() y el portero no lo cumple. El desglose por tipo
+   viene en el jsonb y acá se resume a una sola línea — el que falta
+   entrar por tipo importa para saber si lo que falta es una mesa de
+   veinte o tres generales sueltas. */
+async function refrescarConteo() {
+  const caja = $("#pConteo");
+  if (!caja || !P.evento) return;
+  const gen = P.gen;
+
+  const { data, error } = await sb.rpc("conteo_puerta", { p_evento: P.evento.id });
+  if (gen !== P.gen || !document.getElementById("pConteo")) return;
+
+  /* Que el conteo falle no puede tapar el escáner: dejar entrar gente es
+     lo que hay que hacer, saber cuántos van es lo que estaría bueno. */
+  if (error || !data || data.emitidas === undefined) {
+    caja.dataset.on = "0";
+    caja.innerHTML = `<span class="puerta-conteo-pie">No se pudo traer el conteo${
+      error ? ": " + esc(error.message) : "."}</span>`;
+    return;
+  }
+
+  const faltan = Number(data.faltan || 0);
+  const ritmo = Number(data.ultima_media_hora || 0);
+
+  /* El desglose por tipo viene en `data.tipos` y acá NO se dibuja. Se
+     probó y son seis renglones de texto chico: deja de ser un número que
+     se mira de reojo y pasa a ser algo que hay que leer, que es
+     justamente lo que en una puerta no se hace. Vive en la función
+     porque el que cierra la noche lo necesita; esta pantalla no. */
+  caja.dataset.on = "1";
+  caja.innerHTML = `
+    <span class="puerta-conteo-num">${Number(data.usadas || 0)}<i>/ ${
+      Number(data.emitidas || 0)}</i></span>
+    <span class="puerta-conteo-pie">
+      <b>${faltan === 0 ? "no falta nadie" : `faltan ${faltan}`}</b>
+      ${ritmo ? ` · ${ritmo} en la última media hora` : ""}
+    </span>`;
 }
 
 /* ══ modo filtro ══════════════════════════════════════════════════
@@ -595,6 +656,7 @@ async function correrDeshacer() {
        de nuevo YA: si el rebote la sigue tapando, el portero la pasa
        por la cámara, no pasa nada, y cree que deshacer la rompió. */
     P.ultimo = { code: null, visto: 0 };
+    refrescarConteo();         // uno menos adentro
     const d = data || {};
     mostrarCartel(d.resultado === "valida"
       ? { resultado: "devuelta", code, cliente: d.cliente, tipo: d.tipo }
@@ -673,6 +735,7 @@ function apagar() {
   P.gen++;
   if (P.raf) { cancelAnimationFrame(P.raf); P.raf = null; }
   clearTimeout(P.tCartel);
+  clearInterval(P.tConteo); P.tConteo = null;
   soltarDeshacer();
   if (P.stream) { P.stream.getTracks().forEach(t => t.stop()); P.stream = null; }
   if (P.video) { P.video.srcObject = null; P.video = null; }
