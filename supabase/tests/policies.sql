@@ -451,4 +451,246 @@ begin
   raise notice 'OK el slug se repite entre organizadores y por eso hay que resolverlo con el del evento';
 end $$;
 
+-- ============================================================
+-- 0026 — mis_ventas() y ventas_por_rrpp()
+--
+-- Tres cosas se prueban acá, y las tres son errores que ya pasaron:
+--
+-- 1) El aislamiento. Cada relacionador ve lo suyo y NADA más, y eso se
+--    decide adentro de la función con auth.uid() — no con un parámetro
+--    p_perfil que el navegador podría cambiar por el del compañero.
+--    Se simula sesión con el mismo mecanismo que el resto del archivo:
+--    `set local role authenticated` + set_config del claim sub.
+--
+-- 2) La comisión NO se mueve con el precio de la entrada. Se venden las
+--    entradas a 100, se verifica la comisión, se sube el precio a 300 y
+--    la comisión tiene que quedar exactamente donde estaba. Es el bug de
+--    Plataforma Puerta (la manilla subió de 60 a 70 y la comisión la
+--    siguió sola) llevado al reporte, no solo a comision_de().
+--
+-- 3) Las entradas se cuentan de `entradas`, no de órdenes. Una de las
+--    órdenes de A es un combo de 2 manillas: es UNA orden, UN item con
+--    cantidad 1, y DOS entradas. Contar órdenes daría 1 donde hay 2, que
+--    es el mismo error del cupo.
+--
+-- Los datos se siembran por el camino real (crear_orden con p_rrpp +
+-- emitir_orden), no con inserts a mano: así el test también cubre que la
+-- atribución que escribe crear-orden es la que después lee el reporte.
+-- ============================================================
+do $$
+declare v_org    uuid := '02600026-0026-4026-8026-000000000001';
+        v_a      uuid := '02600026-0026-4026-8026-000000000002';  -- relacionador A
+        v_b      uuid := '02600026-0026-4026-8026-000000000003';  -- relacionador B
+        v_staff  uuid := '02600026-0026-4026-8026-000000000004';
+        v_sin    uuid := '02600026-0026-4026-8026-000000000005';  -- relacionador sin ventas
+        v_ev     uuid := '02600026-0026-4026-8026-000000000006';
+        v_ev2    uuid := '02600026-0026-4026-8026-000000000007';
+        v_tipo   uuid := '02600026-0026-4026-8026-000000000008';
+        v_combo  uuid := '02600026-0026-4026-8026-000000000009';
+        v_fase   uuid := '02600026-0026-4026-8026-00000000000a';
+        v_tipo2  uuid := '02600026-0026-4026-8026-00000000000b';
+        v_fase2  uuid := '02600026-0026-4026-8026-00000000000c';
+        -- otro tenant, para el corte por mi_organizador()
+        v_org2   uuid := '02600026-0026-4026-8026-00000000000d';
+        v_c      uuid := '02600026-0026-4026-8026-00000000000e';
+        v_ev3    uuid := '02600026-0026-4026-8026-00000000000f';
+        v_tipo3  uuid := '02600026-0026-4026-8026-000000000010';
+        v_fase3  uuid := '02600026-0026-4026-8026-000000000011';
+        v_o1 uuid; v_o2 uuid; v_o3 uuid; v_o4 uuid; v_o5 uuid; v_o6 uuid; v_o7 uuid;
+        v_r jsonb; v_f jsonb;
+begin
+  insert into organizadores (id, slug, nombre) values
+    (v_org,  'prueba-0026',  'Prueba 0026'),
+    (v_org2, 'prueba-0026b', 'Prueba 0026 otro');
+  insert into auth.users (id, email) values
+    (v_a,     'rrpp-a-0026@ticketera.local'),
+    (v_b,     'rrpp-b-0026@ticketera.local'),
+    (v_staff, 'staff-0026@ticketera.local'),
+    (v_sin,   'rrpp-sin-0026@ticketera.local'),
+    (v_c,     'rrpp-c-0026@ticketera.local');
+  insert into perfiles (id, organizador_id, nombre, rol, slug, comision_entrada) values
+    (v_a,     v_org,  'Ana',    'rrpp',  'ana',    null),
+    (v_b,     v_org,  'Beto',   'rrpp',  'beto',   20),   -- acuerdo propio
+    (v_staff, v_org,  'Staff',  'staff', null,     null),
+    (v_sin,   v_org,  'Sin Ventas', 'rrpp', 'sinventas', null),
+    (v_c,     v_org2, 'Ceci',   'rrpp',  'ceci',   null);
+
+  insert into eventos (id, organizador_id, slug, nombre, fecha, estado) values
+    (v_ev,  v_org,  'evento-0026-a', 'Evento 0026 A', current_date + 10, 'publicado'),
+    (v_ev2, v_org,  'evento-0026-b', 'Evento 0026 B', current_date + 20, 'publicado'),
+    (v_ev3, v_org2, 'evento-0026-c', 'Evento 0026 C', current_date + 10, 'publicado');
+  -- comisión por defecto del evento: 15 Bs por entrada
+  update eventos set comision_entrada = 15 where id in (v_ev, v_ev2, v_ev3);
+
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre, manillas) values
+    (v_tipo,  v_org,  v_ev,  'General', 1),
+    (v_combo, v_org,  v_ev,  'Combo 2', 2),   -- una unidad = dos manillas = dos entradas
+    (v_tipo2, v_org,  v_ev2, 'General B', 1),
+    (v_tipo3, v_org2, v_ev3, 'General C', 1);
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta) values
+    (v_fase,  v_org,  v_ev,  'F1', now() - interval '1 hour', now() + interval '10 days'),
+    (v_fase2, v_org,  v_ev2, 'F1', now() - interval '1 hour', now() + interval '10 days'),
+    (v_fase3, v_org2, v_ev3, 'F1', now() - interval '1 hour', now() + interval '10 days');
+  insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo) values
+    (v_org,  v_fase,  v_tipo,  100, null),
+    (v_org,  v_fase,  v_combo, 200, null),
+    (v_org,  v_fase2, v_tipo2,  80, null),
+    (v_org2, v_fase3, v_tipo3, 100, null);
+
+  -- ── ventas ──────────────────────────────────────────────
+  -- A: 3 generales (300) + un combo de 2 manillas (200) en el evento A
+  v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 3)),
+                       '{}'::jsonb, null::uuid, null::text, v_a)->>'orden')::uuid;
+  perform emitir_orden(v_o1);
+  v_o2 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_combo, 'cantidad', 1)),
+                       '{}'::jsonb, null::uuid, null::text, v_a)->>'orden')::uuid;
+  perform emitir_orden(v_o2);
+  -- una de las cinco se anula: no cuenta ni como entrada ni como comisión
+  update entradas set estado = 'anulada'
+   where id = (select id from entradas where orden_id = v_o1 order by created_at, id limit 1);
+
+  -- B: 2 generales (200) en el evento A
+  v_o3 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 2)),
+                       '{}'::jsonb, null::uuid, null::text, v_b)->>'orden')::uuid;
+  perform emitir_orden(v_o3);
+
+  -- ruido que NO tiene que aparecer: una orden de A que quedó pendiente
+  -- (nadie pagó) y una venta pública sin relacionador
+  v_o4 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 1)),
+                       '{}'::jsonb, null::uuid, null::text, v_a)->>'orden')::uuid;
+  v_o5 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 1)),
+                       '{}'::jsonb, null::uuid, null::text, null::uuid)->>'orden')::uuid;
+  perform emitir_orden(v_o5);
+
+  -- A también vendió una en el evento B, para el caso p_evento = null
+  v_o6 := (crear_orden(v_ev2, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo2, 'cantidad', 1)),
+                       '{}'::jsonb, null::uuid, null::text, v_a)->>'orden')::uuid;
+  perform emitir_orden(v_o6);
+
+  -- otro tenant: C vendió lo suyo en su propio evento
+  v_o7 := (crear_orden(v_ev3, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo3, 'cantidad', 4)),
+                       '{}'::jsonb, null::uuid, null::text, v_c)->>'orden')::uuid;
+  perform emitir_orden(v_o7);
+
+  -- ── 1) A ve lo suyo y solo lo suyo ──────────────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_a::text, true);
+
+  v_r := mis_ventas(v_ev);
+  if jsonb_array_length(v_r) <> 1 then
+    raise exception 'TEST_FAIL: A deberia tener una fila en el evento A, tiene %: %', jsonb_array_length(v_r), v_r;
+  end if;
+  v_f := v_r->0;
+  if (v_f->>'entradas')::int <> 4 then
+    raise exception 'TEST_FAIL: A vendio 5 entradas y una se anulo: deberian ser 4, dio % (%)', v_f->>'entradas', v_f;
+  end if;
+  if (v_f->>'recaudado')::numeric <> 500 then
+    raise exception 'TEST_FAIL: A recaudo 500 (300 + 200), dio %', v_f->>'recaudado';
+  end if;
+  if (v_f->>'comision_unitaria')::numeric <> 15 then
+    raise exception 'TEST_FAIL: A no tiene acuerdo propio, deberia cobrar los 15 del evento, dio %', v_f->>'comision_unitaria';
+  end if;
+  if (v_f->>'comision')::numeric <> 60 then
+    raise exception 'TEST_FAIL: la comision de A deberia ser 4 x 15 = 60, dio %', v_f->>'comision';
+  end if;
+  if v_r::text like '%Beto%' or v_r::text like '%' || v_b::text || '%' then
+    raise exception 'TEST_FAIL: mis_ventas de A menciona a B: %', v_r;
+  end if;
+
+  -- sin parámetro: los dos eventos donde vendió, el de más comisión primero
+  v_r := mis_ventas();
+  if jsonb_array_length(v_r) <> 2 then
+    raise exception 'TEST_FAIL: A vendio en dos eventos, mis_ventas() devolvio %: %', jsonb_array_length(v_r), v_r;
+  end if;
+  if (v_r->0->>'evento_id')::uuid <> v_ev then
+    raise exception 'TEST_FAIL: deberia ordenar por comision descendente, vino primero %', v_r->0;
+  end if;
+  if (v_r->0->>'evento_nombre') <> 'Evento 0026 A' then
+    raise exception 'TEST_FAIL: falta el nombre del evento: %', v_r->0;
+  end if;
+  if (v_r->0->>'evento_fecha') is null then
+    raise exception 'TEST_FAIL: falta la fecha del evento: %', v_r->0;
+  end if;
+  if (v_r->1->>'entradas')::int <> 1 or (v_r->1->>'comision')::numeric <> 15 then
+    raise exception 'TEST_FAIL: en el evento B, A vendio 1 y le tocan 15: %', v_r->1;
+  end if;
+
+  -- ── 2) B ve lo suyo, con SU acuerdo ─────────────────────
+  perform set_config('request.jwt.claim.sub', v_b::text, true);
+  v_r := mis_ventas(v_ev);
+  if jsonb_array_length(v_r) <> 1 then
+    raise exception 'TEST_FAIL: B deberia tener una fila, tiene %: %', jsonb_array_length(v_r), v_r;
+  end if;
+  v_f := v_r->0;
+  if (v_f->>'entradas')::int <> 2 then
+    raise exception 'TEST_FAIL: B vendio 2 entradas, dio %', v_f->>'entradas';
+  end if;
+  if (v_f->>'comision')::numeric <> 40 then
+    raise exception 'TEST_FAIL: B tiene acuerdo propio de 20: 2 x 20 = 40, dio %', v_f->>'comision';
+  end if;
+  if v_r::text like '%Ana%' or (v_f->>'recaudado')::numeric <> 200 then
+    raise exception 'TEST_FAIL: B ve algo que no es suyo: %', v_r;
+  end if;
+
+  -- un relacionador sin una sola venta no ve un arreglo con basura, ve []
+  perform set_config('request.jwt.claim.sub', v_sin::text, true);
+  if mis_ventas() <> '[]'::jsonb then
+    raise exception 'TEST_FAIL: un relacionador sin ventas deberia ver [], vio %', mis_ventas();
+  end if;
+
+  -- ── 3) un rrpp no puede ver el ranking de todos ─────────
+  perform set_config('request.jwt.claim.sub', v_a::text, true);
+  begin
+    perform ventas_por_rrpp(v_ev);
+    raise exception 'TEST_FAIL: un rrpp pudo llamar ventas_por_rrpp';
+  exception when others then
+    if sqlerrm <> 'Sin permiso' then raise; end if;
+  end;
+
+  -- ── 4) el staff sí, y ve a los dos, ordenados ───────────
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  v_r := ventas_por_rrpp(v_ev);
+  if jsonb_array_length(v_r) <> 2 then
+    raise exception 'TEST_FAIL: en el evento A vendieron dos relacionadores, vinieron %: %', jsonb_array_length(v_r), v_r;
+  end if;
+  if (v_r->0->>'perfil_id')::uuid <> v_a or (v_r->1->>'perfil_id')::uuid <> v_b then
+    raise exception 'TEST_FAIL: deberia venir A (60) antes que B (40): %', v_r;
+  end if;
+  if (v_r->0->>'nombre') <> 'Ana' or (v_r->0->>'slug') <> 'ana' then
+    raise exception 'TEST_FAIL: falta nombre o slug de la persona: %', v_r->0;
+  end if;
+  if (v_r->0->>'comision')::numeric <> 60 or (v_r->1->>'comision')::numeric <> 40 then
+    raise exception 'TEST_FAIL: las comisiones del desglose no cuadran: %', v_r;
+  end if;
+  if v_r::text like '%Sin Ventas%' then
+    raise exception 'TEST_FAIL: un relacionador sin ventas no deberia aparecer: %', v_r;
+  end if;
+
+  -- ── 5) multi-tenant: el evento del otro organizador no existe acá ──
+  v_r := ventas_por_rrpp(v_ev3);
+  if v_r <> '[]'::jsonb then
+    raise exception 'TEST_FAIL: el staff de un organizador vio las ventas de OTRO organizador: %', v_r;
+  end if;
+
+  -- ── 6) sube el precio de la entrada: la comision NO se mueve ──
+  reset role;
+  update fase_precio set precio = 300 where fase_id = v_fase and tipo_id = v_tipo;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_a::text, true);
+  v_f := mis_ventas(v_ev)->0;
+  if (v_f->>'comision')::numeric <> 60 then
+    raise exception 'TEST_FAIL: la comision se movio sola cuando subio el precio de la entrada: dio % en vez de 60', v_f->>'comision';
+  end if;
+  if (v_f->>'entradas')::int <> 4 then
+    raise exception 'TEST_FAIL: cambio la cuenta de entradas al cambiar el precio: %', v_f;
+  end if;
+  if (v_f->>'recaudado')::numeric <> 500 then
+    raise exception 'TEST_FAIL: lo recaudado se congela en la orden, no sigue al precio nuevo: dio %', v_f->>'recaudado';
+  end if;
+
+  reset role;
+  raise notice 'OK cada relacionador ve solo lo suyo y la comision no sigue al precio';
+end $$;
+
 rollback;
