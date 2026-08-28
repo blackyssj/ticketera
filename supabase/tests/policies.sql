@@ -693,4 +693,324 @@ begin
   raise notice 'OK cada relacionador ve solo lo suyo y la comision no sigue al precio';
 end $$;
 
+-- ============================================================
+-- 0031 — el portero, probado por lo que NO puede
+--
+-- El portero trabaja toda la noche desde un teléfono prestado en la puerta
+-- de un boliche. Si ese teléfono queda sobre la barra con la sesión
+-- abierta, lo que importa no es lo que el portero sabe hacer sino lo que
+-- la base le deja hacer a quien lo agarre. Por eso el test empieza por lo
+-- que tiene que rebotar y recién al final comprueba lo único que sí puede.
+--
+-- Las tres escrituras (tipo_entrada, fase_precio, eventos) no tiran error:
+-- la policy no matchea y el update toca cero filas, silencioso. Por eso no
+-- alcanza con que no explote — hay que ir a mirar la fila después, con el
+-- rol ya reseteado, y ver que sigue diciendo lo mismo.
+--
+-- `ordenes` es la que más importa de las lecturas negadas: ahí viven el
+-- correo, el teléfono y el total del comprador. El portero necesita saber
+-- si la manilla es buena, no quién la pagó ni cuánto.
+-- ============================================================
+do $$
+declare v_org   uuid := '03100031-0031-4031-8031-000000000001';
+        v_org2  uuid := '03100031-0031-4031-8031-000000000002';  -- el otro tenant
+        v_port  uuid := '03100031-0031-4031-8031-000000000003';
+        v_ev    uuid := '03100031-0031-4031-8031-000000000004';
+        v_ev2   uuid := '03100031-0031-4031-8031-000000000005';
+        v_tipo  uuid := '03100031-0031-4031-8031-000000000006';
+        v_fase  uuid := '03100031-0031-4031-8031-000000000007';
+        v_ord   uuid := '03100031-0031-4031-8031-000000000008';
+        v_ent   uuid := '03100031-0031-4031-8031-000000000009';
+        v_ent2  uuid := '03100031-0031-4031-8031-00000000000a';
+        v_n int;
+begin
+  insert into organizadores (id, slug, nombre) values
+    (v_org,  'prueba-0031',  'Prueba 0031'),
+    (v_org2, 'prueba-0031b', 'Prueba 0031 otro');
+  insert into auth.users (id, email) values (v_port, 'portero-0031@ticketera.local');
+
+  -- Acá falla todo antes de la migración: perfiles_rol_check todavía no
+  -- conoce 'portero'.
+  insert into perfiles (id, organizador_id, nombre, rol) values
+    (v_port, v_org, 'Un Portero', 'portero');
+
+  insert into eventos (id, organizador_id, slug, nombre, fecha, estado) values
+    (v_ev,  v_org,  'evento-0031',  'Evento 0031',  current_date + 10, 'publicado'),
+    (v_ev2, v_org2, 'evento-0031b', 'Evento 0031 B', current_date + 10, 'publicado');
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre) values
+    (v_tipo, v_org, v_ev, 'General');
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta) values
+    (v_fase, v_org, v_ev, 'F1', now() - interval '1 hour', now() + interval '10 days');
+  insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo) values
+    (v_org, v_fase, v_tipo, 100, null);
+
+  -- una orden con los datos del comprador, que es lo que el portero no tiene
+  -- por qué ver
+  insert into ordenes (id, organizador_id, evento_id, estado, expira_at,
+                       comprador_nombre, comprador_email, comprador_telefono,
+                       subtotal, fee, total)
+  values (v_ord, v_org, v_ev, 'pagada', now() + interval '1 day',
+          'Comprador', 'comprador@ejemplo.com', '70000000', 100, 7, 107);
+
+  -- una entrada propia y una del otro tenant, para el corte de organizador
+  insert into entradas (id, organizador_id, evento_id, orden_id, code, canal,
+                        tipo_id, fase_id, cliente, precio) values
+    (v_ent, v_org, v_ev, v_ord, 'PORTERO000AA', 'publico', v_tipo, v_fase, 'Comprador', 100);
+  insert into entradas (id, organizador_id, evento_id, code, canal, precio) values
+    (v_ent2, v_org2, v_ev2, 'PORTERO000BB', 'publico', 100);
+
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_port::text, true);
+
+  -- ── 1) no escribe el catálogo ni el evento ──────────────
+  begin
+    update tipo_entrada set nombre = 'Hackeado' where id = v_tipo;
+  exception when others then null;
+  end;
+  begin
+    update fase_precio set precio = 1 where fase_id = v_fase and tipo_id = v_tipo;
+  exception when others then null;
+  end;
+  begin
+    update eventos set nombre = 'Hackeado' where id = v_ev;
+  exception when others then null;
+  end;
+
+  -- ── 2) no lee las órdenes ───────────────────────────────
+  select count(*) into v_n from ordenes where id = v_ord;
+  if v_n <> 0 then
+    raise exception 'TEST_FAIL: el portero leyo una orden — ahi estan el correo, el telefono y el total';
+  end if;
+
+  -- ── 3) sí lee las entradas de SU organizador ────────────
+  select count(*) into v_n from entradas where id = v_ent;
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: el portero no puede leer las entradas de su organizador, que es lo unico que necesita';
+  end if;
+
+  -- ── 4) y ninguna otra ───────────────────────────────────
+  select count(*) into v_n from entradas where id = v_ent2;
+  if v_n <> 0 then
+    raise exception 'TEST_FAIL: el portero leyo una entrada de OTRO organizador';
+  end if;
+
+  -- ── 5) es_portero() se reconoce a sí mismo, puede_editar() lo rechaza ──
+  if not es_portero() then
+    raise exception 'TEST_FAIL: es_portero() dijo que no para un perfil con rol portero';
+  end if;
+  if puede_editar() then
+    raise exception 'TEST_FAIL: puede_editar() dejo pasar al portero';
+  end if;
+
+  reset role;
+
+  -- Las escrituras de arriba no tiraron error: tocaron cero filas. Se
+  -- comprueba mirando la fila, no atrapando la excepción que no hubo.
+  if exists (select 1 from tipo_entrada where id = v_tipo and nombre = 'Hackeado') then
+    raise exception 'TEST_FAIL: el portero cambio el nombre de un tipo de entrada';
+  end if;
+  if exists (select 1 from fase_precio where fase_id = v_fase and tipo_id = v_tipo and precio = 1) then
+    raise exception 'TEST_FAIL: el portero cambio un precio';
+  end if;
+  if exists (select 1 from eventos where id = v_ev and nombre = 'Hackeado') then
+    raise exception 'TEST_FAIL: el portero cambio el nombre del evento';
+  end if;
+
+  raise notice 'OK el portero lee las entradas de su organizador y nada mas';
+end $$;
+
+-- ============================================================
+-- 0032 — validar, rechazar y deshacer
+--
+-- Este bloque prueba los ESTADOS. La carrera de verdad no se puede probar
+-- acá adentro: dos sesiones no se ven los datos hasta que alguien
+-- commitea, y este archivo termina en rollback a propósito. Vive aparte,
+-- en supabase/tests/carrera-puerta.py, con dos sesiones reales y un
+-- pg_sleep entre el update y el commit.
+--
+-- Lo que sí se prueba acá, que es lo que se discute en la puerta:
+--
+-- 1) Validar dos veces da 'valida' y después 'usada' CON la hora del
+--    primer ingreso. Sin esa hora no hay con qué contestarle a alguien
+--    que jura que no entró.
+-- 2) La fila queda con UN solo used_at. El segundo escaneo no lo pisa:
+--    si lo pisara, la hora del primer ingreso se perdería justo cuando
+--    hace falta.
+-- 3) `anulada` se responde distinto de `no_existe`. Son la misma cara para
+--    quien está afuera pero no para el portero: una existió y alguien la
+--    dio de baja, la otra nunca existió. Con la primera hay a quién
+--    llamar.
+-- 4) El modo filtro no consume: la entrada queda como estaba.
+-- 5) Deshacer la devuelve a 'valida' y le borra la hora, porque en la
+--    puerta se escanea de más.
+-- 6) La entrada de otro organizador es 'no_existe', y sigue intacta. Es
+--    el caso que la RLS no cubre sola: las tres funciones son security
+--    definer y se saltean las policies, así que el corte de tenant tiene
+--    que estar escrito adentro del where.
+-- ============================================================
+do $$
+declare v_org   uuid := '03200032-0032-4032-8032-000000000001';
+        v_org2  uuid := '03200032-0032-4032-8032-000000000002';
+        v_port  uuid := '03200032-0032-4032-8032-000000000003';
+        v_staff uuid := '03200032-0032-4032-8032-000000000004';
+        v_rrpp  uuid := '03200032-0032-4032-8032-000000000005';
+        v_ev    uuid := '03200032-0032-4032-8032-000000000006';
+        v_ev2   uuid := '03200032-0032-4032-8032-000000000007';
+        v_tipo  uuid := '03200032-0032-4032-8032-000000000008';
+        v_fase  uuid := '03200032-0032-4032-8032-000000000009';
+        v_ok    uuid := '03200032-0032-4032-8032-00000000000a';
+        v_anu   uuid := '03200032-0032-4032-8032-00000000000b';
+        v_aje   uuid := '03200032-0032-4032-8032-00000000000c';
+        v_otra  uuid := '03200032-0032-4032-8032-00000000000d';
+        c_ok  text := 'BCDFGH234567';
+        c_anu text := 'JKLMNP234567';
+        c_aje text := 'QRSTVW234567';
+        c_otra text := 'WXZBCD234567';
+        v_r jsonb; v_primera timestamptz; v_n int;
+begin
+  insert into organizadores (id, slug, nombre) values
+    (v_org,  'prueba-0032',  'Prueba 0032'),
+    (v_org2, 'prueba-0032b', 'Prueba 0032 otro');
+  insert into auth.users (id, email) values
+    (v_port,  'portero-0032@ticketera.local'),
+    (v_staff, 'staff-0032@ticketera.local'),
+    (v_rrpp,  'rrpp-0032@ticketera.local');
+  insert into perfiles (id, organizador_id, nombre, rol) values
+    (v_port,  v_org, 'Portero 0032', 'portero'),
+    (v_staff, v_org, 'Staff 0032',   'staff'),
+    (v_rrpp,  v_org, 'Rrpp 0032',    'rrpp');
+  insert into eventos (id, organizador_id, slug, nombre, fecha, estado) values
+    (v_ev,  v_org,  'evento-0032',  'Evento 0032',   current_date + 10, 'publicado'),
+    (v_ev2, v_org2, 'evento-0032b', 'Evento 0032 B', current_date + 10, 'publicado');
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre) values
+    (v_tipo, v_org, v_ev, 'General');
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta) values
+    (v_fase, v_org, v_ev, 'F1', now() - interval '1 hour', now() + interval '10 days');
+
+  insert into entradas (id, organizador_id, evento_id, code, canal, tipo_id, fase_id,
+                        cliente, precio, estado) values
+    (v_ok,   v_org,  v_ev,  c_ok,   'publico', v_tipo, v_fase, 'Ana Perez',  100, 'valida'),
+    (v_anu,  v_org,  v_ev,  c_anu,  'publico', v_tipo, v_fase, 'Beto Anulado', 100, 'anulada'),
+    (v_otra, v_org,  v_ev,  c_otra, 'rrpp',    v_tipo, v_fase, 'Cami Filtro', 100, 'valida');
+  -- misma combinación de code en OTRO organizador: el unique es por evento,
+  -- así que esto es legal y es justo el caso peligroso
+  insert into entradas (id, organizador_id, evento_id, code, canal, precio, estado) values
+    (v_aje, v_org2, v_ev2, c_aje, 'publico', 100, 'valida');
+
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_port::text, true);
+
+  -- ── 1) primer escaneo: valida ───────────────────────────
+  -- de paso en minúsculas y con espacios: el QR se lee con la cámara y lo
+  -- que llega no siempre viene limpio
+  v_r := validar_entrada(v_ev, '  bcdfgh234567  ');
+  if v_r->>'resultado' <> 'valida' then
+    raise exception 'TEST_FAIL: el primer escaneo deberia dar valida, dio %', v_r;
+  end if;
+  if v_r->>'cliente' <> 'Ana Perez' then
+    raise exception 'TEST_FAIL: falta el nombre de quien entra: %', v_r;
+  end if;
+  select used_at into v_primera from entradas where id = v_ok;
+  if v_primera is null then
+    raise exception 'TEST_FAIL: no quedo la hora de ingreso';
+  end if;
+
+  -- ── 2) segundo escaneo: usada, con la hora del primero ──
+  v_r := validar_entrada(v_ev, c_ok);
+  if v_r->>'resultado' <> 'usada' then
+    raise exception 'TEST_FAIL: el segundo escaneo deberia dar usada, dio %', v_r;
+  end if;
+  if (v_r->>'used_at')::timestamptz <> v_primera then
+    raise exception 'TEST_FAIL: la respuesta tiene que traer la hora del PRIMER ingreso (%), trajo %',
+      v_primera, v_r->>'used_at';
+  end if;
+  select count(*) into v_n from entradas
+   where id = v_ok and used_at = v_primera and estado = 'usada';
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: el segundo escaneo piso el used_at del primero';
+  end if;
+  if (select portero_id from entradas where id = v_ok) <> v_port then
+    raise exception 'TEST_FAIL: no quedo registrado quien la marco';
+  end if;
+
+  -- ── 3) deshacer: vuelve a valida y sin hora ─────────────
+  v_r := descheckin_entrada(v_ev, c_ok);
+  if v_r->>'resultado' <> 'valida' then
+    raise exception 'TEST_FAIL: deshacer deberia devolverla a valida, dio %', v_r;
+  end if;
+  select count(*) into v_n from entradas
+   where id = v_ok and estado = 'valida' and used_at is null and portero_id is null;
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: deshacer dejo la fila a medio camino';
+  end if;
+
+  -- deshacer una que no está usada no inventa nada
+  v_r := descheckin_entrada(v_ev, c_ok);
+  if v_r->>'resultado' = 'usada' then
+    raise exception 'TEST_FAIL: deshacer una entrada valida no deberia decir usada: %', v_r;
+  end if;
+
+  -- ── 4) modo filtro: rechaza sin consumir ────────────────
+  v_r := marcar_filtro_entrada(v_ev, c_otra);
+  if (v_r->>'filtro')::boolean is not true then
+    raise exception 'TEST_FAIL: el modo filtro deberia decir que filtro: %', v_r;
+  end if;
+  select count(*) into v_n from entradas
+   where id = v_otra and estado = 'valida' and used_at is null;
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: el modo filtro consumio la entrada — tenia que quedar valida';
+  end if;
+
+  -- ── 5) anulada NO es no_existe ──────────────────────────
+  v_r := validar_entrada(v_ev, c_anu);
+  if v_r->>'resultado' <> 'anulada' then
+    raise exception 'TEST_FAIL: una anulada tiene que decir anulada, dijo %', v_r;
+  end if;
+  v_r := validar_entrada(v_ev, 'ZZZZZZZZZZZZ');
+  if v_r->>'resultado' <> 'no_existe' then
+    raise exception 'TEST_FAIL: un code inventado tiene que decir no_existe, dijo %', v_r;
+  end if;
+
+  -- ── 6) la entrada de otro organizador no existe, y sigue intacta ──
+  v_r := validar_entrada(v_ev2, c_aje);
+  if v_r->>'resultado' <> 'no_existe' then
+    raise exception 'TEST_FAIL: el portero de un organizador vio la entrada de OTRO: %', v_r;
+  end if;
+  -- Este count va con el rol reseteado a propósito: leído desde la sesión
+  -- del portero daría cero por la RLS y el test pasaría sin haber mirado
+  -- nada. Lo que hay que comprobar es que la fila del otro tenant sigue
+  -- entera, y para eso hay que poder verla.
+  reset role;
+  select count(*) into v_n from entradas where id = v_aje and estado = 'valida' and used_at is null;
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: el portero de un organizador CONSUMIO la entrada de otro';
+  end if;
+  set local role authenticated;
+
+  -- ── 7) un rrpp no valida nada ───────────────────────────
+  perform set_config('request.jwt.claim.sub', v_rrpp::text, true);
+  begin
+    perform validar_entrada(v_ev, c_otra);
+    raise exception 'TEST_FAIL: un rrpp pudo validar una entrada';
+  exception when others then
+    if sqlerrm <> 'Sin permiso' then raise; end if;
+  end;
+  begin
+    perform descheckin_entrada(v_ev, c_otra);
+    raise exception 'TEST_FAIL: un rrpp pudo deshacer un ingreso';
+  exception when others then
+    if sqlerrm <> 'Sin permiso' then raise; end if;
+  end;
+
+  -- ── 8) el staff sí: puede_editar() también abre la puerta ──
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  v_r := validar_entrada(v_ev, c_otra);
+  if v_r->>'resultado' <> 'valida' then
+    raise exception 'TEST_FAIL: un staff tendria que poder validar, dio %', v_r;
+  end if;
+
+  reset role;
+  raise notice 'OK validar consume una sola vez, filtro no consume, deshacer devuelve y anulada no es no_existe';
+end $$;
+
 rollback;
