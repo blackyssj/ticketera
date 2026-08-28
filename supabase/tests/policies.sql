@@ -419,4 +419,36 @@ begin
   raise notice 'OK la comision es un monto fijo, con la de la persona por encima, y no se mueve con el precio';
 end $$;
 
+-- ============================================================
+-- 0025 — la atribución del relacionador la resuelve el servidor
+--
+-- El slug de ?r= NO es único globalmente, solo por organizador (0024): dos
+-- clientes distintos pueden cada uno tener su "nico". La cuenta real de
+-- Nico (organizador amstel) ya tiene slug='nico' en esta base — este bloque
+-- siembra OTRO organizador con OTRO relacionador que también se llama
+-- 'nico', y confirma que el slug se repite sin chocar. Eso es lo que obliga
+-- a crear-orden/index.ts a resolver siempre acotando por el organizador del
+-- evento: resolver por slug solo, sin ese filtro, encontraría cualquiera de
+-- los dos al azar.
+-- ============================================================
+do $$
+declare v_otro uuid;
+begin
+  -- un relacionador de OTRO organizador no puede quedar atribuido acá
+  insert into organizadores (id, slug, nombre)
+  values ('cccccccc-0000-4000-8000-000000000009', 'otro-org', 'Otro');
+  insert into auth.users (id, email) values
+    ('dddddddd-0000-4000-8000-000000000009', 'ajeno@ticketera.local');
+  insert into perfiles (id, organizador_id, nombre, rol, slug)
+  values ('dddddddd-0000-4000-8000-000000000009',
+          'cccccccc-0000-4000-8000-000000000009', 'Ajeno', 'rrpp', 'nico')
+  returning id into v_otro;
+
+  -- el mismo slug existe en los dos organizadores: eso tiene que poder pasar
+  if (select count(*) from perfiles where slug = 'nico') < 2 then
+    raise exception 'TEST_FAIL: el slug deberia poder repetirse entre organizadores';
+  end if;
+  raise notice 'OK el slug se repite entre organizadores y por eso hay que resolverlo con el del evento';
+end $$;
+
 rollback;
