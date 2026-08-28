@@ -75,9 +75,12 @@ let VOCAB = { plural: "entradas", singular: "entrada", elegi: "Elegí tus entrad
 
 function fijarVocabulario() {
   const soloMesas = D.tipos.length > 0 && D.tipos.every(t => t.categoria === "mesa");
+  const hayMesas = D.tipos.some(t => t.categoria === "mesa");
   VOCAB = soloMesas
-    ? { plural: "reservas", singular: "reserva", elegi: "Elegí tu reserva" }
-    : { plural: "entradas", singular: "entrada", elegi: "Elegí tus entradas" };
+    ? { plural: "reservas", singular: "reserva", elegi: "Elegí tu reserva",
+        titulo: "reservas" }
+    : { plural: "entradas", singular: "entrada", elegi: "Elegí tus entradas",
+        titulo: hayMesas ? "entradas y mesas" : "entradas" };
   PASOS[0].txt = soloMesas ? "Reservas"   : "Entradas";
   PASOS[3].txt = soloMesas ? "Tu reserva" : "Tu entrada";
   const h2 = $('[data-paso="entradas"] .panel-cab h2');
@@ -215,7 +218,7 @@ function pintarHero() {
   $("#heroBajada").textContent = e.bajada;
   $("#heroDatos").innerHTML = e.datos
     .map(([k, v]) => `<span>${esc(k)} <b>${esc(v)}</b></span>`).join("");
-  document.title = `${e.marca_1} ${e.marca_2} — ${VOCAB.plural}`;
+  document.title = `${e.marca_1} ${e.marca_2} — ${VOCAB.titulo}`;
   $("#faseChip").innerHTML = `<i></i>${esc(D.fase.nombre)} · ${esc(D.fase.hasta_txt)}`;
   $("#feeNota").textContent =
     `${Math.round(D.organizador.fee_pct * 100)}% + ${D.organizador.fee_fijo} Bs por compra, ` +
