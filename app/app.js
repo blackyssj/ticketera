@@ -10,31 +10,90 @@
 (() => {
 "use strict";
 
-const CFG = window.CONFIG || { MODO: "demo" };
+/* `?modo=demo` fuerza el modo sin backend. Sirve para mostrar la interfaz sin
+   consumir cupos reales, y para que la página siga en pie si el proyecto está
+   caído. No afecta la seguridad: en ese modo no se habla con la base en
+   absoluto, así que no hay nada que saltarse.
+
+   El link público que arma la administración es `/<organizador>/<evento>`
+   (rewrite a este mismo index.html en app/vercel.json). config.js queda
+   solo de respaldo: para el modo demo, y para cuando la ruta no trae los
+   dos segmentos (por ejemplo `/` sirviendo el evento por defecto). */
+const CFG = (() => {
+  const base = window.CONFIG || { MODO: "demo" };
+  const forzado = new URLSearchParams(location.search).get("modo");
+  const cfg = forzado === "demo" ? { ...base, MODO: "demo" } : { ...base };
+
+  const RESERVADAS = new Set(["admin", "orden"]);
+  const seg = location.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  if (seg.length >= 2 && !RESERVADAS.has(seg[0])) {
+    cfg.ORGANIZADOR = seg[0];
+    cfg.EVENTO = seg[1];
+  }
+  return cfg;
+})();
 // En modo demo sale del archivo; en modo supabase lo trae la función `evento`
 // con exactamente la misma forma, así que de acá para abajo da lo mismo.
 let D = window.DATOS_DEMO;
 
+/* La atribución del relacionador. Se guarda al entrar y se arrastra hasta el
+   checkout: el comprador puede mirar, irse y volver sin el ?r=, y la venta
+   sigue siendo de quien le pasó el link.
+   sessionStorage y no localStorage a propósito: dura la visita, no para
+   siempre — si el mismo teléfono compra un mes después por otro lado, ya no
+   es de él. */
+const REL = (() => {
+  const key = "ticketera.r";
+  const url = new URLSearchParams(location.search).get("r");
+  try {
+    if (url) sessionStorage.setItem(key, url);
+    return sessionStorage.getItem(key) || null;
+  } catch { return url || null; }   // navegador con storage bloqueado
+})();
+
 const HOLD_SEG = 600;
-/* ¿Esto cobra de verdad? Lo decide el servidor, no el cliente: `evento`
-   devuelve `pasarela`. Mientras sea simulada la página TIENE que decirlo —
-   una página con QR que parece venta real y no cobró es peor que no tenerla. */
-const cobra = () => CFG.MODO === "supabase" && D && D.pasarela === "v2pro";
+/* Si `iniciar-pago` devuelve una URL, la pasarela es real y el comprador se
+   va a ella. Si no, se queda en la pantalla de cobro por QR de acá. */
+/* Sin paso de mesa: el comprador elige un producto, no un lugar del plano.
+   La mesa física se la asigna el relacionador después de vender. Eso saca de
+   la venta pública el problema más caro que tenía — dos personas peleando por
+   la misma chapa mientras pagan. */
 const PASOS = [
   { id:"entradas", txt:"Entradas" },
-  { id:"mesas",    txt:"Mesa" },
   { id:"datos",    txt:"Tus datos" },
   { id:"pago",     txt:"Pago" },
   { id:"listo",    txt:"Tu entrada" }
 ];
 
+/* Si lo único a la venta son mesas, la página deja de hablar de "entradas".
+   No es cosmético: quien compra un combo no compra una entrada, reserva una
+   mesa que trae manillas, y llamar igual a las dos cosas es lo que hace que
+   después pregunte por WhatsApp cuántas personas entran. Se deriva de lo que
+   hay en venta y no de una constante: el día que el organizador vuelva a
+   activar entradas sueltas, el vocabulario vuelve solo. */
+let VOCAB = { plural: "entradas", singular: "entrada", elegi: "Elegí tus entradas" };
+
+function fijarVocabulario() {
+  const soloMesas = D.tipos.length > 0 && D.tipos.every(t => t.categoria === "mesa");
+  const hayMesas = D.tipos.some(t => t.categoria === "mesa");
+  VOCAB = soloMesas
+    ? { plural: "reservas", singular: "reserva", elegi: "Elegí tu reserva",
+        titulo: "reservas" }
+    : { plural: "entradas", singular: "entrada", elegi: "Elegí tus entradas",
+        titulo: hayMesas ? "entradas y mesas" : "entradas" };
+  PASOS[0].txt = soloMesas ? "Reservas"   : "Entradas";
+  PASOS[3].txt = soloMesas ? "Tu reserva" : "Tu entrada";
+  const h2 = $('[data-paso="entradas"] .panel-cab h2');
+  if (h2) h2.textContent = PASOS[0].txt;
+  const gm = GRUPOS.find(g => g.cat === "mesa");
+  if (gm) gm.titulo = soloMesas ? null : "Mesas y lounges";
+  $("#railResumen").textContent = VOCAB.elegi;
+}
+
 /* ── estado ────────────────────────────────────────────────────── */
 const S = {
   paso: "entradas",
   cant: {},                    // tipo_id → cantidad
-  mesas: new Set(),            // etiquetas elegidas
-  planta: null,
-  mesaEstado: {},              // etiqueta → estado (el demo lo muta)
   comprador: { nombre:"", telefono:"", email:"" },
   orden: null,
   entradas: [],
@@ -60,8 +119,6 @@ function avisar(txt) {
   tToast = setTimeout(() => t.dataset.on = "0", 4200);
 }
 
-const mesaDe = et => D.mesas.find(m => m.et === et);
-const idMesa = et => { const m = mesaDe(et); return (m && m.id) || et; };
 const tipoDe = id => D.tipos.find(t => t.id === id);
 const esperar = ms => new Promise(r => setTimeout(r, ms));
 
@@ -77,28 +134,16 @@ function apiDemo() {
     async evento() { return { ok: true, ...window.DATOS_DEMO }; },
     async crearOrden(items, comprador) {
       await esperar(220);
-      const et = id => (D.mesas.find(m => (m.id || m.et) === id) || {}).et;
-      for (const it of items) {
-        if (!it.mesa_id) continue;
-        if (S.mesaEstado[et(it.mesa_id)] !== "disponible") {
-          throw new Error("Alguien tomó esa mesa hace un momento. Elegí otra.");
-        }
-      }
-      items.forEach(it => { if (it.mesa_id) S.mesaEstado[et(it.mesa_id)] = "bloqueada"; });
       const { subtotal, fee, total } = cotizar();
-      return {
-        id: crypto.randomUUID(),
-        subtotal, fee, total,
-        expira_at: Date.now() + HOLD_SEG * 1000,
-        comprador
-      };
+      return { id: crypto.randomUUID(), subtotal, fee, total,
+               expira_at: Date.now() + HOLD_SEG * 1000, comprador };
     },
     async iniciarPago(orden) {
-      await esperar(1200);
-      return { pago_ref: "SIM-" + orden.id.slice(0, 8).toUpperCase() };
+      await esperar(700);
+      return { pago_ref: "SIM-" + orden.id.slice(0, 8).toUpperCase(), url: null };
     },
     async estadoOrden() {
-      await esperar(1800);
+      await esperar(900);
       return { estado: "pagada" };
     },
     async emitir(orden) {
@@ -106,20 +151,12 @@ function apiDemo() {
       const out = [];
       Object.entries(S.cant).forEach(([id, q]) => {
         const t = tipoDe(id);
-        for (let i = 0; i < q; i++) {
+        // una mesa emite una entrada por persona que entra con ella
+        for (let i = 0; i < q * (t.manillas || 1); i++) {
           out.push({ code: nuevoCode(), etiqueta: t.nombre, precio: t.precio,
                      cliente: orden.comprador.nombre });
         }
       });
-      S.mesas.forEach(et => {
-        const m = mesaDe(et);
-        for (let i = 0; i < m.manillas; i++) {
-          out.push({ code: nuevoCode(),
-                     etiqueta: (m.cat === "lounge" ? "Lounge " : "Mesa ") + m.et,
-                     precio: 0, cliente: orden.comprador.nombre });
-        }
-      });
-      S.mesas.forEach(et => S.mesaEstado[et] = "pagada");
       return out;
     }
   };
@@ -137,7 +174,8 @@ function apiSupabase() {
     evento: () => fn("evento", { organizador: CFG.ORGANIZADOR, evento: CFG.EVENTO }),
     crearOrden: async (items, comprador) => {
       const r = await fn("crear-orden", { organizador: CFG.ORGANIZADOR, evento: CFG.EVENTO,
-                                          items, comprador, client_key: crypto.randomUUID() });
+                                          items, comprador, r: REL,
+                                          client_key: crypto.randomUUID() });
       return { id: r.orden, subtotal: r.subtotal, fee: r.fee, total: r.total, comprador };
     },
     iniciarPago: orden => fn("iniciar-pago", { orden: orden.id }),
@@ -161,12 +199,6 @@ function cotizar() {
     subtotal += t.precio * q; entradas += q;
     lineas.push({ q: q + "×", n: t.nombre, v: t.precio * q, quitarTipo: t.id });
   });
-  S.mesas.forEach(et => {
-    const m = mesaDe(et);
-    subtotal += m.precio;
-    lineas.push({ q: "1×", n: (m.cat === "lounge" ? "Lounge " : "Mesa ") + m.et,
-                  v: m.precio, quitarMesa: et });
-  });
 
   const o = D.organizador;
   const fee = lineas.length
@@ -179,7 +211,6 @@ function cotizar() {
 function pintarHero() {
   const e = D.evento;
   $("#marca").innerHTML = `<b>${esc(e.marca_1)}</b> ${esc(e.marca_2)}`;
-  $("#tagModo").textContent = cobra() ? "en vivo" : "prueba";
   $("#barraFecha").textContent = e.fecha_txt;
   $("#heroLugar").textContent = e.lugar;
   $("#heroL1").textContent = e.marca_1;
@@ -187,7 +218,7 @@ function pintarHero() {
   $("#heroBajada").textContent = e.bajada;
   $("#heroDatos").innerHTML = e.datos
     .map(([k, v]) => `<span>${esc(k)} <b>${esc(v)}</b></span>`).join("");
-  document.title = `${e.marca_1} ${e.marca_2} — entradas y mesas`;
+  document.title = `${e.marca_1} ${e.marca_2} — ${VOCAB.titulo}`;
   $("#faseChip").innerHTML = `<i></i>${esc(D.fase.nombre)} · ${esc(D.fase.hasta_txt)}`;
   $("#feeNota").textContent =
     `${Math.round(D.organizador.fee_pct * 100)}% + ${D.organizador.fee_fijo} Bs por compra, ` +
@@ -206,81 +237,64 @@ function pintarPasos() {
   }).join("");
 }
 
+/* Dos grupos, no una lista sola: una entrada y una mesa se compran distinto
+   —una es una persona, la otra es un espacio para un grupo— y mezclarlas hace
+   que la de 3.000 parezca una entrada carísima. */
+const GRUPOS = [
+  { cat: "entrada", titulo: null },
+  { cat: "mesa", titulo: "Mesas y lounges",
+    nota: "El lugar exacto te lo asigna el equipo el día del evento." },
+];
+
 function pintarTipos() {
   const tope = D.evento.tope_entradas_orden;
   const usadas = Object.values(S.cant).reduce((a, b) => a + b, 0);
-  $("#tipos").innerHTML = D.tipos.map(t => {
-    const q = S.cant[t.id];
-    const restanTipo = t.cupo - q;
-    const cls = t.cupo === 0 ? "agotado" : t.cupo <= 20 ? "poco" : "";
-    const txtCupo = t.cupo === 0 ? "Agotado"
-      : t.cupo <= 20 ? `Quedan ${t.cupo}` : `${t.cupo} disponibles`;
-    const topeMas = q >= t.cupo || usadas >= tope;
-    return `<article class="tipo" data-activo="${q ? 1 : 0}">
-      <h3 class="tipo-nombre">${esc(t.nombre)}</h3>
-      <p class="tipo-desc">${esc(t.desc)}</p>
-      <p class="tipo-cupo ${cls}">${txtCupo}</p>
-      <div class="tipo-der">
-        <span class="tipo-precio">${bs(t.precio)}${t.antes ? `<s>antes ${t.antes} Bs</s>` : ""}</span>
-        <div class="stepper">
-          <button type="button" data-paso-t="-1" data-tipo="${t.id}"
-            aria-label="Quitar una ${esc(t.nombre)}"${q === 0 ? " disabled" : ""}>−</button>
-          <output>${q}</output>
-          <button type="button" data-paso-t="1" data-tipo="${t.id}"
-            aria-label="Agregar una ${esc(t.nombre)}"${topeMas ? " disabled" : ""}>+</button>
-        </div>
-      </div>
-    </article>`;
+
+  $("#tipos").innerHTML = GRUPOS.map(g => {
+    const suyos = D.tipos.filter(t => (t.categoria || "entrada") === g.cat);
+    if (!suyos.length) return "";
+    // El título del grupo se calla cuando no separa nada — con mesas y nada
+    // más, "Mesas y lounges" repite el encabezado del panel. La nota queda:
+    // esa sí dice algo que el comprador no sabe.
+    return ((g.titulo || g.nota)
+        ? `<div class="grupo-cab">` +
+          (g.titulo ? `<h3>${esc(g.titulo)}</h3>` : "") +
+          (g.nota ? `<p>${esc(g.nota)}</p>` : "") + `</div>`
+        : "") +
+      suyos.map(t => tarjetaTipo(t, tope, usadas)).join("");
   }).join("");
+
   if (usadas >= tope) {
     $("#tipos").insertAdjacentHTML("beforeend",
-      `<p class="letra-chica">Máximo ${tope} entradas por compra. Para más, hacé otra compra.</p>`);
+      `<p class="letra-chica">Máximo ${tope} por compra. Para más, hacé otra compra.</p>`);
   }
 }
 
-function pintarPlantas() {
-  $("#plantas").innerHTML = D.plantas.map(p =>
-    `<button type="button" data-planta="${p.id}" aria-pressed="${p.id === S.planta}">${esc(p.nombre)}</button>`
-  ).join("");
-}
+function tarjetaTipo(t, tope, usadas) {
+  const q = S.cant[t.id];
+  const esMesa = (t.categoria || "entrada") === "mesa";
+  const cls = t.cupo === 0 ? "agotado" : t.cupo <= 20 ? "poco" : "";
+  const txtCupo = t.cupo === 0 ? "Agotado"
+    : t.cupo <= 20 ? `Quedan ${t.cupo}` : `${t.cupo} disponibles`;
+  const topeMas = q >= t.cupo || usadas >= tope;
 
-function pintarPlano() {
-  const l = $("#lienzo");
-  l.querySelectorAll(".chapa, .barra-plano").forEach(n => n.remove());
-
-  const p = D.plantas.find(x => x.id === S.planta);
-  const barra = document.createElement("div");
-  barra.className = "barra-plano";
-  barra.textContent = p.barra.texto;
-  Object.assign(barra.style, { left: p.barra.left, top: p.barra.top,
-                               width: p.barra.width, height: p.barra.height });
-  l.appendChild(barra);
-
-  D.mesas.filter(m => m.planta === S.planta).forEach(m => {
-    const elegida = S.mesas.has(m.et);
-    const est = elegida ? "elegida" : S.mesaEstado[m.et];
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "chapa" + (m.cat === "lounge" ? " lounge" : "");
-    b.dataset.estado = est;
-    b.dataset.et = m.et;
-    b.style.left = m.x + "%"; b.style.top = m.y + "%"; b.style.width = m.w + "%";
-    b.disabled = est === "vendida" || est === "bloqueada";
-    const rotulo = est === "vendida" ? "vendida"
-      : est === "bloqueada" ? "alguien la está pagando"
-      : elegida ? `elegida, ${bs(m.precio)}` : `libre, ${bs(m.precio)}`;
-    b.setAttribute("aria-label",
-      `${m.cat === "lounge" ? "Lounge" : "Mesa"} ${m.et}, ${m.manillas} personas, ${rotulo}`);
-    b.setAttribute("aria-pressed", String(elegida));
-    b.innerHTML = `<span class="teeth"></span><span class="disc"></span>` +
-                  `<span class="num">${est === "bloqueada" ? "⏱" : esc(m.et)}</span>`;
-    l.appendChild(b);
-  });
-
-  const libres = D.mesas.filter(m => m.planta === S.planta &&
-    S.mesaEstado[m.et] === "disponible" && !S.mesas.has(m.et)).length;
-  $("#planoPie").textContent =
-    `${libres} libres en ${p.nombre.toLowerCase()} · mesa 8 personas · lounge 12`;
+  return `<article class="tipo${esMesa ? " es-mesa" : ""}" data-activo="${q ? 1 : 0}">
+    <h3 class="tipo-nombre">${esc(t.nombre)}</h3>
+    <p class="tipo-desc">${esc(t.desc)}</p>
+    ${t.incluye ? `<p class="tipo-incluye"><b>Incluye</b> ${esc(t.incluye)}</p>` : ""}
+    <p class="tipo-cupo ${cls}">${txtCupo}${
+      esMesa && t.manillas > 1 ? ` · entran ${t.manillas}` : ""}</p>
+    <div class="tipo-der">
+      <span class="tipo-precio">${bs(t.precio)}${t.antes ? `<s>antes ${t.antes} Bs</s>` : ""}</span>
+      <div class="stepper">
+        <button type="button" data-paso-t="-1" data-tipo="${t.id}"
+          aria-label="Quitar ${esc(t.nombre)}"${q === 0 ? " disabled" : ""}>−</button>
+        <output>${q}</output>
+        <button type="button" data-paso-t="1" data-tipo="${t.id}"
+          aria-label="Agregar ${esc(t.nombre)}"${topeMas ? " disabled" : ""}>+</button>
+      </div>
+    </div>
+  </article>`;
 }
 
 function pintarRail() {
@@ -303,16 +317,18 @@ function pintarRail() {
   $("#railTotalChico").textContent = bs(total);
 
   const partes = [];
-  if (entradas) partes.push(entradas + (entradas === 1 ? " entrada" : " entradas"));
-  if (S.mesas.size) partes.push(S.mesas.size + (S.mesas.size === 1 ? " mesa" : " mesas"));
-  $("#railResumen").textContent = hay ? partes.join(" · ") : "Elegí tus entradas";
+  const mesas = D.tipos.filter(t => t.categoria === "mesa")
+                       .reduce((a, t) => a + (S.cant[t.id] || 0), 0);
+  const sueltas = entradas - mesas;
+  if (sueltas) partes.push(sueltas + (sueltas === 1 ? " entrada" : " entradas"));
+  if (mesas) partes.push(mesas + (mesas === 1 ? " mesa" : " mesas"));
+  $("#railResumen").textContent = hay ? partes.join(" · ") : VOCAB.elegi;
 
   // el botón cambia de nombre y de habilitación según el paso
   const b = $("#btnSeguir"), atras = $("#btnAtras");
   const cfg = {
-    entradas: { txt: hay ? "Elegir mesa" : "Ver mesas", on: true,  atras: false },
-    mesas:    { txt: "Seguir",        on: hay,          atras: true  },
-    datos:    { txt: "Ir a pagar",    on: formValido(false), atras: true },
+    entradas: { txt: "Seguir",     on: hay,               atras: false },
+    datos:    { txt: "Ir a pagar", on: formValido(false), atras: true  },
     pago:     { txt: "Procesando…",   on: false,        atras: false },
     listo:    { txt: "Listo",         on: false,        atras: false }
   }[S.paso];
@@ -321,9 +337,7 @@ function pintarRail() {
   b.hidden = S.paso === "listo" || S.paso === "pago";
   atras.hidden = !cfg.atras;
 
-  $("#railAviso").textContent = cobra()
-    ? ""
-    : "Prueba: no se cobra nada y las entradas no valen en la puerta.";
+  $("#railAviso").textContent = "";
   if (hay) arrancarReloj(); else pararReloj();
 }
 
@@ -349,8 +363,6 @@ function dibujarReloj() {
 }
 function vencer() {
   pararReloj();
-  S.mesas.forEach(et => S.mesaEstado[et] = "disponible");
-  S.mesas.clear();
   D.tipos.forEach(t => S.cant[t.id] = 0);
   S.orden = null;
   irA("entradas");
@@ -359,6 +371,12 @@ function vencer() {
 
 /* ── navegación ──────────────────────────────────────────────── */
 function irA(paso) {
+  // La dirección hace que la transición signifique algo: adelante entra por
+  // la derecha, volver entra por la izquierda. Sin eso son todas iguales y
+  // el movimiento es decoración.
+  const antes = PASOS.findIndex(p => p.id === S.paso);
+  const ahora = PASOS.findIndex(p => p.id === paso);
+  $(".cuerpo").dataset.dir = ahora < antes ? "atras" : "adelante";
   S.paso = paso;
   $$(".panel").forEach(p => p.hidden = p.dataset.paso !== paso);
   // comprada la entrada no queda nada que decidir: el rail se va y le deja
@@ -367,7 +385,6 @@ function irA(paso) {
   document.body.classList.toggle("sin-rail", paso === "listo");
   $("#hero").classList.toggle("compacto", paso !== "entradas");
   pintarPasos();
-  if (paso === "mesas") { pintarPlantas(); pintarPlano(); }
   if (paso === "entradas") pintarTipos();
   pintarRail();
   const y = $("#pasos").getBoundingClientRect().top + window.scrollY - 70;
@@ -413,122 +430,136 @@ function pagoDice(html) { $("#pagoEstado").innerHTML = html; }
 
 async function pagar() {
   irA("pago");
-  const { total } = cotizar();
-
   try {
     pagoDice(`<div class="girador"></div><h3>Reservando tu lugar</h3>
       <p>Guardamos lo que elegiste por 10 minutos mientras pagás.</p>`);
     const items = [];
     Object.entries(S.cant).forEach(([id, q]) => { if (q) items.push({ tipo_id: id, cantidad: q }); });
-    S.mesas.forEach(et => items.push({ mesa_id: idMesa(et) }));
-    S.orden = await API.crearOrden(items, { ...S.comprador });
+      S.orden = await API.crearOrden(items, { ...S.comprador });
 
-    pagoDice(`<div class="girador"></div><h3>Yendo a la pasarela</h3>
-      <p>Vas a pagar ${bs(total)} a nombre de ${esc(S.comprador.nombre)}.</p>
-      <div class="pago-metodos"><b>QR simple</b><b>Tarjeta</b><b>Débito</b></div>`);
-    const { pago_ref } = await API.iniciarPago(S.orden);
-    S.orden.pago_ref = pago_ref;
+    pagoDice(`<div class="girador"></div><h3>Abriendo la pasarela</h3>
+      <p>Un segundo.</p>`);
+    const r = await API.iniciarPago(S.orden);
+    S.orden.pago_ref = r.pago_ref;
+    if (r.url) { location.href = r.url; return; }   // pasarela real: se va y vuelve
+    pasarelaSimulada();
+  } catch (err) {
+    pagoFallo(err.message, "datos");
+  }
+}
 
-    pagoDice(`<div class="girador"></div><h3>Esperando la confirmación</h3>
-      <p>No cierres esta pantalla. Si se corta, entrá de nuevo con el mismo link
-         y la compra sigue donde estaba.</p>`);
+/* La pasarela simulada. En producción esta pantalla no existe: el comprador
+   se va a v2pro y vuelve. Acá se queda, y "Verificar pago" hace lo mismo que
+   hace el retorno real — preguntarle a la pasarela, no creerle al navegador. */
+function pasarelaSimulada() {
+  const { total } = cotizar();
+  pagoDice(`
+    <div class="pasarela">
+      <div class="pasarela-cab">
+        <span class="pasarela-marca">BeePay</span>
+      </div>
+      <p class="pasarela-monto">${bs(total)}</p>
+      <p class="pasarela-a">a ${esc(D.organizador.nombre)}</p>
+      <p class="pasarela-instruccion">Escaneá con la app de tu banco</p>
+      <div class="pasarela-qr" id="pasarelaQr"></div>
+      <p class="pasarela-ref">Referencia ${esc(S.orden.pago_ref || "—")}</p>
+    </div>
+    <button class="btn primario" id="btnVerificar">Verificar pago</button>
+    <p class="letra-chica">Apretá cuando hayas pagado.</p>`);
+
+  dibujarQrPasarela();
+  $("#btnVerificar").onclick = verificarPago;
+}
+
+/* Un QR de mentira sería peor que ninguno: este lleva la referencia real de
+   la orden, así que escanearlo muestra exactamente lo que se está pagando. */
+function dibujarQrPasarela() {
+  const caja = $("#pasarelaQr");
+  if (!caja || typeof qrcode !== "function") return;
+  const q = qrcode(0, "M");
+  q.addData(`BEEPAY:${S.orden.pago_ref}:${cotizar().total}`);
+  q.make();
+
+  // Canvas y no createSvgTag: el SVG que genera la librería sale con los
+  // módulos en blanco sobre fondo blanco. El canvas es el mismo camino que
+  // ya usa el ticket y se controla el color.
+  const n = q.getModuleCount(), celda = 6, pad = celda * 2;
+  const lado = n * celda + pad * 2;
+  const c = document.createElement("canvas");
+  c.width = c.height = lado;
+  c.style.width = c.style.height = "170px";
+  const x = c.getContext("2d");
+  x.fillStyle = "#fff"; x.fillRect(0, 0, lado, lado);
+  x.fillStyle = "#171310";
+  for (let r = 0; r < n; r++)
+    for (let k = 0; k < n; k++)
+      if (q.isDark(r, k)) x.fillRect(pad + k * celda, pad + r * celda, celda, celda);
+  caja.replaceChildren(c);
+}
+
+async function verificarPago() {
+  const btn = $("#btnVerificar");
+  if (btn) { btn.disabled = true; btn.textContent = "Consultando…"; }
+  try {
     const r = await API.estadoOrden(S.orden);
-    if (r.estado !== "pagada") throw new Error("El pago no se confirmó.");
-    // en modo real ya vienen en la misma respuesta; en demo hay que pedirlas
+    if (r.estado === "revision_manual") {
+      pagoFallo("El monto cobrado no coincide con la compra. Lo estamos revisando.", null);
+      return;
+    }
+    if (r.estado !== "pagada") {
+      pagoDice(`<h3>Todavía no figura pagado</h3>
+        <p>La pasarela dice que la orden sigue <b>${esc(r.estado)}</b>. Si ya pagaste,
+           esperá unos segundos y volvé a verificar.</p>
+        <button class="btn primario" id="btnVerificar">Verificar de nuevo</button>`);
+      $("#btnVerificar").onclick = verificarPago;
+      return;
+    }
     S.entradas = r.entradas && r.entradas.length ? r.entradas : await API.emitir(S.orden);
     await mostrarListo();
-
   } catch (err) {
-    pagoDice(`<h3>No se pudo completar</h3>
-      <p>${esc(err.message)}</p>
-      <button class="btn plano" id="btnReintentar">Volver a intentar</button>`);
-    const r = $("#btnReintentar");
-    if (r) r.onclick = () => irA("datos");
+    pagoFallo(err.message, null);
   }
+}
+
+/* Un solo lugar donde se dibuja un fallo, para que digan todos lo mismo. */
+function pagoFallo(motivo, volverA) {
+  pagoDice(`<h3>No se pudo completar</h3><p>${esc(motivo)}</p>
+    <button class="btn plano" id="btnReintentar">${volverA ? "Volver a intentar" : "Verificar de nuevo"}</button>`);
+  $("#btnReintentar").onclick = volverA ? () => irA(volverA) : verificarPago;
 }
 
 /* ── el ticket ───────────────────────────────────────────────────
    Se dibuja en canvas del lado del cliente: cero egress de imágenes.
    El payload del QR es el mismo de Bowie y BurTown, EVT:<evento>:<code>,
    así que el escáner de la puerta lo lee sin cambiarle una línea.   */
-async function dibujarTicket(t) {
-  const W = 900, H = 1500;
-  const c = document.createElement("canvas");
-  c.width = W; c.height = H;
-  const x = c.getContext("2d");
-
-  x.fillStyle = "#0B0A0A"; x.fillRect(0, 0, W, H);
-  const g = x.createRadialGradient(W * .3, -H * .06, 0, W * .3, -H * .06, H * .52);
-  g.addColorStop(0, "rgba(220,10,45,.42)"); g.addColorStop(.55, "rgba(138,6,25,.12)");
-  g.addColorStop(1, "rgba(220,10,45,0)");
-  x.fillStyle = g; x.fillRect(0, 0, W, H);
-
-  x.textAlign = "center";
-
-  x.fillStyle = "#E9B44C";
-  x.font = '400 22px "DM Mono", monospace';
-  x.fillText(D.evento.lugar.toUpperCase(), W / 2, 112);
-
-  x.font = '800 96px "Big Shoulders Display", sans-serif';
-  x.fillStyle = "#F6F1E4"; x.fillText(D.evento.marca_1.toUpperCase(), W / 2, 224);
-  x.fillStyle = "#DC0A2D"; x.fillText(D.evento.marca_2.toUpperCase(), W / 2, 312);
-
-  x.fillStyle = "rgba(246,241,228,.62)";
-  x.font = '400 24px "DM Mono", monospace';
-  x.fillText(D.evento.fecha_txt, W / 2, 364);
-
-  // caja blanca del QR
-  const box = 440, bx = (W - box) / 2, by = 424, rad = 14;
-  x.fillStyle = "#fff";
-  x.beginPath(); x.roundRect(bx, by, box, box, rad); x.fill();
-
-  const q = qrcode(0, "M");
-  q.addData(`EVT:${D.evento.id}:${t.code}`);
-  q.make();
-  const n = q.getModuleCount(), pad = box * .07, cell = (box - 2 * pad) / n;
-  x.fillStyle = "#000";
-  for (let r = 0; r < n; r++)
-    for (let k = 0; k < n; k++)
-      if (q.isDark(r, k)) x.fillRect(bx + pad + k * cell, by + pad + r * cell, cell + .6, cell + .6);
-
-  x.fillStyle = "#F6F1E4";
-  x.font = '500 46px "DM Mono", monospace';
-  x.fillText("#" + t.code, W / 2, by + box + 74);
-  x.font = '500 34px "Inter Tight", sans-serif';
-  x.fillText(t.cliente || "—", W / 2, by + box + 124);
-
-  // perforación
-  const py = 1104;
-  x.strokeStyle = "rgba(246,241,228,.28)"; x.lineWidth = 2; x.setLineDash([12, 12]);
-  x.beginPath(); x.moveTo(40, py); x.lineTo(W - 40, py); x.stroke(); x.setLineDash([]);
-  x.fillStyle = "#0B0A0A";
-  [0, W].forEach(cx => { x.beginPath(); x.arc(cx, py, 26, 0, Math.PI * 2); x.fill(); });
-
-  x.font = '800 54px "Big Shoulders Display", sans-serif';
-  x.fillStyle = "#E9B44C";
-  x.fillText(t.etiqueta.toUpperCase(), W / 2, 1196);
-
-  x.font = '400 24px "DM Mono", monospace';
-  x.fillStyle = "rgba(246,241,228,.62)";
-  x.fillText(D.fase.nombre.toUpperCase(), W / 2, 1244);
-  x.fillText("VÁLIDA PARA 1 INGRESO", W / 2, 1288);
-
-  if (!cobra()) {
-    x.font = '400 20px "DM Mono", monospace';
-    x.fillStyle = "rgba(220,10,45,.9)";
-    x.fillText("PRUEBA · NO VÁLIDA EN PUERTA", W / 2, 1420);
-  }
-  return c.toDataURL("image/png");
-}
+const dibujarTicket = (t) => window.dibujarTicket(t, D.evento, D.fase);
 
 async function mostrarListo() {
   irA("listo");
   pararReloj();
   $("#listoNota").textContent =
     `${S.entradas.length} ${S.entradas.length === 1 ? "entrada" : "entradas"} a nombre de ${S.comprador.nombre}.`;
+
+  // Este link es el único camino de vuelta si se cierra la pestaña sin
+  // descargar: por eso se muestra siempre, no solo cuando el correo falla.
+  const linkOrden = `${location.origin}/orden/?id=${S.orden.id}`;
+  $("#listoLink").textContent = linkOrden;
+  $("#btnCopiarLink").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(linkOrden);
+      avisar("Link copiado.");
+    } catch (err) {
+      avisar("No se pudo copiar: " + err.message);
+    }
+  };
+
+  // El correo depende de si RESEND_API_KEY está configurada de verdad
+  // (D.correo_configurado, que manda la función `evento`). Si no lo está,
+  // ningún correo sale nunca — prometerlo ahí sería mentir.
+  const correoOk = D.correo_configurado !== false;
   $("#listoRef").textContent =
-    `Orden ${S.orden.id}${S.orden.pago_ref ? " · pago " + S.orden.pago_ref : ""}. ` +
-    `También te las mandamos a ${S.comprador.email}.`;
+    `Orden ${S.orden.id}${S.orden.pago_ref ? " · pago " + S.orden.pago_ref : ""}.` +
+    (correoOk ? ` También te las mandamos a ${S.comprador.email}.` : "");
   $("#tickets").innerHTML = `<p class="rail-vacio">Dibujando tus entradas…</p>`;
 
   if (document.fonts && document.fonts.ready) await document.fonts.ready;
@@ -536,8 +567,12 @@ async function mostrarListo() {
   for (const t of S.entradas) pngs.push(await dibujarTicket(t));
   S.entradas.forEach((t, i) => t.png = pngs[i]);
 
+  // Escalonadas: la primera aparece sola y el resto la siguen. Todas juntas
+  // se leen como un bloque; de a una se lee como "estas son tuyas".
   $("#tickets").innerHTML = S.entradas.map((t, i) =>
-    `<img src="${t.png}" alt="Entrada ${esc(t.etiqueta)}, código ${esc(t.code)}" loading="${i < 2 ? "eager" : "lazy"}">`
+    `<img style="--i:${Math.min(i, 8)}" src="${t.png}"
+          alt="Entrada ${esc(t.etiqueta)}, código ${esc(t.code)}"
+          loading="${i < 2 ? "eager" : "lazy"}">`
   ).join("");
 }
 
@@ -568,44 +603,11 @@ $("#tipos").addEventListener("click", e => {
   pintarTipos(); pintarRail();
 });
 
-$("#lienzo").addEventListener("click", e => {
-  const b = e.target.closest(".chapa");
-  if (!b || b.disabled) return;
-  const et = b.dataset.et;
-  if (S.mesas.has(et)) S.mesas.delete(et); else S.mesas.add(et);
-  pintarPlano(); pintarRail();
-});
-
-$("#lienzo").addEventListener("pointerover", e => {
-  const b = e.target.closest(".chapa");
-  const globo = $("#globo");
-  if (!b) { globo.hidden = true; return; }
-  const m = mesaDe(b.dataset.et);
-  const est = b.dataset.estado;
-  globo.innerHTML = `<b>${esc(m.cat === "lounge" ? "Lounge " : "Mesa ")}${esc(m.et)}</b>` +
-    (est === "vendida" ? "Vendida"
-     : est === "bloqueada" ? "Alguien la está pagando"
-     : `${bs(m.precio)} · ${m.manillas} personas`);
-  const p = b.getBoundingClientRect(), c = $(".plano").getBoundingClientRect();
-  globo.style.left = (p.left - c.left + p.width / 2) + "px";
-  globo.style.top  = (p.top  - c.top) + "px";
-  globo.hidden = false;
-});
-$("#lienzo").addEventListener("pointerleave", () => $("#globo").hidden = true);
-
-$("#plantas").addEventListener("click", e => {
-  const b = e.target.closest("button[data-planta]");
-  if (!b) return;
-  S.planta = b.dataset.planta;
-  pintarPlantas(); pintarPlano();
-});
-
 $("#railLineas").addEventListener("click", e => {
-  const m = e.target.closest("[data-quitar-mesa]");
   const t = e.target.closest("[data-quitar-tipo]");
-  if (m) { S.mesas.delete(m.dataset.quitarMesa); pintarPlano(); }
-  if (t) { S.cant[t.dataset.quitarTipo] = 0; pintarTipos(); }
-  if (m || t) pintarRail();
+  if (!t) return;
+  S.cant[t.dataset.quitarTipo] = 0;
+  pintarTipos(); pintarRail();
 });
 
 $("#pasos").addEventListener("click", e => {
@@ -614,16 +616,14 @@ $("#pasos").addEventListener("click", e => {
 });
 
 $("#btnSeguir").addEventListener("click", () => {
-  if (S.paso === "entradas") return irA("mesas");
-  if (S.paso === "mesas")    return irA("datos");
+  if (S.paso === "entradas") return irA("datos");
   if (S.paso === "datos") {
     if (!formValido(true)) { avisar("Revisá los datos marcados."); return; }
     return pagar();
   }
 });
 $("#btnAtras").addEventListener("click", () => {
-  if (S.paso === "mesas") return irA("entradas");
-  if (S.paso === "datos") return irA("mesas");
+  if (S.paso === "datos") return irA("entradas");
 });
 
 Object.keys(REGLAS).forEach(id => {
@@ -646,7 +646,7 @@ $("#railTirador").addEventListener("click", () => {
 $("#btnDescargar").addEventListener("click", descargar);
 $("#btnOtra").addEventListener("click", () => {
   D.tipos.forEach(t => S.cant[t.id] = 0);
-  S.mesas.clear(); S.orden = null; S.entradas = [];
+  S.orden = null; S.entradas = [];
   pintarTipos(); irA("entradas");
 });
 
@@ -666,16 +666,9 @@ async function arrancar() {
     }
   }
   D.tipos.forEach(t => S.cant[t.id] = 0);
-  D.mesas.forEach(m => S.mesaEstado[m.et] = m.estado);
-  S.planta = D.plantas[0].id;
-  if (!cobra()) {
-    document.body.insertAdjacentHTML("afterbegin",
-      '<p class="franja-prueba">Versión de prueba · el pago no cobra y las ' +
-      'entradas no valen en la puerta</p>');
-  }
+  fijarVocabulario();
   pintarHero();
   pintarTipos();
-  pintarPlantas();
   irA("entradas");
 }
 arrancar();

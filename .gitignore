@@ -14,3 +14,7 @@
 node_modules/
 .DS_Store
 *.log
+
+# Worktrees de los agentes y el ledger del plan en curso: andamio, no codigo.
+.claude/
+.superpowers/

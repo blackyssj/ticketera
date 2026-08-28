@@ -30,7 +30,17 @@ const rpc = (fn: string, args: Record<string, unknown>) =>
 
 // El frontend tiene que poder decirle al comprador que esto todavía no cobra.
 // Si el dato no viaja, la página parece una venta real y no lo es.
-const PASARELA = Deno.env.get("PASARELA") ?? "simulada";
+// Normalizado igual que en iniciar-pago y estado-orden (recortado,
+// minúsculas): acá no se falla cerrado porque este endpoint solo informa,
+// no cobra ni emite — pero si el valor no es ninguno de los dos esperados,
+// mejor mostrar la variable cruda que fingir "simulada" en silencio.
+const PASARELA = (Deno.env.get("PASARELA") ?? "").trim().toLowerCase() || "(sin configurar)";
+
+// Igual de fail-open que PASARELA antes de su arreglo: si no hay
+// RESEND_API_KEY, enviar-entradas nunca manda nada, así que la pantalla
+// final no puede prometer un correo que no va a salir. El frontend usa
+// este dato para no prometerlo.
+const CORREO_CONFIGURADO = !!Deno.env.get("RESEND_API_KEY");
 
 const MES = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
 const DIA = ["DOM","LUN","MAR","MIÉ","JUE","VIE","SÁB"];
@@ -50,15 +60,15 @@ Deno.serve(async (req) => {
     const o = await uno(`organizadores?slug=eq.${q(org)}&activo=is.true&select=id,nombre,fee_pct,fee_fijo_transaccion,fee_piso`);
     if (!o) return json({ ok: false, motivo: "Ese organizador no existe." }, 404);
 
-    const e = await uno(`eventos?organizador_id=eq.${o.id}&slug=eq.${q(ev)}&select=id,nombre,lugar,fecha,hora_inicio,edad_min,estado,tope_entradas_orden`);
+    const e = await uno(`eventos?organizador_id=eq.${o.id}&slug=eq.${q(ev)}&select=id,nombre,descripcion,lugar,fecha,hora_inicio,edad_min,estado,tope_entradas_orden,arte_url`);
     if (!e) return json({ ok: false, motivo: "Ese evento no existe." }, 404);
     if (e.estado !== "publicado") return json({ ok: false, motivo: "El evento todavía no está a la venta." }, 404);
 
     const faseId = await rpc("fase_vigente", { p_evento: e.id });
     if (!faseId) return json({ ok: false, motivo: "No hay ninguna fase de venta abierta." }, 409);
 
-    const fase = await uno(`evento_fase?id=eq.${faseId}&select=nombre,hasta`);
-    const precios = await rest(`fase_precio?fase_id=eq.${faseId}&select=tipo_id,precio,cupo,tipo_entrada(id,nombre,descripcion,orden,activo)`);
+    const fase = await uno(`evento_fase?id=eq.${faseId}&select=nombre,hasta,arte_url`);
+    const precios = await rest(`fase_precio?fase_id=eq.${faseId}&select=tipo_id,precio,cupo,tipo_entrada(id,nombre,descripcion,incluye,categoria,manillas,orden,activo)`);
 
     const tipos = [];
     for (const p of precios ?? []) {
@@ -66,36 +76,33 @@ Deno.serve(async (req) => {
       if (!t?.activo) continue;
       const disp = await rpc("disponibilidad_tipo", { p_fase: faseId, p_tipo: p.tipo_id });
       tipos.push({ id: t.id, nombre: t.nombre, desc: t.descripcion ?? "",
+                   incluye: t.incluye ?? null,
+                   categoria: t.categoria ?? "entrada",
                    precio: Number(p.precio), antes: null,
                    cupo: p.cupo === null ? 9999 : Number(disp ?? 0),
-                   manillas: 1, orden: t.orden });
+                   manillas: t.manillas ?? 1, orden: t.orden });
     }
     tipos.sort((a, b) => a.orden - b.orden);
 
-    const mesas = await rest(`mesas?evento_id=eq.${e.id}&select=id,etiqueta,planta,categoria,x,y,w,precio,manillas,estado&order=etiqueta`);
+    // El comprador ya no elige mesa en un plano: compra el producto y el
+    // relacionador le asigna cuál. El dato del hero sale del cupo que queda
+    // de los productos de mesa, NO de cuántas filas hay en `mesas`: ahí
+    // están todas las del predio, vendidas incluidas, y el hero prometía 24
+    // disponibles con cero para vender.
+    const reservas = tipos.filter((t) => t.categoria === "mesa")
+                          .reduce((n, t) => n + (t.cupo === 9999 ? 0 : t.cupo), 0);
 
     // el público ve tres estados y ninguno lleva el nombre de nadie
-    const visible = (s: string) =>
-      s === "disponible" ? "disponible" : s === "bloqueada" ? "bloqueada" : "vendida";
-
     const f = new Date(e.fecha + "T00:00:00-04:00");
     // Orden deliberado: la planta baja primero. Derivarlo del orden de las
     // mesas lo dejaba alfabético (A1 antes que M1) y abría en la alta.
-    const ORDEN = ["baja", "alta", "terraza"];
-    const plantas = [...new Set((mesas ?? []).map((m) => m.planta))]
-      .sort((a, b) => (ORDEN.indexOf(a) + 1 || 99) - (ORDEN.indexOf(b) + 1 || 99)
-                      || String(a).localeCompare(String(b)))
-      .map((id) => ({
-      id, nombre: id === "baja" ? "Planta baja" : id === "alta" ? "Planta alta" : String(id),
-      barra: id === "baja"
-        ? { texto: "Barra principal", left: "4%", top: "84%", width: "92%", height: "8%" }
-        : { texto: "Chopería", left: "4%", top: "6%", width: "20%", height: "22%" },
-    }));
+
 
     const partes = String(e.nombre).split(" ");
     return json({
       ok: true,
       pasarela: PASARELA,
+      correo_configurado: CORREO_CONFIGURADO,
       organizador: { nombre: o.nombre, fee_pct: Number(o.fee_pct),
                      fee_fijo: Number(o.fee_fijo_transaccion), fee_piso: Number(o.fee_piso) },
       evento: {
@@ -104,23 +111,19 @@ Deno.serve(async (req) => {
         marca_2: partes.slice(1).join(" "),
         lugar: e.lugar ?? "",
         fecha_txt: `${DIA[f.getDay()]} ${f.getDate()} ${MES[f.getMonth()]} · ${String(e.hora_inicio).slice(0,5)}`,
-        bajada: "",
+        bajada: e.descripcion ?? "",
         datos: [["Puertas", String(e.hora_inicio).slice(0,5)],
                 ["Edad mínima", String(e.edad_min)],
-                ["Mesas", `${(mesas ?? []).length} en ${plantas.length} plantas`],
-                ["Pago", "QR, tarjeta y débito"]],
+                ["Reservas", `${reservas} disponibles`],
+                ["Pago", "Con QR"]],
         tope_entradas_orden: e.tope_entradas_orden,
+        arte_url: e.arte_url ?? null,
       },
-      fase: { nombre: fase?.nombre ?? "", hasta_txt: fase?.hasta
+      fase: { nombre: fase?.nombre ?? "", arte_url: fase?.arte_url ?? null, hasta_txt: fase?.hasta
         ? "hasta el " + new Date(fase.hasta).toLocaleDateString("es-BO",
             { day: "numeric", month: "long", timeZone: "America/La_Paz" })
         : "" },
-      tipos, plantas,
-      mesas: (mesas ?? []).map((m) => ({
-        id: m.id, et: m.etiqueta, planta: m.planta, cat: m.categoria,
-        x: Number(m.x), y: Number(m.y), w: Number(m.w),
-        precio: Number(m.precio), manillas: m.manillas, estado: visible(m.estado),
-      })),
+      tipos,
     });
   } catch (err) {
     return json({ ok: false, motivo: String((err as Error).message ?? err) }, 500);

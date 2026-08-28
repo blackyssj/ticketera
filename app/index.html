@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Amstel Ferial — entradas y mesas</title>
+<title>RED CIRCLE · Fexpo '26 — reservas</title>
 <meta name="theme-color" content="#0B0A0A">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="/styles.css?v=10">
 </head>
 <body>
 
@@ -16,7 +16,6 @@
   <div class="carril barra-in">
     <span class="chapita" aria-hidden="true"><i></i><b></b></span>
     <span class="marca-txt" id="marca">—</span>
-    <span class="tag-demo" id="tagModo">demo</span>
     <span class="barra-fecha" id="barraFecha"></span>
   </div>
 </header>
@@ -54,28 +53,6 @@
             <span class="fase" id="faseChip"></span>
           </div>
           <div class="tipos" id="tipos"></div>
-        </section>
-
-        <!-- PASO mesas -->
-        <section class="panel" data-paso="mesas" hidden>
-          <div class="panel-cab">
-            <h2>Mesas</h2>
-            <p class="panel-nota">Opcional. Tocá una chapa para tomarla.</p>
-          </div>
-          <div class="plano-cab">
-            <div class="plantas" id="plantas" role="group" aria-label="Planta"></div>
-            <div class="leyenda">
-              <span><i class="pip libre"></i>Libre</span>
-              <span><i class="pip sel"></i>Tuya</span>
-              <span><i class="pip bloq"></i>Alguien pagando</span>
-              <span><i class="pip vend"></i>Vendida</span>
-            </div>
-          </div>
-          <div class="plano">
-            <div class="lienzo" id="lienzo"><div class="escenario">Escenario</div></div>
-            <div class="globo" id="globo" hidden></div>
-          </div>
-          <p class="plano-pie" id="planoPie"></p>
         </section>
 
         <!-- PASO datos -->
@@ -124,6 +101,13 @@
             <button class="btn primario" id="btnDescargar">Descargar las entradas</button>
             <button class="btn plano" id="btnOtra">Comprar otra</button>
           </div>
+          <div class="link-recuperar">
+            <div>
+              <p class="link-recuperar-titulo">Tus entradas viven acá para siempre</p>
+              <code id="listoLink"></code>
+            </div>
+            <button type="button" class="btn plano chico" id="btnCopiarLink">Copiar link</button>
+          </div>
           <p class="letra-chica" id="listoRef"></p>
         </section>
 
@@ -169,8 +153,9 @@
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="config.js"></script>
-<script src="datos-demo.js"></script>
-<script src="app.js"></script>
+<script src="/config.js"></script>
+<script src="/datos-demo.js?v=10"></script>
+<script src="/ticket.js?v=10"></script>
+<script src="/app.js?v=10"></script>
 </body>
 </html>

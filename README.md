@@ -17,6 +17,7 @@ Ticketera multi-tenant con landing pública de autoservicio.
 | `supabase/functions/` | Las 4 Edge Functions |
 | `supabase/seed.sql` | El evento de prueba (Amstel Ferial) |
 | `supabase/tests/invariantes.sql` | Los 4 guardas estructurales |
+| `supabase/tests/carrera-puerta.py` | La carrera de la puerta, con dos sesiones de verdad |
 | `scripts/` | Correr SQL y desplegar funciones con un PAT, sin la CLI |
 | `docs/` | Diseño, plan y el análisis que originó el producto |
 
@@ -49,6 +50,13 @@ Puerta convertidas en algo que grita solo:
 
     export SUPABASE_PAT=...   # o dejalo en ~/.supabase_pat
     python3 scripts/sql.py supabase/tests/invariantes.sql
+    python3 scripts/sql.py supabase/tests/policies.sql
+
+La carrera de la puerta va aparte y no por `sql.py`: necesita dos sesiones
+en paralelo, y cada llamada a `sql.py` es una sola. Siembra un organizador
+de usar y tirar, lo borra al terminar, y no toca nada de lo que ya está.
+
+    python3 supabase/tests/carrera-puerta.py
 
 ## Pasarela
 

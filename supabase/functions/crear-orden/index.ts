@@ -71,6 +71,18 @@ Deno.serve(async (req) => {
     const e = await uno(`eventos?organizador_id=eq.${o.id}&slug=eq.${q(evento)}&select=id`);
     if (!e) return json({ ok: false, motivo: "Ese evento no existe." }, 404);
 
+    // La atribución la resuelve el servidor. El navegador manda un slug, no
+    // un id: si mandara el id, cualquiera con la consola abierta se
+    // acreditaría las ventas de otro. Y se busca dentro del organizador del
+    // evento, porque el mismo slug puede existir en otro tenant.
+    let rrpp_id: string | null = null;
+    const r = String(b.r ?? "").trim().toLowerCase();
+    if (r && /^[a-z0-9-]{2,30}$/.test(r)) {
+      const p = await uno(
+        `perfiles?organizador_id=eq.${o.id}&slug=eq.${q(r)}&activo=is.true&select=id`);
+      rrpp_id = p?.id ?? null;   // un slug que no existe no rompe la venta
+    }
+
     const limpios = items.map((it) => it.mesa_id
       ? { mesa_id: String(it.mesa_id) }
       : { tipo_id: String(it.tipo_id), cantidad: Math.max(1, Math.min(50, Number(it.cantidad) || 1)) });
@@ -80,7 +92,7 @@ Deno.serve(async (req) => {
       data = await rpc("crear_orden", {
         p_evento: e.id, p_items: limpios,
         p_comprador: { nombre, email, telefono: String(comprador?.telefono ?? "").slice(0, 30) },
-        p_client_key: client_key ?? null, p_ip_hash: await hashIp(req),
+        p_client_key: client_key ?? null, p_ip_hash: await hashIp(req), p_rrpp: rrpp_id,
       });
     } catch (err) {
       return json({ ok: false, motivo: traducir(String((err as Error).message)) }, 409);

@@ -27,7 +27,12 @@ const uno = async (ruta: string) => (await rest(ruta))?.[0] ?? null;
 const rpc = (fn: string, args: Record<string, unknown>) =>
   rest(`rpc/${fn}`, { method: "POST", body: JSON.stringify(args) });
 
-const PASARELA = Deno.env.get("PASARELA") ?? "simulada";
+// Normalizado (recortado, minúsculas) para que "V2PRO" o " simulada " no
+// caigan por afuera de las dos comparaciones exactas de abajo. Si no viene
+// una de las dos, la función se niega a operar en vez de asumir cuál es:
+// el default anterior (?? "simulada") era fail-open — sin la variable
+// puesta, cualquiera se llevaba QR válidos sin pagar nada.
+const PASARELA = (Deno.env.get("PASARELA") ?? "").trim().toLowerCase();
 const V2PRO    = Deno.env.get("V2PRO_URL") ?? "https://pay.scrum-technology.com/api/v2pro";
 
 /* Le pregunta a la pasarela, no al navegador. Devuelve el monto cobrado para
@@ -53,10 +58,29 @@ async function consultar(pago_ref: string): Promise<{ pagado: boolean; monto: nu
   };
 }
 
+/* Dispara el correo sin bloquear la respuesta. Si el runtime ofrece
+   waitUntil lo usa; si no, la deja correr suelta. En los dos casos el
+   comprador ya vio sus entradas en pantalla: el correo es el respaldo,
+   no el camino principal. */
+function avisarPorCorreo(orden: string) {
+  const tarea = fetch(`${SB}/functions/v1/enviar-entradas`, {
+    method: "POST", headers: H, body: JSON.stringify({ orden }),
+  }).then(async (r) => {
+    if (!r.ok) console.error(`enviar-entradas devolvió ${r.status} para ${orden}`);
+  }).catch((e) => console.error(`enviar-entradas falló para ${orden}: ${e}`));
+
+  const rt = (globalThis as any).EdgeRuntime;
+  if (rt && typeof rt.waitUntil === "function") rt.waitUntil(tarea);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ ok: false, motivo: "Usá POST." }, 405);
   try {
+    if (PASARELA !== "simulada" && PASARELA !== "v2pro") {
+      console.error(`PASARELA mal configurada: "${Deno.env.get("PASARELA") ?? ""}"`);
+      return json({ ok: false, motivo: "La pasarela no está configurada correctamente. Avisale al organizador." }, 500);
+    }
     const { orden } = await req.json();
     if (!orden) return json({ ok: false, motivo: "Falta la orden." }, 400);
 
@@ -72,6 +96,13 @@ Deno.serve(async (req) => {
           return json({ ok: false, estado: "revision_manual",
             motivo: "El monto cobrado no coincide con la compra. Lo estamos revisando." }, 409);
         }
+        if (r && r.ok === false && r.motivo === "VENCIDA") {
+          return json({ ok: false, estado: "vencida",
+            motivo: "Se venció tu reserva antes de confirmarse el pago. Volvé a elegir." }, 409);
+        }
+        // Recién emitida: mandar el correo. Nunca esperar a que salga ni
+        // dejar que su fallo tumbe una venta ya cobrada.
+        if (r && r.ok === true && r.repetida === false) avisarPorCorreo(o.id);
       }
     }
 
@@ -79,8 +110,14 @@ Deno.serve(async (req) => {
     if (f?.estado !== "pagada") return json({ ok: true, estado: f?.estado ?? "pendiente" });
 
     const ent = await rest(`entradas?orden_id=eq.${orden}&select=code,precio,tipo_entrada(nombre),mesas(etiqueta,categoria)&order=created_at`);
+    // simulada=true deja explícito en la respuesta (y logueado abajo) que esta
+    // confirmación no pasó por un cobro real, para que nunca se confunda con
+    // uno. No se puede confiar en que el frontend lo muestre: por eso también
+    // queda en el log de la función.
+    const simulada = PASARELA !== "v2pro";
+    if (simulada) console.log(`confirmación simulada (no se cobró nada): orden=${orden}`);
     return json({
-      ok: true, estado: "pagada",
+      ok: true, estado: "pagada", simulada,
       entradas: (ent ?? []).map((e) => ({
         code: e.code, precio: Number(e.precio), cliente: o.comprador_nombre,
         etiqueta: e.tipo_entrada?.nombre

@@ -1,0 +1,841 @@
+/* ══════════════════════════════════════════════════════════════════
+   Administración de la ticketera.
+
+   Oscura, como la landing: son dos caras del mismo producto y antes se
+   veían como dos aplicaciones distintas. La profundidad la da una pila de
+   superficies con bordes de un pelo, no cajas con marco — es lo que hace
+   que Puerta se vea armada y esto no.
+
+   Es una herramienta, no una vitrina: densidad alta, movimiento solo donde
+   confirma que algo pasó.
+   ══════════════════════════════════════════════════════════════════ */
+
+:root{
+  /* la pila de superficies: cada nivel un escalón hacia el lector */
+  --noche:#0B0A0A;
+  --hundido:#08080A;        /* más abajo que el fondo: donde van los inputs */
+  --sup:#141118;
+  --sup-2:#1B1720;
+  --sup-3:#241F2A;
+
+  --linea:rgba(246,241,228,.07);
+  --linea-2:rgba(246,241,228,.13);
+
+  /* tres niveles de texto: la jerarquía no la carga el tamaño */
+  --txt:#F6F1E4;
+  --txt-2:#A9A2B0;
+  --txt-3:#6E6878;
+
+  --rojo:#DC0A2D;
+  --rojo-claro:#F01236;
+  --rojo-suave:rgba(220,10,45,.14);
+  --dorado:#E9B44C;
+
+  /* semánticos, separados del acento: un evento a la venta no es "lo activo",
+     es "lo que está bien" */
+  --ok:#3DD68C;
+  --ok-bg:rgba(61,214,140,.13);
+  --aviso:#F6B44A;
+  --aviso-bg:rgba(246,180,74,.13);
+  --peligro:#FB7185;
+  --peligro-bg:rgba(251,113,133,.12);
+
+  --display:"Big Shoulders Display","Arial Narrow",system-ui,sans-serif;
+  --texto:"Inter Tight",system-ui,-apple-system,sans-serif;
+  --dato:"DM Mono",ui-monospace,Menlo,monospace;
+
+  --r:14px;
+  --r-chico:10px;
+  --carril:1120px;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--noche);color:var(--txt);
+  font-family:var(--texto);font-size:15px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{margin:0;font-family:var(--display);text-transform:uppercase;line-height:.95;letter-spacing:.01em}
+p{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+input{font:inherit}
+:focus-visible{outline:2px solid var(--dorado);outline-offset:2px;border-radius:4px}
+[hidden]{display:none !important}
+
+/* ─── entrar ───
+   Centrada y sola: no hay nada más que hacer en esta pantalla. */
+.entrar{
+  min-height:100dvh;display:grid;place-items:center;padding:24px;
+  background:radial-gradient(80% 50% at 50% 0%, rgba(220,10,45,.16), transparent 62%), var(--noche);
+}
+.caja{
+  width:min(370px,100%);background:var(--sup);
+  border:1px solid var(--linea);border-radius:20px;padding:28px 24px;
+  display:flex;flex-direction:column;gap:15px;
+  box-shadow:0 24px 60px rgba(0,0,0,.5);
+}
+.caja h1{font-size:38px}
+.caja .sub{
+  margin:-11px 0 8px;font-family:var(--dato);font-size:11px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--txt-3);
+}
+
+/* ─── barra ─── */
+.cab{
+  display:flex;align-items:center;gap:16px;padding:0 20px;height:58px;
+  background:var(--sup);border-bottom:1px solid var(--linea);
+  position:sticky;top:0;z-index:20;
+}
+.marca{font-family:var(--display);font-size:20px;text-transform:uppercase;letter-spacing:.06em}
+.tabs{display:flex;gap:3px}
+.tabs button{
+  padding:7px 14px;border-radius:999px;
+  font-family:var(--dato);font-size:12px;letter-spacing:.04em;color:var(--txt-3);
+  transition:background .15s ease,color .15s ease;
+}
+.tabs button:hover{background:var(--sup-2);color:var(--txt-2)}
+.tabs button[aria-current]{background:var(--rojo);color:#fff}
+.yo{margin-left:auto;font-family:var(--dato);font-size:12px;color:var(--txt-3)}
+
+main{max-width:var(--carril);margin:0 auto;padding:28px 20px 90px}
+
+.cab-seccion{display:flex;align-items:center;gap:14px;margin-bottom:22px;flex-wrap:wrap}
+.cab-seccion h2{font-size:32px}
+.cab-seccion>.btn:last-child{margin-left:auto}
+
+/* ─── lista de eventos ─── */
+.lista{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+.fila{
+  display:flex;align-items:center;gap:14px;padding:15px 17px;
+  background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
+  cursor:pointer;transition:background .15s ease,border-color .15s ease,transform .08s ease;
+}
+.fila:hover{background:var(--sup-2);border-color:var(--linea-2)}
+.fila:active{transform:scale(.995)}
+.fila-nombre{font-weight:600;font-size:15.5px}
+.fila-dato{font-family:var(--dato);font-size:12.5px;color:var(--txt-2);margin-left:auto}
+.fila-dato.tenue{color:var(--txt-3);margin-left:0}
+
+.pastilla{
+  font-family:var(--dato);font-size:10.5px;padding:4px 10px;border-radius:999px;
+  text-transform:uppercase;letter-spacing:.07em;white-space:nowrap;
+}
+.pastilla.verde{background:var(--ok-bg);color:var(--ok);box-shadow:inset 0 0 0 1px rgba(61,214,140,.3)}
+.pastilla.gris{background:var(--sup-3);color:var(--txt-3)}
+
+/* ─── estados que dicen qué hacer ─── */
+.vacio,.cargando{
+  font-family:var(--dato);font-size:13px;color:var(--txt-3);
+  padding:34px 20px;text-align:center;
+  border:1px dashed var(--linea-2);border-radius:var(--r);
+}
+.cargando{color:var(--txt-2)}
+.error{font-family:var(--dato);font-size:12.5px;color:var(--peligro);min-height:1em}
+.ayuda{font-family:var(--dato);font-size:11.5px;color:var(--txt-3);font-style:normal;line-height:1.5}
+
+/* ─── formularios ───
+   El campo va HUNDIDO respecto de su contenedor. Un input al mismo nivel que
+   el fondo no se lee como algo donde se escribe. */
+.form-evento{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:660px}
+label{display:flex;flex-direction:column;gap:7px}
+label>span{
+  font-family:var(--dato);font-size:10.5px;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--txt-3);
+}
+input{
+  padding:12px 14px;border:1px solid var(--linea-2);border-radius:var(--r-chico);
+  background:var(--hundido);color:var(--txt);
+  transition:border-color .15s ease,box-shadow .15s ease;
+}
+input::placeholder{color:var(--txt-3)}
+input:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--rojo-suave)}
+input[type="date"],input[type="time"]{color-scheme:dark}
+.acciones{grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+.form-evento .error{grid-column:1/-1}
+
+/* ─── la grilla de precios ───
+   Es la pantalla que más piensa: el precio vive en el cruce de fase y tipo.
+   Cada celda es su propia superficie para que el cruce se lea como una
+   intersección y no como una fila de tabla. */
+.grilla-envoltorio{
+  overflow-x:auto;max-width:100%;
+  border:1px solid var(--linea);border-radius:var(--r);background:var(--sup);
+}
+.grilla{border-collapse:separate;border-spacing:0;min-width:100%}
+.grilla th,.grilla td{padding:12px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--linea)}
+.grilla tr:last-child th,.grilla tr:last-child td{border-bottom:0}
+.grilla thead th{
+  background:var(--sup-2);color:var(--txt);
+  font-family:var(--display);font-size:17px;text-transform:uppercase;font-weight:700;
+  position:sticky;top:0;
+}
+.grilla th em{
+  display:block;font-family:var(--dato);font-size:10.5px;font-style:normal;
+  font-weight:400;color:var(--txt-3);text-transform:none;letter-spacing:0;margin-top:3px;
+}
+/* La primera columna se acota: si la descripción del tipo crece, empuja las
+   columnas de fases fuera de pantalla — y esas columnas SON la pantalla. */
+.grilla tbody th{
+  font-family:var(--display);font-size:19px;text-transform:uppercase;
+  background:var(--sup);border-right:1px solid var(--linea);
+  width:230px;min-width:190px;max-width:230px;
+}
+.grilla tbody th em{
+  color:var(--txt-3);text-transform:none;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;line-height:1.35;
+}
+/* La columna del tipo queda fija al hacer scroll lateral: sin eso no se sabe
+   de qué fila es el precio que se está mirando. */
+.grilla tbody th{position:sticky;left:0;z-index:2}
+.grilla thead th:first-child{position:sticky;left:0;z-index:3}
+.grilla td{background:var(--sup)}
+.grilla tbody tr:hover td{background:var(--sup-2)}
+/* Apilados, no lado a lado: dos números sueltos en la misma línea no dicen
+   cuál es el precio y cuál el cupo. Arriba el precio, grande; abajo el cupo,
+   apagado. La jerarquía hace de etiqueta. */
+.grilla td input{
+  display:block;width:118px;padding:8px 11px;
+  font-family:var(--dato);font-size:15px;
+  text-align:right;font-variant-numeric:tabular-nums;
+}
+.celda-cupo{margin-top:6px;font-size:12.5px !important;color:var(--txt-2)}
+.celda-cupo::placeholder{color:var(--txt-3)}
+.col-accion{width:1%;white-space:nowrap;background:var(--sup-2) !important}
+
+/* ─── publicar ─── */
+.publicar{
+  display:flex;align-items:center;gap:20px;margin-top:28px;padding:20px 22px;
+  background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
+}
+.publicar.vivo{border-color:rgba(61,214,140,.35);background:linear-gradient(var(--sup),rgba(61,214,140,.05))}
+.publicar h3{font-size:21px}
+.publicar>div{min-width:0}
+.publicar p{margin:5px 0 0;font-size:13.5px;color:var(--txt-2)}
+.publicar>.btn{margin-left:auto;flex:0 0 auto}
+.faltan{margin:10px 0 0;padding-left:19px;font-size:13px;color:var(--aviso)}
+.faltan li{margin-top:3px}
+
+.link-publico{
+  display:flex;align-items:center;gap:10px;margin-top:12px;padding:10px 12px;
+  background:var(--hundido);border:1px solid var(--linea-2);border-radius:var(--r-chico);
+  font-family:var(--dato);font-size:12px;color:var(--txt-2);
+  overflow:hidden;
+}
+/* El link se recorta con puntos suspensivos en vez de empujar el botón de
+   copiar fuera de la caja: con el ?r= del relacionador colgando al final,
+   en un teléfono no entra nunca. Se copia entero igual — el recorte es
+   visual. */
+.link-publico span,.link-publico code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.link-publico .btn{margin-left:auto;flex:0 0 auto}
+
+/* ─── el relacionador ───
+   Dos bloques y un orden: arriba el link, en su propia superficie porque es
+   lo único que se toca; abajo la cuenta, que se lee y no se opera. */
+.tarjeta{
+  background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
+  padding:19px 21px;margin-bottom:26px;
+}
+.tarjeta h3{font-size:21px}
+.tarjeta>.ayuda{display:block;margin:5px 0 14px}
+.titulo-bloque{font-size:21px;margin-bottom:12px}
+
+.link-evento+.link-evento{margin-top:12px}
+.link-titulo{
+  display:block;font-family:var(--dato);font-size:11px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--txt-3);
+}
+.link-evento .link-publico{margin-top:6px}
+/* Un clic selecciona el link entero: es el plan B cuando el portapapeles no
+   está disponible, y ahí lo que importa es que no haya que arrastrar. */
+.link-publico code{user-select:all}
+
+/* No es un error: no se rompió nada, falta un dato que él no puede cargarse
+   solo. En rojo leería como "algo falló" y llamaría a soporte. */
+.nota{
+  padding:13px 15px;border-radius:var(--r-chico);font-size:13.5px;
+  background:var(--aviso-bg);border:1px solid rgba(246,180,74,.3);color:var(--aviso);
+}
+
+/* Las filas de venta no se clickean: no hay nada atrás. Sin esto heredan el
+   cursor y el hover de la lista de eventos y prometen una pantalla que no
+   existe. */
+.fila.quieta{cursor:default}
+.fila.quieta:hover{background:var(--sup);border-color:var(--linea)}
+.fila.quieta:active{transform:none}
+
+.fila.venta{
+  display:grid;grid-template-columns:minmax(0,1fr) repeat(3,auto);
+  gap:6px 26px;align-items:center;
+}
+.venta .fila-nombre{min-width:0}
+.venta .fila-nombre em{
+  display:block;margin-top:3px;font-style:normal;font-weight:400;
+  font-family:var(--dato);font-size:11.5px;color:var(--txt-3);
+}
+/* La cifra arriba y qué es abajo: al revés hay que leer la etiqueta para
+   saber si el número que ya viste era plata o entradas. */
+.cifra{
+  font-family:var(--dato);font-size:14.5px;color:var(--txt-2);
+  text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.cifra em{
+  display:block;margin-top:3px;font-style:normal;font-size:10.5px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--txt-3);
+}
+/* La comisión en dorado: de las tres cifras de la fila es la única que es
+   plata suya. Debajo va la cuenta que la produce — entradas × tarifa — para
+   que no haya que preguntar de dónde salió. */
+.cifra.destacada{color:var(--dorado);font-size:17px}
+.cifra.destacada em{text-transform:none;letter-spacing:.02em}
+
+.total{
+  display:flex;align-items:center;gap:20px;margin-top:16px;padding:18px 21px;
+  background:linear-gradient(var(--sup),rgba(233,180,76,.06));
+  border:1px solid rgba(233,180,76,.3);border-radius:var(--r);
+}
+.total h3{font-size:21px}
+.total p{margin:5px 0 0;font-family:var(--dato);font-size:12px;color:var(--txt-3)}
+.total .monto{
+  margin-left:auto;flex:0 0 auto;white-space:nowrap;
+  font-family:var(--display);font-size:34px;color:var(--dorado);
+}
+
+/* ─── el arte de la entrada ───
+   La vista previa manda sobre la URL: el organizador reconoce su imagen de
+   un vistazo y una dirección larga no le dice nada. Encima va marcada la
+   caja del QR — mismas proporciones que ticket.js dibuja — porque es el
+   único dato que hace que el arte salga bien a la primera en vez de con el
+   código tapando el logo. */
+.arte{margin-top:26px;max-width:660px}
+.arte-cuerpo{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;margin-top:14px}
+.arte-lienzo{
+  position:relative;flex:0 0 auto;width:190px;
+  background:var(--hundido);border:1px solid var(--linea-2);
+  border-radius:var(--r-chico);overflow:hidden;
+}
+.arte-lienzo img{display:block;width:100%;height:auto}
+/* Sin arte todavía: el mismo marco en la proporción del ticket propio (3:5)
+   para que la zona del QR se pueda mirar ANTES de diseñar nada. */
+.arte-lienzo.sin-arte{
+  aspect-ratio:3/5;border-style:dashed;display:grid;place-items:center;padding:12px;
+}
+.arte-lienzo.sin-arte p{
+  font-family:var(--dato);font-size:11px;line-height:1.45;
+  color:var(--txt-3);text-align:center;align-self:end;
+}
+/* left:24% = (100 − 52) / 2: la caja va centrada, desde el 29% de la altura. */
+.arte-qr{
+  position:absolute;left:24%;top:29%;width:52%;aspect-ratio:1;
+  border:2px dashed var(--dorado);border-radius:6px;
+  background:rgba(233,180,76,.16);display:grid;place-items:center;
+}
+.arte-qr i{
+  font-style:normal;font-family:var(--dato);font-size:9px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--dorado);
+}
+.arte-controles{
+  flex:1 1 230px;min-width:210px;
+  display:flex;flex-direction:column;gap:11px;align-items:flex-start;
+}
+.arte-controles label{width:100%}
+.arte-controles input[type="file"]{
+  width:100%;padding:9px 11px;
+  font-family:var(--dato);font-size:11.5px;color:var(--txt-2);
+}
+.arte-controles input[type="file"]::file-selector-button{
+  margin-right:11px;padding:7px 12px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--linea-2);background:var(--sup-2);color:var(--txt);
+  font-family:var(--display);font-size:13px;text-transform:uppercase;letter-spacing:.06em;
+}
+.arte-controles input[type="file"]:disabled{opacity:.5;cursor:progress}
+/* Tres estados y tres colores: subiendo, salió bien, salió mal. El error se
+   queda en pantalla — el toast se va solo y este hay que poder releerlo. */
+.arte-estado{font-family:var(--dato);font-size:11.5px;line-height:1.45;color:var(--txt-2)}
+.arte-estado.trabajando{color:var(--dorado)}
+.arte-estado.ok{color:var(--ok)}
+.arte-estado.mal{color:var(--peligro)}
+
+/* ─── el tablero ───
+   Tres cifras grandes y enseguida las alertas, sin scrollear. El orden es
+   el argumento: lo vendido dice cómo viene la noche, las alertas dicen qué
+   hay que ir a hacer, y los desgloses se miran una vez. */
+.cifras{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:12px;margin-bottom:14px;
+}
+.cifra-grande{
+  background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
+  padding:18px 20px;display:flex;flex-direction:column;gap:6px;min-width:0;
+}
+.cifra-grande .valor{
+  font-family:var(--display);font-size:44px;line-height:.9;
+  font-variant-numeric:tabular-nums;overflow-wrap:anywhere;
+}
+/* Lo recaudado es la única cifra en dorado: la plata se distingue de las
+   personas sin tener que leer el rótulo. */
+.cifra-grande.plata .valor{color:var(--dorado);font-size:38px}
+.cifra-grande .valor i{font-style:normal;font-size:24px;color:var(--txt-3)}
+.cifra-grande .rotulo{
+  font-family:var(--dato);font-size:10.5px;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--txt-2);
+}
+.cifra-grande .pie{font-family:var(--dato);font-size:11.5px;color:var(--txt-3);line-height:1.45}
+/* El avance de la puerta se lee de un vistazo: "38 de 55" es una cuenta,
+   la barra es una imagen. */
+.cifra-grande .avance{
+  height:5px;border-radius:999px;background:var(--sup-3);overflow:hidden;margin-top:2px;
+}
+.cifra-grande .avance i{display:block;height:100%;background:var(--ok);border-radius:999px}
+
+/* ─── las alertas ───
+   La que está en cero se apaga. Si gritara igual que la que tiene algo
+   pendiente, a la tercera noche no se mira ninguna. */
+.alertas{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));
+  gap:12px;margin-bottom:30px;
+}
+.alerta{
+  display:flex;align-items:flex-start;gap:14px;padding:16px 18px;
+  border-radius:var(--r);border:1px solid var(--linea);background:var(--sup);
+}
+.alerta-cifra{
+  font-family:var(--display);font-size:34px;line-height:.9;
+  font-variant-numeric:tabular-nums;flex:0 0 auto;
+}
+.alerta-txt{min-width:0;flex:1 1 auto}
+.alerta h4{margin:0;font-family:var(--display);font-size:19px;text-transform:uppercase;letter-spacing:.01em}
+.alerta p{margin:4px 0 0;font-size:13px;line-height:1.45;color:var(--txt-2)}
+.alerta-pie{
+  display:block;margin-top:7px;font-family:var(--dato);font-size:11.5px;
+  font-variant-numeric:tabular-nums;
+}
+.alerta>.btn{flex:0 0 auto;align-self:center}
+
+.alerta.hecha{background:transparent;border-style:dashed}
+.alerta.hecha .alerta-cifra{color:var(--ok);font-size:26px}
+.alerta.hecha h4{color:var(--txt-2)}
+.alerta.hecha p{color:var(--txt-3);font-size:12.5px}
+
+.alerta.viva.peligro{
+  border-color:rgba(251,113,133,.4);background:linear-gradient(var(--sup),var(--peligro-bg));
+}
+.alerta.viva.peligro .alerta-cifra,.alerta.viva.peligro .alerta-pie{color:var(--peligro)}
+.alerta.viva.aviso{
+  border-color:rgba(246,180,74,.34);background:linear-gradient(var(--sup),var(--aviso-bg));
+}
+.alerta.viva.aviso .alerta-cifra,.alerta.viva.aviso .alerta-pie{color:var(--aviso)}
+
+/* ─── tablas de lectura ───
+   La grilla de precios se opera; estas se leen. Sin celdas hundidas ni
+   columna fija: lo que hace falta es que la columna de números esté
+   alineada a la derecha y en cifras de ancho fijo, para poder compararlas
+   de arriba abajo sin leerlas. */
+.tabla{border-collapse:separate;border-spacing:0;min-width:100%;background:var(--sup)}
+.tabla th,.tabla td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--linea);vertical-align:top}
+.tabla tr:last-child td{border-bottom:0}
+.tabla thead th{
+  background:var(--sup-2);position:sticky;top:0;z-index:1;white-space:nowrap;
+  font-family:var(--dato);font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--txt-3);font-weight:400;
+}
+.tabla tbody tr:hover td{background:var(--sup-2)}
+.tabla td.n,.tabla th.n{text-align:right;font-family:var(--dato);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tabla td.n{font-size:13.5px;color:var(--txt)}
+.tabla td.dato{font-family:var(--dato);font-size:12.5px;color:var(--txt-2)}
+.tabla td em,.tabla td.n em{
+  display:block;margin-top:3px;font-style:normal;font-family:var(--dato);
+  font-size:10.5px;color:var(--txt-3);text-transform:none;letter-spacing:0;
+}
+.tabla td i{font-style:normal;color:var(--txt-3);font-size:12.5px}
+.tabla .prod-nombre{font-weight:600;font-size:14.5px}
+.tabla .agotado{font-weight:400;color:var(--aviso)}
+/* Un tipo inactivo sigue teniendo historia de ventas: esconderlo
+   descuadraría los totales, así que se apaga en vez de irse. */
+.tabla tr.apagada td{color:var(--txt-3)}
+.tabla tr.apagada .prod-nombre{font-weight:400;color:var(--txt-2)}
+.tabla .sin-nada{
+  padding:26px 14px;text-align:center;font-family:var(--dato);
+  font-size:12.5px;color:var(--txt-3);
+}
+.tabla .tenue{color:var(--txt-3)}
+.tabla .detalle{max-width:270px;font-size:13.5px;color:var(--txt-2)}
+
+.dos-tablas{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start;margin-top:8px}
+.ayuda.bajo-titulo{display:block;margin:-6px 0 10px;max-width:640px}
+
+/* ─── cabecera de bloque ───
+   El título, el conteo y el buscador en la misma línea: el conteo cambia
+   mientras se escribe y ahí es donde se lo mira. */
+.cab-bloque{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px}
+.cab-bloque.sep{margin-top:34px;padding-top:22px;border-top:1px solid var(--linea)}
+.cab-bloque .titulo-bloque{margin:0}
+.conteo{font-family:var(--dato);font-size:11.5px;color:var(--txt-3);white-space:nowrap}
+.buscador{
+  margin-left:auto;width:min(300px,100%);padding:9px 13px;
+  font-family:var(--dato);font-size:13px;
+}
+.buscador::-webkit-search-cancel-button{filter:invert(.7)}
+.cab-bloque .buscador+.conteo{margin-left:0}
+
+select{
+  padding:9px 12px;border:1px solid var(--linea-2);border-radius:var(--r-chico);
+  background:var(--hundido);color:var(--txt);font:inherit;font-size:13.5px;
+  max-width:100%;
+}
+select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--rojo-suave)}
+.cab-bloque select{margin-left:auto}
+
+/* La mesa de una compra: la chapa se reconoce por su etiqueta, no por
+   leer una columna. En rojo la que falta repartir. */
+.chip-mesa{
+  display:inline-flex;flex-direction:column;gap:1px;padding:4px 10px;border-radius:8px;
+  background:var(--sup-3);font-family:var(--dato);font-size:12.5px;white-space:nowrap;
+}
+.chip-mesa em{font-style:normal;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em}
+.chip-mesa.falta{background:var(--peligro-bg);color:var(--peligro);box-shadow:inset 0 0 0 1px rgba(251,113,133,.3)}
+.chip-mesa.chica{background:var(--aviso-bg);color:var(--aviso);box-shadow:inset 0 0 0 1px rgba(246,180,74,.32)}
+.tabla .chica-nota{display:block;margin-top:3px;font-style:normal;font-family:var(--dato);font-size:10.5px;color:var(--aviso)}
+
+.picker{display:inline-flex;gap:7px;align-items:center;flex-wrap:wrap}
+.picker select{max-width:280px}
+.tabla-compras .col-accion{white-space:nowrap;text-align:right}
+.tabla-compras .col-accion .btn+.btn{margin-left:6px}
+
+/* ─── el plano ───
+   x, y y w vienen en PORCENTAJE del lienzo. El lienzo pone el sistema de
+   coordenadas —position:relative y una proporción fija— y cada chapa se
+   centra en su punto: así el mismo salón cae igual en la pantalla de la
+   oficina y en el teléfono del que reparte, sin recalcular nada. */
+.planta{margin-bottom:18px}
+.planta h4{
+  margin:0 0 8px;font-family:var(--display);font-size:19px;
+  text-transform:uppercase;letter-spacing:.02em;
+}
+.planta h4 em{
+  margin-left:9px;font-style:normal;font-family:var(--dato);font-size:11px;
+  color:var(--txt-3);text-transform:none;letter-spacing:0;
+}
+.lienzo{
+  position:relative;width:100%;aspect-ratio:16/9.6;min-height:250px;
+  background:var(--hundido);border:1px solid var(--linea);border-radius:var(--r);
+  overflow:hidden;
+}
+.chapa{
+  position:absolute;transform:translate(-50%,-50%);aspect-ratio:1;padding:0;
+  border-radius:50%;display:grid;place-items:center;
+  transition:transform .14s cubic-bezier(.2,.8,.3,1.2),box-shadow .14s ease;
+}
+.chapa .et{
+  font-family:var(--dato);font-size:clamp(8px,1.05vw,12.5px);font-weight:500;
+  pointer-events:none;
+}
+/* Libre y ocupada se distinguen sin leer: llena y clara contra vacía y
+   apagada. El color solo no alcanzaría —hay quien no lo separa— así que
+   la diferencia también es de relleno. */
+.chapa[data-ocupada="0"]{
+  background:radial-gradient(circle at 34% 26%,#F7D98F,var(--dorado) 48%,#B8862F);
+  box-shadow:inset 0 -3px 6px rgba(0,0,0,.35),0 2px 10px rgba(233,180,76,.18);
+}
+.chapa[data-ocupada="0"] .et{color:#3A2A08}
+.chapa[data-ocupada="1"]{
+  background:var(--sup-2);box-shadow:inset 0 0 0 1.5px var(--txt-3);
+}
+.chapa[data-ocupada="1"] .et{color:var(--txt-3)}
+.chapa:hover{transform:translate(-50%,-50%) scale(1.12);z-index:3}
+.chapa[data-sel="1"]{
+  transform:translate(-50%,-50%) scale(1.14);z-index:4;
+  box-shadow:0 0 0 3px var(--rojo),0 0 20px rgba(220,10,45,.45);
+}
+.chapa.lounge,.chapa.palco{border-radius:24%}
+
+.leyenda{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--dato);font-size:11px;color:var(--txt-3)}
+.leyenda>span{display:inline-flex;align-items:center;gap:6px}
+.pip{width:12px;height:12px;border-radius:50%;flex:0 0 auto}
+.pip.libre{background:linear-gradient(150deg,#F7D98F,#B8862F)}
+.pip.ocupada{background:var(--sup-2);box-shadow:inset 0 0 0 1.5px var(--txt-3)}
+
+/* ─── la ficha de la mesa ───
+   Abajo del plano y no flotando encima: lleva los botones de repartir, y
+   un globo que se va al mover el mouse no se puede operar. */
+.ficha{
+  margin-top:6px;padding:16px 18px;border-radius:var(--r);
+  background:var(--sup);border:1px solid var(--linea);
+}
+.ficha.sin-mesa{background:transparent;border-style:dashed;padding:14px 18px}
+.ficha-cab{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.ficha-et{
+  flex:0 0 auto;width:46px;height:46px;border-radius:50%;display:grid;place-items:center;
+  font-family:var(--dato);font-size:14px;
+  background:var(--sup-3);color:var(--txt);
+}
+.ficha.ocupada .ficha-et{box-shadow:inset 0 0 0 1.5px var(--txt-3)}
+.ficha:not(.ocupada) .ficha-et{
+  background:radial-gradient(circle at 34% 26%,#F7D98F,var(--dorado) 48%,#B8862F);color:#3A2A08;
+}
+.ficha-cab>div{min-width:0;flex:1 1 auto}
+.ficha-cab h4{margin:0;font-family:var(--display);font-size:21px;text-transform:uppercase}
+.ficha-cab p{margin:3px 0 0;font-family:var(--dato);font-size:12.5px;color:var(--txt-2)}
+.ficha-quien{margin:12px 0 0;font-size:13.5px;color:var(--txt-2)}
+.ficha-acciones{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}
+.ficha-acciones select{flex:1 1 240px;min-width:0}
+.ficha>.ayuda{margin-top:10px}
+/* La mesa no alcanza para lo que compraron. No lo impide nadie —los
+   boliches juntan mesas todo el tiempo— pero queda escrito en la pantalla
+   y no solo en el cartel del momento de asignar. */
+.chica-aviso{
+  margin:12px 0 0;padding:11px 13px;border-radius:var(--r-chico);font-size:13px;line-height:1.45;
+  background:var(--aviso-bg);border:1px solid rgba(246,180,74,.3);color:var(--aviso);
+}
+
+@media (max-width:860px){
+  .dos-tablas{grid-template-columns:1fr}
+}
+@media (max-width:760px){
+  .cifra-grande .valor{font-size:36px}
+  .cifra-grande.plata .valor{font-size:30px}
+  .buscador{margin-left:0;width:100%}
+  .cab-bloque select{margin-left:0;width:100%}
+  .lienzo{aspect-ratio:3/3.4;min-height:320px}
+  .alerta>.btn{align-self:flex-start}
+}
+
+/* ─── botones ───
+   El primario lleva sombra de su propio color: eso es lo que le da peso y lo
+   separa de un rectángulo pintado. */
+.btn{
+  padding:12px 20px;border-radius:var(--r-chico);
+  font-family:var(--display);font-size:18px;text-transform:uppercase;letter-spacing:.04em;
+  transition:background .15s ease,box-shadow .15s ease,transform .08s ease,color .15s ease;
+}
+.btn.ancho{width:100%}
+.btn.chico{font-size:13px;padding:8px 13px;letter-spacing:.06em}
+.btn.primario{background:var(--rojo);color:#fff;box-shadow:0 8px 22px rgba(220,10,45,.34)}
+.btn.primario:hover:not(:disabled){background:var(--rojo-claro)}
+.btn.primario:active:not(:disabled){transform:scale(.985);box-shadow:0 4px 12px rgba(220,10,45,.3)}
+.btn.primario:disabled{background:var(--sup-3);color:var(--txt-3);box-shadow:none;cursor:not-allowed}
+.btn.plano{border:1px solid var(--linea-2);color:var(--txt-2)}
+.btn.plano:hover{border-color:var(--txt-3);color:var(--txt);background:var(--sup-2)}
+.btn.plano:active{transform:scale(.985)}
+
+/* ─── aviso ─── */
+.toast{
+  position:fixed;left:50%;bottom:24px;transform:translate(-50%,160%);
+  z-index:100;max-width:calc(100vw - 32px);
+  background:var(--sup-3);color:var(--txt);
+  border:1px solid var(--linea-2);
+  padding:13px 18px;border-radius:var(--r-chico);font-size:14px;
+  box-shadow:0 16px 44px rgba(0,0,0,.55);
+  transition:transform .28s cubic-bezier(.2,.9,.3,1.1);
+}
+.toast[data-on="1"]{transform:translate(-50%,0)}
+
+@media (max-width:760px){
+  .form-evento{grid-template-columns:1fr}
+  .cab{gap:10px;padding:0 14px}
+  .yo{display:none}
+  main{padding:20px 14px 80px}
+  .fila{flex-wrap:wrap;gap:8px 12px}
+  .fila-dato{margin-left:0}
+  .fila-nombre{width:100%}
+  .publicar{flex-direction:column;align-items:flex-start}
+  .publicar>.btn{margin-left:0;width:100%}
+  /* Tres cifras en columna no entran: el nombre se lleva la fila entera y
+     las cifras se reparten abajo, alineadas a la izquierda como se leen. */
+  .fila.venta{grid-template-columns:repeat(3,1fr);gap:12px 14px}
+  .venta .fila-nombre{grid-column:1/-1}
+  .cifra{text-align:left}
+  .total{flex-direction:column;align-items:flex-start;gap:10px}
+  .total .monto{margin-left:0}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition-duration:.001ms !important}
+}
+
+
+/* ═══ la puerta ═══════════════════════════════════════════════════
+   La única pantalla que no se lee: se mira de reojo, de noche, con la
+   fila encima. Todo lo de acá está dimensionado para eso — el cartel
+   ocupa el visor entero y el color hace de mensaje, el texto solo lo
+   confirma para el que se acerque. Densidad baja a propósito, al revés
+   que el resto del panel. */
+.puerta{max-width:560px;margin:0 auto}
+
+.puerta-cab{display:flex;align-items:flex-end;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+.puerta-cab h2{font-size:32px}
+.puerta-evento{margin-left:auto;gap:5px;min-width:0}
+.puerta-evento select{
+  padding:9px 12px;border:1px solid var(--linea-2);border-radius:var(--r-chico);
+  background:var(--hundido);color:var(--txt);font:inherit;font-size:13.5px;
+  max-width:min(340px,60vw);
+}
+
+/* El visor es cuadrado porque el recorte que se le pasa a jsQR también lo
+   es: si se mostrara el cuadro entero, media pantalla sería video que el
+   lector no mira y el portero apuntaría a una zona muerta. */
+.puerta-visor{
+  position:relative;aspect-ratio:1/1;overflow:hidden;
+  background:#000;border:1px solid var(--linea-2);border-radius:var(--r);
+}
+.puerta-visor video{width:100%;height:100%;object-fit:cover;display:block}
+
+/* La mira no recorta nada: es donde hay que poner el QR. Sin ella la gente
+   apunta a la esquina y culpa al escáner. */
+.puerta-mira{
+  position:absolute;inset:16%;border-radius:18px;pointer-events:none;
+  box-shadow:0 0 0 100vmax rgba(0,0,0,.42);
+  border:2px solid rgba(246,241,228,.5);
+}
+
+/* Lo que se ve en vez de la cámara cuando no hay cámara. No es un error de
+   pantalla completa: abajo el campo a mano sigue funcionando. */
+.puerta-camara{
+  position:absolute;inset:0;display:none;
+  flex-direction:column;align-items:center;justify-content:center;gap:12px;
+  padding:26px;text-align:center;background:var(--sup);
+}
+.puerta-camara[data-on="1"]{display:flex}
+.puerta-aviso{font-size:14.5px;color:var(--txt-2);max-width:34ch;line-height:1.45}
+.puerta-aviso.tenue{font-family:var(--dato);font-size:12px;color:var(--txt-3)}
+
+/* ─── el cartel ───
+   Tapa el visor entero. El color es el mensaje: a cinco metros no se lee
+   "YA ENTRÓ", se ve rojo. El texto es para la discusión de después. */
+.puerta-cartel{
+  position:absolute;inset:0;display:none;
+  flex-direction:column;align-items:center;justify-content:center;gap:9px;
+  padding:22px;text-align:center;
+}
+.puerta-cartel[data-on="1"]{display:flex;animation:cartel-entra .16s ease-out}
+@keyframes cartel-entra{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+.puerta-cartel.pasa{background:#0E7A4A;color:#F2FFF8}
+.puerta-cartel.no{background:#A50A22;color:#FFF1F3}
+.puerta-titulo{
+  font-family:var(--display);font-weight:800;line-height:.9;
+  font-size:clamp(46px,15vw,88px);text-transform:uppercase;letter-spacing:.01em;
+}
+.puerta-quien{font-size:clamp(17px,4.4vw,23px);font-weight:600;line-height:1.2}
+.puerta-motivo{font-size:14.5px;opacity:.9;max-width:30ch;line-height:1.35}
+.puerta-code{font-family:var(--dato);font-size:12px;letter-spacing:.1em;opacity:.72}
+
+.puerta-cartel.neutro{background:var(--sup-3);color:var(--txt)}
+
+/* ─── el conteo ───
+   Un número grande arriba del escáner y nada más. La tentación es una
+   tabla por tipo con su porcentaje: en la puerta no se lee una tabla, se
+   mira de reojo entre dos escaneos y con el teléfono a la altura de la
+   cintura. Lo que no entre en un vistazo no sirve. */
+.puerta-conteo{
+  display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+  margin-bottom:12px;padding:14px 17px;border-radius:var(--r);
+  background:var(--sup);border:1px solid var(--linea);
+}
+.puerta-conteo-num{
+  font-family:var(--display);font-size:clamp(38px,11vw,54px);line-height:.85;
+  font-variant-numeric:tabular-nums;color:var(--txt);
+}
+/* El total en apagado y más chico: lo que cambia toda la noche es el de
+   la izquierda, y son dos números pegados que a igual peso se leen como
+   uno solo de cuatro cifras. */
+.puerta-conteo-num i{
+  font-style:normal;font-size:.46em;color:var(--txt-3);margin-left:7px;
+}
+.puerta-conteo-pie{
+  font-family:var(--dato);font-size:12px;color:var(--txt-3);line-height:1.5;
+}
+.puerta-conteo-pie b{color:var(--txt-2);font-weight:500}
+body[data-filtro="1"] .puerta-conteo{border-color:rgba(246,180,74,.35)}
+
+/* ─── el interruptor del filtro ───
+   Del tamaño de un botón que se aprieta con guantes, no de un checkbox. */
+.puerta-filtro{
+  display:flex;align-items:center;gap:13px;width:100%;text-align:left;
+  padding:13px 16px;margin-bottom:12px;border-radius:var(--r);
+  background:var(--sup);border:1px solid var(--linea-2);
+  transition:background .15s ease,border-color .15s ease;
+}
+.puerta-filtro:hover{background:var(--sup-2)}
+.puerta-filtro-luz{
+  flex:0 0 auto;width:46px;height:27px;border-radius:999px;
+  background:var(--sup-3);box-shadow:inset 0 0 0 1px var(--linea-2);
+  position:relative;transition:background .18s ease;
+}
+.puerta-filtro-luz::after{
+  content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;
+  border-radius:50%;background:var(--txt-3);transition:transform .18s ease,background .18s ease;
+}
+.puerta-filtro-txt{min-width:0}
+.puerta-filtro-txt b{
+  display:block;font-family:var(--display);font-size:19px;
+  text-transform:uppercase;letter-spacing:.03em;line-height:1;
+}
+.puerta-filtro-txt em{
+  display:block;margin-top:4px;font-style:normal;
+  font-family:var(--dato);font-size:11.5px;color:var(--txt-3);line-height:1.4;
+}
+.puerta-filtro[aria-pressed="true"]{background:var(--aviso-bg);border-color:var(--aviso)}
+.puerta-filtro[aria-pressed="true"] .puerta-filtro-luz{background:var(--aviso)}
+.puerta-filtro[aria-pressed="true"] .puerta-filtro-luz::after{transform:translateX(19px);background:#231703}
+.puerta-filtro[aria-pressed="true"] .puerta-filtro-txt b,
+.puerta-filtro[aria-pressed="true"] .puerta-filtro-txt em{color:var(--aviso)}
+
+/* ─── la pantalla entera en filtro ───
+   El requisito es exactamente éste: que nadie pueda olvidarse de que lo
+   tiene puesto. Un tilde en un rincón se olvida en diez minutos y el
+   portero pasa la noche creyendo que deja entrar gente. Así que el color
+   se come el fondo, la barra de arriba y el marco del visor — no hay
+   ángulo desde el que la pantalla parezca normal. */
+body[data-filtro="1"]{background:#1E1503}
+body[data-filtro="1"] .cab{
+  background:#2E2005;border-bottom-color:rgba(246,180,74,.45);
+}
+body[data-filtro="1"] .marca{color:var(--aviso)}
+body[data-filtro="1"] .puerta-visor{
+  border-color:var(--aviso);box-shadow:0 0 0 3px rgba(246,180,74,.22);
+}
+/* Franja diagonal arriba del visor: es la señal que se reconoce sin leer
+   nada, la misma de una cinta de obra. */
+body[data-filtro="1"] .puerta-visor::before{
+  content:"";position:absolute;inset:0 0 auto 0;height:7px;z-index:3;
+  background:repeating-linear-gradient(115deg,
+    var(--aviso) 0 13px, #231703 13px 26px);
+}
+
+/* ─── deshacer ───
+   Debajo del visor y no adentro del cartel: el cartel dura cuatro segundos
+   porque la fila avanza, y darse cuenta del error tarda más que eso. */
+.puerta-deshacer{
+  display:none;align-items:center;gap:12px;margin-top:12px;
+  padding:11px 14px;border-radius:var(--r-chico);
+  background:var(--sup-2);border:1px dashed var(--linea-2);
+}
+.puerta-deshacer[data-on="1"]{display:flex}
+.puerta-deshacer-txt{font-size:13.5px;color:var(--txt-2);min-width:0}
+.puerta-deshacer-txt b{color:var(--txt)}
+.puerta-deshacer .btn{margin-left:auto;flex:0 0 auto}
+/* El contador en tabular: sin esto la tira se mueve un pixel por segundo
+   mientras el dedo va al botón. */
+.puerta-deshacer .btn span{font-family:var(--dato);font-variant-numeric:tabular-nums}
+
+/* ─── el código a mano ───
+   Siempre visible, no solo cuando la cámara falla: es lo que se usa cuando
+   la pantalla del cliente no ilumina, que pasa más seguido que un permiso
+   denegado. */
+.puerta-mano{display:flex;gap:10px;align-items:flex-end;margin-top:14px}
+.puerta-mano label{flex:1;min-width:0}
+.puerta-mano input{
+  width:100%;font-family:var(--dato);font-size:17px;letter-spacing:.09em;
+  text-transform:uppercase;
+}
+.puerta-mano input::placeholder{letter-spacing:.06em;text-transform:none}
+.puerta-mano .btn{flex:0 0 auto}
+.puerta>.ayuda{display:block;margin-top:10px}
+  /* En el teléfono el selector de evento no comparte línea con el título:
+     el nombre del evento es lo que confirma que se está en la puerta
+     correcta y recortado a la mitad no confirma nada. */
+  .puerta-evento{margin-left:0;width:100%}
+  .puerta-evento select{max-width:100%;width:100%}
+  /* El botón debajo del campo: al lado deja ocho caracteres visibles de un
+     código de doce. */
+  .puerta-mano{flex-direction:column;align-items:stretch}

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es-BO">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tus entradas</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0B0A0A">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css?v=4">
+</head>
+<body>
+
+<header class="barra">
+  <div class="carril barra-in">
+    <span class="chapita" aria-hidden="true"><i></i><b></b></span>
+    <span class="marca-txt" id="marca">—</span>
+    <span class="barra-fecha" id="barraFecha"></span>
+  </div>
+</header>
+
+<main class="cuerpo">
+  <div class="carril">
+    <section class="panel">
+      <div class="panel-cab">
+        <h2 id="titulo">Tus entradas</h2>
+        <p class="panel-nota" id="nota">Buscando tu compra…</p>
+      </div>
+      <div class="tickets" id="tickets"></div>
+      <div class="listo-acciones" id="acciones" hidden>
+        <button class="btn primario" id="btnDescargar">Descargar las entradas</button>
+      </div>
+      <p class="letra-chica" id="pie"></p>
+    </section>
+  </div>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<script src="../config.js"></script>
+<script src="../ticket.js?v=4"></script>
+<script src="orden.js?v=4"></script>
+</body>
+</html>

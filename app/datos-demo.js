@@ -1,54 +1,46 @@
-/* Datos del evento para MODO 'demo'. En modo 'supabase' esto no se usa:
-   el evento, sus tipos, su fase vigente y sus mesas salen de la base.
-   Las mesas llevan x/y/w en porcentaje, igual que la tabla `mesas`. */
+/* Datos del evento para MODO 'demo'. En modo 'supabase' esto no se usa: el
+   evento, sus tipos y su fase vigente salen de la base. Se mantiene al día
+   con supabase/seed.sql, para que el modo demo muestre el mismo evento que
+   producción y no una versión vieja de él. */
 window.DATOS_DEMO = {
   organizador: { nombre: "Amstel", fee_pct: 0.07, fee_fijo: 3, fee_piso: 5 },
   evento: {
-    id: "e5b1f0a2-0000-4000-8000-000000000001",
-    marca_1: "Amstel", marca_2: "Ferial",
-    lugar: "Feria Exposición · Santa Cruz de la Sierra",
+    id: "e0000000-0000-4000-8000-000000000001",
+    marca_1: "RED", marca_2: "CIRCLE",
+    lugar: "Fexpo '26 · Santa Cruz de la Sierra",
     fecha_txt: "SÁB 12 SEP · 21:00",
-    bajada: "Una noche, tres escenarios y la chopería más grande del año. Elegí tu entrada o agarrá tu mesa antes de que se vaya.",
-    datos: [["Puertas","21:00"],["Edad mínima","18"],["Mesas","24 en dos plantas"],["Pago","QR, tarjeta y débito"]],
+    bajada: "Reservá tu mesa para las noches de Amstel en la Fexpo. Elegí el combo, pagá con QR y las manillas te llegan al correo.",
+    datos: [["Puertas","21:00"],["Edad mínima","18"],["Reservas","74 disponibles"],["Pago","Con QR"]],
     tope_entradas_orden: 10
   },
-  fase: { nombre: "Preventa 2", hasta_txt: "hasta el 5 de septiembre" },
+  fase: { nombre: "Preventa", hasta_txt: "hasta el 12 de septiembre" },
   tipos: [
-    { id:"gen",  nombre:"General", precio:120, antes:150, cupo:340, manillas:1,
-      desc:"Acceso general a los tres escenarios." },
-    { id:"vip",  nombre:"VIP", precio:250, antes:290, cupo:18, manillas:1,
-      desc:"Sector elevado, barra propia y dos Amstel de bienvenida." },
-    { id:"club", nombre:"Amstel Club", precio:420, antes:null, cupo:6, manillas:1,
-      desc:"Terraza cerrada, atención en el lugar y acceso al backstage." }
+    { id:"gen", nombre:"General", precio:120, antes:null, cupo:400,
+      manillas:1, categoria:"entrada",
+      desc:"Acceso al predio durante la noche.", incluye:null },
+    { id:"vip", nombre:"VIP", precio:250, antes:null, cupo:60,
+      manillas:1, categoria:"entrada",
+      desc:"Sector elevado, con barra propia.",
+      incluye:"Dos Amstel de bienvenida." },
+    { id:"sab-serenata", nombre:"Combo Sábados + Serenata", precio:8000, antes:null, cupo:10,
+      manillas:10, categoria:"mesa",
+      desc:"Tu mesa para los sábados y la noche de serenata.",
+      incluye:"Bs 6.000 en consumo + 10 manillas, válidas los 3 días." },
+    { id:"sab", nombre:"Combo Sábados", precio:5500, antes:null, cupo:14,
+      manillas:10, categoria:"mesa",
+      desc:"Tu mesa para los sábados de la Fexpo.",
+      incluye:"Bs 4.000 en consumo + 10 manillas, válidas los 2 días." },
+    { id:"frater-20", nombre:"Jueves de Frater · 20 manillas", precio:3000, antes:null, cupo:12,
+      manillas:20, categoria:"mesa",
+      desc:"Tu mesa para el jueves de frater, para el grupo grande.",
+      incluye:"Bs 3.000 en consumo + 20 manillas + 2 baldes Amstel." },
+    { id:"frater-10", nombre:"Jueves de Frater · 10 manillas", precio:2000, antes:null, cupo:18,
+      manillas:10, categoria:"mesa",
+      desc:"Tu mesa para el jueves de frater.",
+      incluye:"Bs 2.000 en consumo + 10 manillas + 2 baldes Amstel." },
+    { id:"viernes", nombre:"Combo Viernes", precio:1500, antes:null, cupo:20,
+      manillas:5, categoria:"mesa",
+      desc:"Tu mesa para el viernes.",
+      incluye:"Bs 1.500 en consumo + 5 manillas por 1 día." }
   ],
-  plantas: [
-    { id:"baja", nombre:"Planta baja", barra:{ texto:"Barra principal", left:"4%", top:"84%", width:"92%", height:"8%" } },
-    { id:"alta", nombre:"Planta alta", barra:{ texto:"Chopería", left:"4%", top:"6%", width:"20%", height:"22%" } }
-  ],
-  mesas: [
-    { et:"M1",  planta:"baja", x:16, y:26, w:7.4, cat:"mesa",   precio:1200, manillas:8,  estado:"disponible" },
-    { et:"M2",  planta:"baja", x:28, y:22, w:7.4, cat:"mesa",   precio:1200, manillas:8,  estado:"vendida" },
-    { et:"M3",  planta:"baja", x:40, y:20, w:7.4, cat:"mesa",   precio:1200, manillas:8,  estado:"disponible" },
-    { et:"M4",  planta:"baja", x:52, y:20, w:7.4, cat:"mesa",   precio:1200, manillas:8,  estado:"disponible" },
-    { et:"M5",  planta:"baja", x:64, y:22, w:7.4, cat:"mesa",   precio:1200, manillas:8,  estado:"bloqueada" },
-    { et:"M6",  planta:"baja", x:76, y:26, w:7.4, cat:"mesa",   precio:1200, manillas:8,  estado:"disponible" },
-    { et:"M7",  planta:"baja", x:18, y:44, w:7.4, cat:"mesa",   precio:1000, manillas:8,  estado:"disponible" },
-    { et:"M8",  planta:"baja", x:31, y:42, w:7.4, cat:"mesa",   precio:1000, manillas:8,  estado:"vendida" },
-    { et:"M9",  planta:"baja", x:44, y:41, w:7.4, cat:"mesa",   precio:1000, manillas:8,  estado:"disponible" },
-    { et:"M10", planta:"baja", x:57, y:41, w:7.4, cat:"mesa",   precio:1000, manillas:8,  estado:"disponible" },
-    { et:"M11", planta:"baja", x:70, y:42, w:7.4, cat:"mesa",   precio:1000, manillas:8,  estado:"disponible" },
-    { et:"M12", planta:"baja", x:83, y:44, w:7.4, cat:"mesa",   precio:1000, manillas:8,  estado:"vendida" },
-    { et:"L1",  planta:"baja", x:24, y:66, w:10,  cat:"lounge", precio:2500, manillas:12, estado:"disponible" },
-    { et:"L2",  planta:"baja", x:50, y:68, w:10,  cat:"lounge", precio:2800, manillas:12, estado:"disponible" },
-    { et:"L3",  planta:"baja", x:76, y:66, w:10,  cat:"lounge", precio:2500, manillas:12, estado:"vendida" },
-    { et:"A1",  planta:"alta", x:20, y:24, w:8,   cat:"mesa",   precio:1500, manillas:8,  estado:"disponible" },
-    { et:"A2",  planta:"alta", x:36, y:20, w:8,   cat:"mesa",   precio:1500, manillas:8,  estado:"disponible" },
-    { et:"A3",  planta:"alta", x:56, y:20, w:8,   cat:"mesa",   precio:1500, manillas:8,  estado:"vendida" },
-    { et:"A4",  planta:"alta", x:72, y:24, w:8,   cat:"mesa",   precio:1500, manillas:8,  estado:"disponible" },
-    { et:"A5",  planta:"alta", x:24, y:46, w:8,   cat:"mesa",   precio:1300, manillas:8,  estado:"disponible" },
-    { et:"A6",  planta:"alta", x:44, y:44, w:8,   cat:"mesa",   precio:1300, manillas:8,  estado:"bloqueada" },
-    { et:"A7",  planta:"alta", x:64, y:46, w:8,   cat:"mesa",   precio:1300, manillas:8,  estado:"disponible" },
-    { et:"P1",  planta:"alta", x:32, y:70, w:12,  cat:"lounge", precio:3600, manillas:14, estado:"disponible" },
-    { et:"P2",  planta:"alta", x:66, y:70, w:12,  cat:"lounge", precio:3600, manillas:14, estado:"disponible" }
-  ]
 };

@@ -1,7 +1,6 @@
 /* ══════════════════════════════════════════════════════════════
    Ticketera — landing pública
    Paleta: noche / rojo / dorado cerveza / espuma.
-   Las mesas son chapas: tapa corona dentada, dorada si está libre.
    ══════════════════════════════════════════════════════════════ */
 
 :root{
@@ -51,7 +50,6 @@ input{font:inherit}
 .barra-in{display:flex;align-items:center;gap:12px;height:56px}
 .marca-txt{font-family:var(--display);font-size:20px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .marca-txt b{color:var(--rojo);font-weight:800}
-.tag-demo{font-family:var(--dato);font-size:10px;letter-spacing:.14em;border:1px solid var(--linea);color:var(--humo-2);padding:3px 7px;border-radius:3px;text-transform:uppercase;flex:0 0 auto}
 .barra-fecha{margin-left:auto;font-family:var(--dato);font-size:12px;color:var(--humo);white-space:nowrap}
 
 .chapita{width:26px;height:26px;position:relative;flex:0 0 auto}
@@ -118,10 +116,21 @@ input{font:inherit}
 /* Un ítem de grid trae min-width:auto, así que el minmax(0,1fr) limita la
    pista pero NO al hijo: sin esto la tira de tickets estira la página entera
    y el cuerpo scrollea de costado. */
-.lienzo-col{min-width:0}
 
-.panel{animation:entrar .26s cubic-bezier(.2,.8,.3,1) both}
-@keyframes entrar{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+/* ─── movimiento ───
+   Una idea por paso, no efectos sueltos: el panel entra desde el lado hacia
+   el que vas, la pasarela se arma y los tickets salen de a uno. Todo por debajo de 400ms: esto es un checkout, no una
+   presentación. */
+.panel{animation:entra-adelante .3s cubic-bezier(.22,.8,.28,1) both}
+[data-dir="atras"] .panel{animation-name:entra-atras}
+@keyframes entra-adelante{
+  from{opacity:0;transform:translate3d(18px,6px,0)}
+  to{opacity:1;transform:none}
+}
+@keyframes entra-atras{
+  from{opacity:0;transform:translate3d(-18px,6px,0)}
+  to{opacity:1;transform:none}
+}
 .panel-cab{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:18px}
 .panel-cab h2{font-size:clamp(28px,4.4vw,44px)}
 .panel-nota{font-family:var(--dato);font-size:12px;color:var(--tinta-40)}
@@ -153,72 +162,7 @@ input{font:inherit}
 .stepper output{width:36px;text-align:center;font-family:var(--dato);font-size:15px;font-variant-numeric:tabular-nums}
 
 /* ─── planimetría ─── */
-.plano-cab{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
-.plantas{display:inline-flex;border:1.5px solid var(--tinta);border-radius:3px;overflow:hidden}
-.plantas button{padding:7px 15px;font-family:var(--dato);font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--tinta);transition:background .14s ease}
-.plantas button[aria-pressed="true"]{background:var(--tinta);color:var(--espuma)}
-.leyenda{margin-left:auto;display:flex;gap:14px;flex-wrap:wrap;font-family:var(--dato);font-size:11px;color:var(--tinta-60)}
-.leyenda span{display:inline-flex;align-items:center;gap:6px}
-.pip{width:12px;height:12px;border-radius:50%;flex:0 0 auto}
-.pip.libre{background:linear-gradient(150deg,#F3C868,var(--dorado-hondo))}
-.pip.sel{background:var(--rojo)}
-.pip.bloq{background:#8C8375}
-.pip.vend{background:#332F2A}
 
-.plano{position:relative;background:var(--tinta);border-radius:6px;padding:clamp(12px,2.2vw,24px);overflow:hidden}
-.plano::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(70% 42% at 50% -6%, rgba(220,10,45,.30), transparent 62%)}
-.lienzo{position:relative;width:100%;aspect-ratio:16/9.6;min-height:270px}
-.escenario{
-  position:absolute;left:50%;transform:translateX(-50%);top:1.5%;width:46%;height:9%;
-  border:1.5px solid rgba(246,241,228,.35);border-radius:3px;display:grid;place-items:center;
-  font-family:var(--dato);font-size:clamp(9px,1.1vw,12px);letter-spacing:.22em;
-  color:rgba(246,241,228,.66);text-transform:uppercase;
-}
-.barra-plano{
-  position:absolute;border:1px dashed rgba(246,241,228,.22);border-radius:3px;
-  display:grid;place-items:center;font-family:var(--dato);
-  font-size:clamp(8px,1vw,11px);letter-spacing:.16em;color:rgba(246,241,228,.4);text-transform:uppercase;
-}
-
-.chapa{position:absolute;transform:translate(-50%,-50%);aspect-ratio:1;padding:0;border-radius:50%;transition:transform .16s cubic-bezier(.2,.8,.3,1.2),filter .16s ease;z-index:2}
-.chapa .teeth{position:absolute;inset:0;border-radius:50%}
-.chapa .disc{position:absolute;inset:11%;border-radius:50%}
-.chapa .num{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--dato);font-size:clamp(8px,1.05vw,12.5px);font-weight:500;pointer-events:none}
-
-.chapa[data-estado="disponible"] .teeth{background:repeating-conic-gradient(var(--dorado-hondo) 0deg 11deg, transparent 11deg 17.14deg)}
-.chapa[data-estado="disponible"] .disc{background:radial-gradient(circle at 34% 26%, #F7D98F, var(--dorado) 46%, var(--dorado-hondo));box-shadow:inset 0 -3px 6px rgba(0,0,0,.42), 0 2px 10px rgba(233,180,76,.18)}
-.chapa[data-estado="disponible"] .num{color:#3A2A08}
-.chapa[data-estado="disponible"]:hover{transform:translate(-50%,-50%) scale(1.14);filter:brightness(1.12);z-index:3}
-
-.chapa[data-estado="elegida"] .teeth{background:repeating-conic-gradient(var(--rojo-hondo) 0deg 11deg, transparent 11deg 17.14deg)}
-.chapa[data-estado="elegida"] .disc{background:radial-gradient(circle at 34% 26%, #FF4059, var(--rojo) 48%, var(--rojo-hondo));box-shadow:inset 0 -3px 6px rgba(0,0,0,.5), 0 0 0 3px rgba(220,10,45,.28), 0 0 22px rgba(220,10,45,.5)}
-.chapa[data-estado="elegida"] .num{color:#fff}
-.chapa[data-estado="elegida"]{transform:translate(-50%,-50%) scale(1.1);z-index:3}
-
-.chapa[data-estado="bloqueada"] .teeth{background:repeating-conic-gradient(#5C5348 0deg 11deg, transparent 11deg 17.14deg)}
-.chapa[data-estado="bloqueada"] .disc{background:linear-gradient(150deg,#8C8375,#5C5348)}
-.chapa[data-estado="bloqueada"] .num{color:rgba(255,255,255,.82);font-size:clamp(9px,1.2vw,14px)}
-.chapa[data-estado="bloqueada"]{cursor:not-allowed}
-
-.chapa[data-estado="vendida"] .teeth{background:repeating-conic-gradient(#332F2A 0deg 11deg, transparent 11deg 17.14deg)}
-.chapa[data-estado="vendida"] .disc{background:#332F2A;box-shadow:inset 0 2px 5px rgba(0,0,0,.6)}
-.chapa[data-estado="vendida"] .num{color:rgba(246,241,228,.26)}
-.chapa[data-estado="vendida"]{cursor:not-allowed}
-
-.chapa.lounge .disc{border-radius:22%}
-.chapa.lounge .teeth{border-radius:26%}
-
-.globo{
-  position:absolute;z-index:5;pointer-events:none;transform:translate(-50%,-118%);
-  background:var(--espuma);color:var(--tinta);border-radius:3px;padding:7px 10px;
-  font-family:var(--dato);font-size:11.5px;line-height:1.35;white-space:nowrap;
-  box-shadow:0 6px 20px rgba(0,0,0,.5);
-}
-.globo b{display:block;font-size:13px}
-
-.plano-pie{margin-top:14px;font-family:var(--dato);font-size:11.5px;color:var(--tinta-60)}
-
-/* ─── formulario ─── */
 .form{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:640px}
 .campo{display:flex;flex-direction:column;gap:6px}
 .campo.ancho{grid-column:1 / -1}
@@ -245,11 +189,6 @@ input{font:inherit}
   animation:girar .8s linear infinite;
 }
 @keyframes girar{to{transform:rotate(360deg)}}
-.pago-metodos{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px}
-.pago-metodos b{
-  font-family:var(--dato);font-size:11px;font-weight:400;letter-spacing:.06em;
-  border:1px solid var(--tinta-16);border-radius:3px;padding:5px 10px;color:var(--tinta-60);
-}
 
 /* ─── tickets ─── */
 .tickets{display:flex;gap:14px;max-width:100%;overflow-x:auto;padding-bottom:8px;
@@ -260,6 +199,17 @@ input{font:inherit}
 }
 body.sin-rail .lienzo-col{padding-bottom:0}
 .listo-acciones{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
+
+/* El link a /orden/?id=… es el único camino de vuelta a las entradas si se
+   cierra la pestaña sin descargar: por eso va con su propio bloque, no
+   escondido en la letra chica. */
+.link-recuperar{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px;
+  padding:14px 16px;background:#fff;border:1.5px solid var(--tinta-16);border-radius:4px;
+}
+.link-recuperar-titulo{margin:0 0 4px;font-family:var(--dato);font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--tinta-60)}
+.link-recuperar code{font-family:var(--dato);font-size:12.5px;color:var(--tinta);word-break:break-all}
+.link-recuperar .btn{margin-left:auto;flex:0 0 auto;padding:9px 16px;font-size:15px}
 
 /* ─── botones ─── */
 .btn{padding:13px 20px;border-radius:3px;font-family:var(--display);font-size:19px;text-transform:uppercase;letter-spacing:.04em;transition:background .16s ease,transform .1s ease,color .16s ease}
@@ -345,7 +295,6 @@ body.sin-rail .lienzo-col{padding-bottom:0}
   .reloj.escritorio{display:none !important}
   .form{grid-template-columns:1fr}
   .leyenda{width:100%;margin-left:0;gap:10px}
-  .lienzo{aspect-ratio:3/4.1}
   .tipo{grid-template-columns:1fr;gap:10px}
   .tipo-der{grid-column:1;grid-row:auto;justify-content:space-between}
   .tipo-precio{text-align:left}
@@ -357,10 +306,81 @@ body.sin-rail .lienzo-col{padding-bottom:0}
   html{scroll-behavior:auto}
 }
 
-/* La franja de prueba va arriba de todo y se queda: mientras la pasarela no
-   cobre, quien entra tiene que saberlo antes de elegir nada. */
-.franja-prueba{
-  margin:0;padding:8px 20px;text-align:center;
-  background:var(--rojo-hondo);color:var(--espuma);
-  font-family:var(--dato);font-size:11.5px;letter-spacing:.06em;line-height:1.4;
+
+/* ─── pasarela simulada ───
+   Se parece a un cobro real a propósito: si la demo no muestra este paso,
+   nadie entiende dónde entra el fee ni por qué hay que verificar después. */
+.pasarela{
+  width:min(360px,100%);border:1.5px solid var(--tinta-16);border-radius:6px;
+  background:#fff;padding:20px;text-align:center;
 }
+.pasarela-cab{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:14px}
+.pasarela-marca{font-family:var(--display);font-size:22px;text-transform:uppercase;letter-spacing:.04em}
+.pasarela-monto{font-family:var(--dato);font-size:32px;font-weight:500;letter-spacing:-.02em}
+.pasarela-a{font-size:13px;color:var(--tinta-60);margin-top:2px}
+.pasarela-qr{display:grid;place-items:center;min-height:150px}
+.pasarela-qr canvas{border-radius:2px}
+.pasarela-ref{font-family:var(--dato);font-size:11px;color:var(--tinta-40);margin-top:12px}
+
+
+/* el número del paso actual crece una vez al llegar */
+.paso[data-estado="actual"] .n{animation:paso-llega .34s cubic-bezier(.2,.9,.3,1.4) both}
+@keyframes paso-llega{
+  0%{transform:scale(.7);opacity:.4}
+  60%{transform:scale(1.14)}
+  100%{transform:scale(1);opacity:1}
+}
+
+
+/* la pasarela se arma: primero la tarjeta, después el QR */
+.pasarela{animation:tarjeta-entra .32s cubic-bezier(.2,.8,.3,1.05) both}
+@keyframes tarjeta-entra{
+  from{opacity:0;transform:translateY(10px) scale(.97)}
+  to{opacity:1;transform:none}
+}
+.pasarela-qr canvas{animation:qr-entra .4s ease .18s both}
+@keyframes qr-entra{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+.pasarela-instruccion{
+  font-family:var(--dato);font-size:11.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--tinta-40);margin:14px 0 10px;
+}
+
+/* los tickets salen de a uno */
+.tickets img{animation:ticket-entra .42s cubic-bezier(.2,.8,.3,1.05) both;
+  animation-delay:calc(var(--i,0) * 70ms)}
+@keyframes ticket-entra{
+  from{opacity:0;transform:translateY(16px) scale(.97)}
+  to{opacity:1;transform:none}
+}
+
+/* el total cambia de valor: un parpadeo mínimo para que se note */
+.rail-totales .total dd{transition:color .2s ease}
+
+/* el girador de la espera, un poco más vivo que un spinner plano */
+.girador{animation:girar .8s cubic-bezier(.5,.1,.5,.9) infinite}
+
+@media (prefers-reduced-motion:reduce){
+  .panel,.paso[data-estado="actual"] .n,
+  .pasarela,.pasarela-qr canvas,.tickets img{animation:none !important}
+}
+
+/* una entrada ya usada se marca, para no discutir en la puerta */
+.ticket-fig{margin:0;position:relative;flex:0 0 auto}
+.ticket-usada{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-8deg);
+  background:rgba(11,10,10,.86);color:var(--espuma);
+  font-family:var(--dato);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  padding:7px 14px;border:1.5px solid var(--rojo);border-radius:3px;
+}
+.ticket-fig img{display:block}
+
+/* ─── grupos de producto ───
+   Una entrada y una mesa se compran distinto: mezclarlas en una lista sola
+   hace que la de 3.000 parezca una entrada carísima. */
+.grupo-cab{margin:26px 0 10px}
+.grupo-cab h3{font-family:var(--display);font-size:26px;text-transform:uppercase;color:var(--tinta)}
+.grupo-cab p{font-family:var(--dato);font-size:11.5px;color:var(--tinta-40);margin-top:4px}
+.tipo.es-mesa{border-color:rgba(169,116,27,.45);background:linear-gradient(#fff,#FFFDF7)}
+.tipo-incluye{grid-column:1;font-size:13px;color:var(--tinta-60);margin-top:2px}
+.tipo-incluye b{font-family:var(--dato);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--dorado-hondo);margin-right:6px}
