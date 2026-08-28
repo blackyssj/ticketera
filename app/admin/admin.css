@@ -367,6 +367,79 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 .puerta-motivo{font-size:14.5px;opacity:.9;max-width:30ch;line-height:1.35}
 .puerta-code{font-family:var(--dato);font-size:12px;letter-spacing:.1em;opacity:.72}
 
+.puerta-cartel.neutro{background:var(--sup-3);color:var(--txt)}
+
+/* ─── el interruptor del filtro ───
+   Del tamaño de un botón que se aprieta con guantes, no de un checkbox. */
+.puerta-filtro{
+  display:flex;align-items:center;gap:13px;width:100%;text-align:left;
+  padding:13px 16px;margin-bottom:12px;border-radius:var(--r);
+  background:var(--sup);border:1px solid var(--linea-2);
+  transition:background .15s ease,border-color .15s ease;
+}
+.puerta-filtro:hover{background:var(--sup-2)}
+.puerta-filtro-luz{
+  flex:0 0 auto;width:46px;height:27px;border-radius:999px;
+  background:var(--sup-3);box-shadow:inset 0 0 0 1px var(--linea-2);
+  position:relative;transition:background .18s ease;
+}
+.puerta-filtro-luz::after{
+  content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;
+  border-radius:50%;background:var(--txt-3);transition:transform .18s ease,background .18s ease;
+}
+.puerta-filtro-txt{min-width:0}
+.puerta-filtro-txt b{
+  display:block;font-family:var(--display);font-size:19px;
+  text-transform:uppercase;letter-spacing:.03em;line-height:1;
+}
+.puerta-filtro-txt em{
+  display:block;margin-top:4px;font-style:normal;
+  font-family:var(--dato);font-size:11.5px;color:var(--txt-3);line-height:1.4;
+}
+.puerta-filtro[aria-pressed="true"]{background:var(--aviso-bg);border-color:var(--aviso)}
+.puerta-filtro[aria-pressed="true"] .puerta-filtro-luz{background:var(--aviso)}
+.puerta-filtro[aria-pressed="true"] .puerta-filtro-luz::after{transform:translateX(19px);background:#231703}
+.puerta-filtro[aria-pressed="true"] .puerta-filtro-txt b,
+.puerta-filtro[aria-pressed="true"] .puerta-filtro-txt em{color:var(--aviso)}
+
+/* ─── la pantalla entera en filtro ───
+   El requisito es exactamente éste: que nadie pueda olvidarse de que lo
+   tiene puesto. Un tilde en un rincón se olvida en diez minutos y el
+   portero pasa la noche creyendo que deja entrar gente. Así que el color
+   se come el fondo, la barra de arriba y el marco del visor — no hay
+   ángulo desde el que la pantalla parezca normal. */
+body[data-filtro="1"]{background:#1E1503}
+body[data-filtro="1"] .cab{
+  background:#2E2005;border-bottom-color:rgba(246,180,74,.45);
+}
+body[data-filtro="1"] .marca{color:var(--aviso)}
+body[data-filtro="1"] .puerta-visor{
+  border-color:var(--aviso);box-shadow:0 0 0 3px rgba(246,180,74,.22);
+}
+/* Franja diagonal arriba del visor: es la señal que se reconoce sin leer
+   nada, la misma de una cinta de obra. */
+body[data-filtro="1"] .puerta-visor::before{
+  content:"";position:absolute;inset:0 0 auto 0;height:7px;z-index:3;
+  background:repeating-linear-gradient(115deg,
+    var(--aviso) 0 13px, #231703 13px 26px);
+}
+
+/* ─── deshacer ───
+   Debajo del visor y no adentro del cartel: el cartel dura cuatro segundos
+   porque la fila avanza, y darse cuenta del error tarda más que eso. */
+.puerta-deshacer{
+  display:none;align-items:center;gap:12px;margin-top:12px;
+  padding:11px 14px;border-radius:var(--r-chico);
+  background:var(--sup-2);border:1px dashed var(--linea-2);
+}
+.puerta-deshacer[data-on="1"]{display:flex}
+.puerta-deshacer-txt{font-size:13.5px;color:var(--txt-2);min-width:0}
+.puerta-deshacer-txt b{color:var(--txt)}
+.puerta-deshacer .btn{margin-left:auto;flex:0 0 auto}
+/* El contador en tabular: sin esto la tira se mueve un pixel por segundo
+   mientras el dedo va al botón. */
+.puerta-deshacer .btn span{font-family:var(--dato);font-variant-numeric:tabular-nums}
+
 /* ─── el código a mano ───
    Siempre visible, no solo cuando la cámara falla: es lo que se usa cuando
    la pantalla del cliente no ilumina, que pasa más seguido que un permiso

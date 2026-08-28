@@ -55,6 +55,13 @@ const LECTURA_MS = 120;
 /* Cuánto queda el cartel antes de volver a mostrar la cámara. */
 const CARTEL_MS = 3800;
 
+/* Cuánto dura el botón de deshacer. Corto a propósito: deshacer sirve para
+   el error que se acaba de cometer y se vio. Una lista de ingresos con un
+   botón de deshacer al lado de cada uno es otra cosa — es una puerta
+   trasera para entrar dos veces con la misma manilla, y no se pide permiso
+   para usarla porque el permiso ya está dado. */
+const VENTANA_DESHACER_MS = 20000;
+
 const P = {
   gen: 0,             // invalida bucles viejos (ver apagar())
   eventos: [],
@@ -68,6 +75,9 @@ const P = {
   ultimo: { code: null, visto: 0 },   // el antirrebote
   ocupado: false,                     // una llamada a la base a la vez
   tCartel: null,
+  filtro: false,                      // ver el bloque "modo filtro"
+  deshacer: null,                     // solo el ÚLTIMO ingreso, y por poco
+  tDeshacer: null,
 };
 
 /* ── el sonido ──────────────────────────────────────────────────
@@ -90,25 +100,31 @@ function despertarAudio() {
   } catch { /* sin audio se trabaja igual */ }
 }
 
-function sonar(pasa) {
+/* Sube el que pasa, baja el que no, y el de deshacer es plano y corto: no
+   es ni una cosa ni la otra, es "ya está, se revirtió". */
+const TONOS = {
+  pasa:   { onda: "sine",     a: 760, b: 1240, quiebre: 0.085, largo: 0.20, vol: 0.28 },
+  no:     { onda: "square",   a: 320, b:  170, quiebre: 0.160, largo: 0.42, vol: 0.34 },
+  neutro: { onda: "triangle", a: 520, b:  520, quiebre: 0.070, largo: 0.14, vol: 0.22 },
+};
+
+function sonar(cual) {
   try {
     if (!audio) return;
+    const t = TONOS[cual] || TONOS.no;
     const t0 = audio.currentTime;
-    const largo = pasa ? 0.20 : 0.42;
     const g = audio.createGain();
     const o = audio.createOscillator();
-    o.type = pasa ? "sine" : "square";
+    o.type = t.onda;
     o.connect(g); g.connect(audio.destination);
-    if (pasa) { o.frequency.setValueAtTime(760, t0);
-                o.frequency.setValueAtTime(1240, t0 + 0.085); }
-    else      { o.frequency.setValueAtTime(320, t0);
-                o.frequency.setValueAtTime(170, t0 + 0.16); }
+    o.frequency.setValueAtTime(t.a, t0);
+    o.frequency.setValueAtTime(t.b, t0 + t.quiebre);
     /* Rampas exponenciales y no un on/off: un cuadrado que empieza y
        termina de golpe hace un "click" que tapa el tono. */
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(pasa ? 0.28 : 0.34, t0 + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + largo);
-    o.start(t0); o.stop(t0 + largo + 0.02);
+    g.gain.exponentialRampToValueAtTime(t.vol, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + t.largo);
+    o.start(t0); o.stop(t0 + t.largo + 0.02);
   } catch { /* idem */ }
 }
 
@@ -136,13 +152,16 @@ function leerPayload(txt) {
    alguien la dio de baja —hay a quién llamar— y la otra ya entró. Son
    dos conversaciones distintas. */
 const CARTELES = {
-  valida:      { cls: "pasa", titulo: "PASA" },
-  usada:       { cls: "no",   titulo: "YA ENTRÓ" },
-  anulada:     { cls: "no",   titulo: "ANULADA" },
-  no_existe:   { cls: "no",   titulo: "NO EXISTE" },
-  otro_evento: { cls: "no",   titulo: "OTRA NOCHE" },
-  ajeno:       { cls: "no",   titulo: "NO ES UNA ENTRADA" },
-  error:       { cls: "no",   titulo: "NO SE PUDO" },
+  valida:      { cls: "pasa",   titulo: "PASA" },
+  usada:       { cls: "no",     titulo: "YA ENTRÓ" },
+  anulada:     { cls: "no",     titulo: "ANULADA" },
+  no_existe:   { cls: "no",     titulo: "NO EXISTE" },
+  otro_evento: { cls: "no",     titulo: "OTRA NOCHE" },
+  ajeno:       { cls: "no",     titulo: "NO ES UNA ENTRADA" },
+  error:       { cls: "no",     titulo: "NO SE PUDO" },
+  /* Ni verde ni rojo: deshacer no es dejar pasar ni rechazar. En verde
+     leería como "pasá" justo cuando se le está sacando el ingreso. */
+  devuelta:    { cls: "neutro", titulo: "DEVUELTA" },
 };
 
 const hora = t => {
@@ -211,12 +230,22 @@ function dibujar() {
         </label>
       </div>
 
+      <button type="button" class="puerta-filtro" id="pFiltro" aria-pressed="false">
+        <span class="puerta-filtro-luz" aria-hidden="true"></span>
+        <span class="puerta-filtro-txt">
+          <b>Modo filtro</b>
+          <em id="pFiltroPie">Apagado. El escaneo deja entrar y consume la entrada.</em>
+        </span>
+      </button>
+
       <div class="puerta-visor">
         <video id="pVideo" playsinline muted autoplay></video>
         <div class="puerta-mira" aria-hidden="true"></div>
         <div class="puerta-camara" id="pCamara"></div>
         <div class="puerta-cartel" id="pCartel" role="status" aria-live="assertive"></div>
       </div>
+
+      <div class="puerta-deshacer" id="pDeshacer"></div>
 
       <form class="puerta-mano" id="pFormMano" autocomplete="off">
         <label>
@@ -234,8 +263,14 @@ function dibujar() {
   $("#pEvento").onchange = e => {
     P.evento = P.eventos.find(x => x.id === e.target.value) || P.evento;
     P.ultimo = { code: null, visto: 0 };     // otro evento, otro rebote
+    /* El deshacer pendiente es de una entrada del evento anterior:
+       descheckin_entrada la buscaría en el nuevo y no la encontraría. */
+    soltarDeshacer();
     ocultarCartel();
   };
+
+  $("#pFiltro").onclick = () => { despertarAudio(); cambiarFiltro(!P.filtro); };
+  pintarFiltro();
 
   $("#pFormMano").onsubmit = ev => {
     ev.preventDefault();
@@ -410,13 +445,24 @@ async function resolver(code, { aMano }) {
   P.ultimo.visto = Date.now();
 
   try {
-    const { data, error } = await sb.rpc("validar_entrada",
+    /* La única diferencia entre dejar entrar y filtrar es CUÁL función se
+       llama. marcar_filtro_entrada() no tiene un update adentro: la
+       entrada queda como estaba y la persona ve el mismo cartel que una
+       falsa. Elegirla acá y no en dos caminos separados es lo que
+       garantiza que el filtro tenga el mismo antirrebote, el mismo
+       cartel y el mismo sonido que el resto. */
+    const fn = P.filtro ? "marcar_filtro_entrada" : "validar_entrada";
+    const { data, error } = await sb.rpc(fn,
       { p_evento: P.evento.id, p_code: code });
     if (error) {
       mostrarCartel({ resultado: "error", code, motivo: error.message });
       return;
     }
     mostrarCartel(data || { resultado: "no_existe", code });
+    /* El deshacer se arma solo cuando ESTE escaneo consumió la entrada.
+       Con filtro no hay nada que deshacer, y sobre una 'usada' el botón
+       devolvería un ingreso que hizo otro. */
+    if (!P.filtro && data && data.resultado === "valida") armarDeshacer(data);
     if (aMano) $("#pCodigo") && $("#pCodigo").focus();
   } catch (err) {
     /* Sin señal la puerta no puede decidir. Se dice así, no con un
@@ -433,6 +479,133 @@ async function resolver(code, { aMano }) {
   }
 }
 
+/* ══ modo filtro ══════════════════════════════════════════════════
+   Un interruptor que tiñe la PANTALLA ENTERA, no un tilde en un rincón.
+   Es lo único que importa de este modo: mientras está puesto no entra
+   nadie, y un portero que se olvidó de que lo tenía prendido cree que
+   está dejando pasar gente mientras la manda de vuelta a la calle. Por
+   eso el color se lo come todo — la barra de arriba también — y el pie
+   del interruptor dice en castellano qué va a pasar con el próximo
+   escaneo.
+
+   Lo que se le muestra al rechazado es EXACTAMENTE el cartel de una
+   entrada falsa: el mismo título, el mismo rojo, ningún nombre. Si el
+   cartel dijera "estás en la lista pero hoy no entrás", la discusión
+   pasa de ser con el ticket a ser con el portero. Lo que el portero sí
+   necesita saber —si la entrada era buena— va acá arriba, en el pie del
+   interruptor, del lado de la pantalla que mira él y no el otro.
+
+   Y no consume: marcar_filtro_entrada() no tiene un solo update. La
+   entrada queda válida y sirve más tarde o en otra puerta. */
+function cambiarFiltro(on) {
+  P.filtro = !!on;
+  /* El deshacer NO se cancela al prender el filtro. El caso real es
+     justamente ese: dejaste entrar a alguien de más, te diste cuenta y
+     cerraste la puerta. Cancelarlo acá te saca la única forma de
+     arreglar lo que acabás de ver. */
+  pintarFiltro();
+  ocultarCartel();
+}
+
+function pintarFiltro() {
+  const b = $("#pFiltro"), caja = $("#puerta");
+  if (!b || !caja) return;
+  b.setAttribute("aria-pressed", P.filtro ? "true" : "false");
+  caja.dataset.filtro = P.filtro ? "1" : "0";
+  /* En el body también: la barra de arriba es parte de "la pantalla
+     entera". apagar() lo limpia, para no dejar el resto del panel
+     pintado de naranja cuando el portero se va a otra pestaña. */
+  document.body.dataset.filtro = P.filtro ? "1" : "0";
+  $("#pFiltroPie").textContent = P.filtro
+    ? "Puesto. Nadie pasa y ninguna entrada se consume."
+    : "Apagado. El escaneo deja entrar y consume la entrada.";
+}
+
+/* Lo que el rechazado no ve. Va en el pie del interruptor y no en el
+   cartel, que es lo que se da vuelta para mostrar. */
+function pieFiltro(r) {
+  const pie = $("#pFiltroPie");
+  if (!pie) return;
+  const quien = r.cliente ? ` · ${r.cliente}` : "";
+  const que = r.resultado === "no_existe" ? "ese código no existe"
+            : r.resultado === "otro_evento" ? "es de otra fecha"
+            : r.resultado === "ajeno" ? "ese QR no es una entrada"
+            : r.resultado === "usada" ? "ya había entrado"
+            : r.resultado === "anulada" ? "estaba anulada"
+            : "seguía válida, no se consumió";
+  pie.textContent = `Rechazado ${r.code ? "#" + r.code : ""} — ${que}${quien}`;
+}
+
+/* ══ deshacer el último ingreso ═══════════════════════════════════
+   Solo el último, y solo por unos segundos. La tentación es una lista
+   de los ingresos de la noche con un botón al lado de cada uno: sería
+   más cómodo y sería una puerta trasera — con eso, cualquiera que
+   agarre el teléfono devuelve una entrada de hace dos horas y esa
+   manilla entra por segunda vez, sin que quede rastro de que hubo una
+   decisión. Un botón que vence solo no se puede usar para eso.
+
+   Vive debajo del visor y no adentro del cartel: el cartel dura cuatro
+   segundos porque la fila sigue avanzando, y el que se equivocó tarda
+   más que eso en darse cuenta. */
+function armarDeshacer(d) {
+  const caja = $("#pDeshacer");
+  if (!caja) return;
+  P.deshacer = { code: d.code, hasta: Date.now() + VENTANA_DESHACER_MS };
+  caja.dataset.on = "1";
+  caja.innerHTML = `
+    <span class="puerta-deshacer-txt">Dejaste entrar a
+      <b>${esc(d.cliente || "#" + d.code)}</b></span>
+    <button type="button" class="btn plano chico" id="pBtnDeshacer">
+      Deshacer <span id="pDeshacerSeg"></span></button>`;
+  $("#pBtnDeshacer").onclick = correrDeshacer;
+  clearInterval(P.tDeshacer);
+  /* Se repinta solo el contador y no la tira entera: reescribir el
+     innerHTML cuatro veces por segundo le saca el foco al botón y lo
+     vuelve inclickeable justo mientras se lo está apretando. */
+  P.tDeshacer = setInterval(latirDeshacer, 250);
+  latirDeshacer();
+}
+
+function latirDeshacer() {
+  if (!P.deshacer) return soltarDeshacer();
+  const restan = Math.ceil((P.deshacer.hasta - Date.now()) / 1000);
+  if (restan <= 0) return soltarDeshacer();
+  const s = $("#pDeshacerSeg");
+  if (s) s.textContent = `· ${restan}s`;
+}
+
+function soltarDeshacer() {
+  clearInterval(P.tDeshacer);
+  P.tDeshacer = null;
+  P.deshacer = null;
+  const caja = $("#pDeshacer");
+  if (caja) { caja.dataset.on = "0"; caja.innerHTML = ""; }
+}
+
+async function correrDeshacer() {
+  if (!P.deshacer || P.ocupado) return;
+  const code = P.deshacer.code;
+  P.ocupado = true;
+  try {
+    const { data, error } = await sb.rpc("descheckin_entrada",
+      { p_evento: P.evento.id, p_code: code });
+    if (error) { avisar("No se pudo deshacer: " + error.message); return; }
+    soltarDeshacer();
+    /* La entrada volvió a 'valida', así que tiene que poder escanearse
+       de nuevo YA: si el rebote la sigue tapando, el portero la pasa
+       por la cámara, no pasa nada, y cree que deshacer la rompió. */
+    P.ultimo = { code: null, visto: 0 };
+    const d = data || {};
+    mostrarCartel(d.resultado === "valida"
+      ? { resultado: "devuelta", code, cliente: d.cliente, tipo: d.tipo }
+      : (data || { resultado: "error", code }));
+  } catch (err) {
+    avisar("No se pudo deshacer: " + ((err && err.message) || "sin conexión"));
+  } finally {
+    P.ocupado = false;
+  }
+}
+
 /* ── el cartel ──────────────────────────────────────────────────
    Tapa la cámara mientras dura, pero el bucle sigue corriendo abajo: si
    llega el siguiente de la fila, el cartel se reemplaza y no hay que
@@ -440,8 +613,20 @@ async function resolver(code, { aMano }) {
 function mostrarCartel(r) {
   const caja = $("#pCartel");
   if (!caja) return;
+
+  /* Con filtro puesto TODO lo que se rechaza se ve igual, venga de la
+     base o de un QR que ni se llegó a preguntar. Si "OTRA NOCHE" y "NO
+     EXISTE" se distinguieran, el rechazado sabría cuál de las dos le
+     tocó — y de ahí a saber que el problema es la lista y no su ticket
+     hay un paso. El error de red queda afuera: eso no es un rechazo,
+     es la puerta que no pudo decidir, y ahí el portero tiene que ver
+     la verdad. */
+  if (P.filtro && r.resultado !== "error" && r.resultado !== "devuelta") {
+    pieFiltro(r);
+    r = { resultado: "no_existe", code: r.code };
+  }
+
   const c = CARTELES[r.resultado] || CARTELES.error;
-  const pasa = c.cls === "pasa";
 
   const detalle = [];
   if (r.cliente) detalle.push(`<strong>${esc(r.cliente)}</strong>`);
@@ -460,6 +645,8 @@ function mostrarCartel(r) {
     motivo = "Ese QR no es una entrada.";
   else if (r.resultado === "error")
     motivo = esc(r.motivo || "Probá de nuevo.");
+  else if (r.resultado === "devuelta")
+    motivo = "El ingreso se deshizo. La entrada vuelve a servir.";
 
   caja.className = `puerta-cartel ${c.cls}`;
   caja.dataset.on = "1";
@@ -469,7 +656,7 @@ function mostrarCartel(r) {
     ${motivo ? `<span class="puerta-motivo">${motivo}</span>` : ""}
     ${r.code ? `<span class="puerta-code">#${esc(r.code)}</span>` : ""}`;
 
-  sonar(pasa);
+  sonar(c.cls);
   clearTimeout(P.tCartel);
   P.tCartel = setTimeout(ocultarCartel, CARTEL_MS);
 }
@@ -486,10 +673,17 @@ function apagar() {
   P.gen++;
   if (P.raf) { cancelAnimationFrame(P.raf); P.raf = null; }
   clearTimeout(P.tCartel);
+  soltarDeshacer();
   if (P.stream) { P.stream.getTracks().forEach(t => t.stop()); P.stream = null; }
   if (P.video) { P.video.srcObject = null; P.video = null; }
   P.ocupado = false;
   P.ultimo = { code: null, visto: 0 };
+  /* El naranja del filtro es de esta pantalla. Sin esto, irse a
+     "Eventos" deja el panel entero teñido y el interruptor —que vive
+     acá— fuera de alcance para apagarlo. P.filtro no se toca: al volver
+     a la puerta el modo sigue como estaba, que es lo que el portero
+     dejó puesto. */
+  delete document.body.dataset.filtro;
 }
 
 /* Un teléfono bloqueado con la pantalla prendida y la cámara comiendo
