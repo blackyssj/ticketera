@@ -8,9 +8,15 @@
 -- relacionadores y porteros que no tienen por qué editar precios.
 --
 -- Leer sigue siendo por tenant. Escribir pide rol.
+--
+-- Idempotente a propósito: `create or replace function` y un `drop policy
+-- if exists` delante de cada `create policy` (también las de nombre
+-- nuevo, no solo las viejas que reemplaza). Así se puede volver a correr
+-- entera sin fallar por duplicados, que es la única forma de verificarla
+-- contra una base que ya la tiene aplicada.
 -- ============================================================
 
-create function puede_editar() returns boolean
+create or replace function puede_editar() returns boolean
   language sql stable security definer set search_path = public as $$
   select coalesce(mi_rol() in ('admin','staff'), false)
 $$;
@@ -20,7 +26,7 @@ grant execute on function puede_editar() to authenticated;
 comment on function puede_editar() is
   'Quién puede tocar el catálogo. rrpp y portero leen lo suyo y nada más.';
 
-create function chequeo_policies_sin_rol() returns text
+create or replace function chequeo_policies_sin_rol() returns text
   language sql stable security definer set search_path = public as $$
   select string_agg(tablename || '.' || policyname, ', ')
   from pg_policies
@@ -42,26 +48,34 @@ drop policy if exists "fases: las mías"   on evento_fase;
 drop policy if exists "precios: los míos" on fase_precio;
 drop policy if exists "mesas: las mías"   on mesas;
 
+drop policy if exists "tipos leer" on tipo_entrada;
 create policy "tipos leer" on tipo_entrada for select to authenticated
   using (organizador_id = mi_organizador());
+drop policy if exists "tipos escribir" on tipo_entrada;
 create policy "tipos escribir" on tipo_entrada for all to authenticated
   using  (organizador_id = mi_organizador() and puede_editar())
   with check (organizador_id = mi_organizador() and puede_editar());
 
+drop policy if exists "fases leer" on evento_fase;
 create policy "fases leer" on evento_fase for select to authenticated
   using (organizador_id = mi_organizador());
+drop policy if exists "fases escribir" on evento_fase;
 create policy "fases escribir" on evento_fase for all to authenticated
   using  (organizador_id = mi_organizador() and puede_editar())
   with check (organizador_id = mi_organizador() and puede_editar());
 
+drop policy if exists "precios leer" on fase_precio;
 create policy "precios leer" on fase_precio for select to authenticated
   using (organizador_id = mi_organizador());
+drop policy if exists "precios escribir" on fase_precio;
 create policy "precios escribir" on fase_precio for all to authenticated
   using  (organizador_id = mi_organizador() and puede_editar())
   with check (organizador_id = mi_organizador() and puede_editar());
 
+drop policy if exists "mesas leer" on mesas;
 create policy "mesas leer" on mesas for select to authenticated
   using (organizador_id = mi_organizador());
+drop policy if exists "mesas escribir" on mesas;
 create policy "mesas escribir" on mesas for all to authenticated
   using  (organizador_id = mi_organizador() and puede_editar())
   with check (organizador_id = mi_organizador() and puede_editar());
@@ -71,19 +85,23 @@ drop policy if exists "ordenes: las de mi organizador" on ordenes;
 drop policy if exists "items: los de mi organizador"   on orden_items;
 drop policy if exists "entradas: las de mi organizador" on entradas;
 
+drop policy if exists "ordenes leer" on ordenes;
 create policy "ordenes leer" on ordenes for select to authenticated
   using (organizador_id = mi_organizador()
          and (puede_editar() or rrpp_id = auth.uid()));
+drop policy if exists "ordenes escribir" on ordenes;
 create policy "ordenes escribir" on ordenes for update to authenticated
   using  (organizador_id = mi_organizador() and puede_editar())
   with check (organizador_id = mi_organizador() and puede_editar());
 
+drop policy if exists "items leer" on orden_items;
 create policy "items leer" on orden_items for select to authenticated
   using (organizador_id = mi_organizador()
          and (puede_editar() or exists (
            select 1 from ordenes o where o.id = orden_items.orden_id
              and o.rrpp_id = auth.uid())));
 
+drop policy if exists "entradas leer" on entradas;
 create policy "entradas leer" on entradas for select to authenticated
   using (organizador_id = mi_organizador()
          and (puede_editar() or rrpp_id = auth.uid()));
@@ -98,6 +116,7 @@ revoke delete on ordenes, orden_items, entradas from authenticated;
 
 -- ── eventos: leer todo el tenant, escribir admin/staff ──
 drop policy if exists "eventos: el admin los administra" on eventos;
+drop policy if exists "eventos escribir" on eventos;
 create policy "eventos escribir" on eventos for all to authenticated
   using  (organizador_id = mi_organizador() and puede_editar())
   with check (organizador_id = mi_organizador() and puede_editar());
