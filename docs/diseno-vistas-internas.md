@@ -253,11 +253,11 @@ El 7 no depende de los otros: se puede prender apenas lleguen las credenciales.
 1. **¿BeePay puede cobrarle a un organizador ajeno al grupo?** Sigue sin
    resolver desde el spec anterior. Legal, no técnica. No bloquea el código;
    bloquea vender afuera.
-2. **¿La puerta necesita funcionar sin señal?** En Puerta no hace falta porque
-   hay wifi. Si acá el evento es en un predio ferial, puede no haberla — y eso
-   cambia el diseño entero del escáner (caché local de códigos válidos, cola de
-   ingresos, resolución de conflictos). **Preguntar antes de construir el bloque
-   6**, no después.
+2. **~~¿La puerta necesita funcionar sin señal?~~ Resuelto: hay señal.** El
+   escáner trabaja en línea contra `validar_entrada`. Queda anotado el costo de
+   la decisión: si un evento futuro cae en un predio sin cobertura, el bloque 6
+   no sirve tal cual y hay que agregarle caché de códigos, cola de ingresos y
+   resolución de conflictos. Preguntarlo por evento, no asumirlo.
 3. **¿Quién puede anular una entrada ya emitida?** Hoy `entradas.estado` admite
    `anulada` y nada la escribe. Hace falta cuando alguien pide reembolso.
 
