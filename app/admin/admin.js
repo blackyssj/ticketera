@@ -664,15 +664,20 @@ async function pantallaMisVentas() {
   const total = ventas.reduce((a, v) => a + Number(v.comision || 0), 0);
 
   /* Sus compradores y el plano cuelgan de UN evento, y él puede estar
-     repartiendo links de varios a la vez: sin elegir cuál, la lista sería
-     la de cualquiera. Junta los que están a la venta con aquellos donde ya
-     vendió algo, aunque estén cerrados: por esos le siguen preguntando al
-     día siguiente. */
+     repartiendo links de varios a la vez: sin elegir cuál, el plano sería
+     el de cualquiera. La lista junta los que están a la venta —donde el
+     plano sirve para vender— con aquellos donde ya vendió algo, aunque
+     estén cerrados: por esos le siguen preguntando al día siguiente. */
   const evs = [];
   const vistos = new Set();
   (re.data || []).forEach(e => {
     vistos.add(e.id);
     evs.push({ id: e.id, nombre: e.nombre, fecha: e.fecha });
+  });
+  ventas.forEach(v => {
+    if (vistos.has(v.evento_id)) return;
+    vistos.add(v.evento_id);
+    evs.push({ id: v.evento_id, nombre: v.evento_nombre, fecha: v.evento_fecha });
   });
 
   $("#main").innerHTML = `
@@ -715,13 +720,17 @@ async function pantallaMisVentas() {
              </select>`
           : `<span class="conteo">${esc(evs[0].nombre)} · ${fmtF(evs[0].fecha)}</span>`}
       </div>
-      <section id="zonaCompradores"></section>` : ""}`;
+      <section id="zonaCompradores"></section>
+      <section id="zonaPlano"></section>` : ""}`;
 
   cablearCopiar();
 
-  /* El mismo componente del tablero, sin una segunda versión:
-     compradores_evento() ya le devuelve solo sus órdenes, así que no hay
-     nada que filtrar acá. `editar` es false y le saca los botones. */
+  /* Los mismos dos componentes del tablero, sin una segunda versión: la
+     lista ya le devuelve solo sus compradores y el plano le muestra las
+     mesas de todos con el nombre únicamente en las que vendió él. Lo
+     único que cambia es `editar`, que acá es false y le saca los botones
+     de repartir — el salón lo acomoda una sola persona (0029), y un botón
+     que la base le va a rebotar solo enseña a desconfiar de los botones. */
   if (evs.length) {
     const sel = $("#selEventoSalon");
     if (sel) sel.onchange = () => montarSalon(sel.value, { editar: puedeEditar() });
@@ -824,13 +833,16 @@ async function pantallaRelacionadores(eventoId) {
 
 const num = n => Number(n || 0).toLocaleString("es-BO");
 const pct = n => (Number(n || 0) % 1 ? Number(n).toFixed(1) : Number(n || 0).toFixed(0)) + "%";
+/* Una manilla es una persona, y "1 manillas" en una lista que se lee de
+   corrido delata que el texto lo armó una máquina justo donde hay que
+   confiar en lo que dice. */
+const manillasTxt = n => `${num(n)} ${Number(n) === 1 ? "manilla" : "manillas"}`;
 const fmtFH = t => t
   ? new Date(t).toLocaleString("es-BO",
       { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
   : "";
-/* Una manilla es una persona, y "1 manillas" en una lista que se lee de
-   corrido delata que el texto lo armó una máquina justo donde hay que
-   confiar en lo que dice. */async function pantallaTablero(eventoId) {
+
+async function pantallaTablero(eventoId) {
   $("#main").innerHTML = `<p class="cargando">Cargando el tablero…</p>`;
   const ev = await sb.from("eventos").select("id,nombre").eq("id", eventoId).single();
   if (ev.error || !ev.data) {
@@ -845,12 +857,19 @@ const fmtFH = t => t
       <h2>Tablero</h2>
     </div>
     <div id="zonaResumen"><p class="cargando">Cargando…</p></div>
-    <section id="zonaCompradores"></section>`;
+    <section id="zonaCompradores"></section>
+    <section id="zonaPlano"></section>`;
 
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
+
+  /* El salón se recarga solo cuando se reparte una mesa, y el tablero se
+     entera por acá: la alerta de "mesas sin asignar" es la que se está
+     bajando, y una alerta que sigue diciendo 2 después de asignar la
+     primera enseña a no creerle. */
   await Promise.all([
     refrescarResumen(eventoId),
-    montarSalon(eventoId, { editar: puedeEditar() }),
+    montarSalon(eventoId, { editar: puedeEditar(),
+                            alCambiar: () => refrescarResumen(eventoId) }),
   ]);
 }
 
@@ -867,6 +886,11 @@ async function refrescarResumen(eventoId) {
     return;
   }
   z.innerHTML = bloqueCifras(data) + bloqueAlertas(data.alertas) + bloqueDesgloses(data);
+  const ir = $("#irAlPlano");
+  if (ir) ir.onclick = () => {
+    const p = $("#zonaPlano");
+    if (p) p.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 }
 
 /* Tres números y ninguno es el mismo dato: lo que se vendió, lo que entró
@@ -908,7 +932,7 @@ function bloqueAlertas(a) {
       pie: `${num(a.mesas_sin_asignar.manillas)} manillas · ${bs(a.mesas_sin_asignar.monto)} ya cobrados`,
       viva: "Compras de mesa pagadas a las que todavía nadie les dijo dónde se sientan. Este es el número que va a cero antes de que abra la puerta.",
       hecha: "Toda compra de mesa tiene su lugar.",
-      nivel: "peligro" },
+      nivel: "peligro", plano: true },
     { cifra: a.revision_manual.ordenes,
       titulo: "En revisión manual",
       pie: `${bs(a.revision_manual.monto)} cobrados`,
@@ -941,6 +965,8 @@ function bloqueAlertas(a) {
         <p>${esc(f.cifra ? f.viva : f.hecha)}</p>
         ${f.cifra ? `<span class="alerta-pie">${esc(f.pie)}</span>` : ""}
       </div>
+      ${f.cifra && f.plano
+        ? `<button type="button" class="btn plano chico" id="irAlPlano">Ver el plano</button>` : ""}
     </div>`).join("")}</div>`;
 }
 
@@ -1025,22 +1051,38 @@ function bloqueDesgloses(r) {
 
 /* ══ el salón: quién compró y dónde se sienta ═════════════════════
    La lista de compradores y el plano son dos vistas del mismo hecho, así
-   que comparten estado: van a tener que recargarse juntos.
+   que comparten estado y se recargan juntos: asignar desde el plano tiene
+   que apagar la fila de la lista, y asignar desde la lista tiene que
+   pintar la chapa. Con una copia cada uno, la mitad que no se enteró
+   sigue ofreciendo una mesa que ya tiene dueño — y eso se descubre en la
+   puerta, con los dos grupos parados.
 
    Es la MISMA pantalla para el administrador y para el relacionador, y no
    hay un solo `if` de rol acá adentro: compradores_evento() ya devuelve
    todas las órdenes al que puede editar y solo las suyas al que no, y
    mesas_evento() manda las 24 mesas a los dos pero con el nombre del
    comprador únicamente donde corresponde. `editar` decide una cosa sola:
-   si se dibujan los botones de repartir. */
-const SALON = { evento: null, editar: false, compras: [], busca: "" };
+   si se dibujan los botones de repartir. Mostrarle a un rrpp un botón que
+   la base le va a rebotar es enseñarle a desconfiar de los botones; la
+   guardia de verdad es puede_editar() adentro de asignar_mesa(). */
+const SALON = { evento: null, editar: false, compras: [], mesas: [],
+                busca: "", sel: null, asignando: null, alCambiar: null };
 
 async function montarSalon(eventoId, opts) {
   Object.assign(SALON, {
-    evento: eventoId, editar: !!(opts && opts.editar), compras: [], busca: "",
+    evento: eventoId, editar: !!(opts && opts.editar),
+    compras: [], mesas: [], busca: "", sel: null, asignando: null,
+    alCambiar: (opts && opts.alCambiar) || null,
   });
-  const c = $("#zonaCompradores");
-  if (c) c.innerHTML = `<p class="cargando">Cargando compradores…</p>`;
+  const c = $("#zonaCompradores"), p = $("#zonaPlano");
+  if (c) {
+    c.innerHTML = `<p class="cargando">Cargando compradores…</p>`;
+    c.onclick = clicEnCompradores;
+  }
+  if (p) {
+    p.innerHTML = `<p class="cargando">Cargando el plano…</p>`;
+    p.onclick = clicEnPlano;
+  }
   await cargarSalon();
 }
 
@@ -1049,17 +1091,42 @@ async function montarSalon(eventoId, opts) {
    filtro por evento y por rol ya viajó adentro de la función. Es lo que
    además deja que el buscador de abajo trabaje sin volver a la base. */
 async function cargarSalon() {
-  // sin default en todos sus parámetros: se pasan siempre los dos
-  const rc = await sb.rpc("compradores_evento",
-    { p_evento: SALON.evento, p_solo_mios: false });
+  const [rc, rm] = await Promise.all([
+    // sin default en todos sus parámetros: se pasan siempre los dos
+    sb.rpc("compradores_evento", { p_evento: SALON.evento, p_solo_mios: false }),
+    sb.rpc("mesas_evento", { p_evento: SALON.evento }),
+  ]);
   SALON.compras = rc.data || [];
+  SALON.mesas = rm.data || [];
   pintarCompradores(rc.error);
+  pintarPlano(rm.error);
 }
+
+async function refrescarSalon() {
+  await cargarSalon();
+  if (SALON.alCambiar) await SALON.alCambiar();
+}
+
+/* Una compra puede tener mesa por dos caminos: `ordenes.mesa_asignada_id`,
+   que es lo que escribe asignar_mesa(), o `mesas.orden_id`, que es la
+   chapa que el cliente eligió él mismo en la venta. compradores_evento()
+   solo trae el primero, así que mirando esa sola punta una chapa comprada
+   directo figuraría "sin asignar" y volvería a la lista para repartir:
+   dos grupos, la misma mesa. Es el mismo criterio con el que
+   alertas.mesas_sin_asignar descuenta las que ya tienen dueño por el otro
+   lado, y por eso las dos cuentas dan igual. */
+const mesaDeCompra = c => SALON.mesas.find(m =>
+  (c.mesa_id && m.id === c.mesa_id) || (m.orden_id && m.orden_id === c.orden_id));
 
 /* Que una compra sea "de mesa" lo dice el producto, no el precio: a quien
    compró cuatro generales no le falta ninguna mesa, y marcarle "sin
    asignar" sería inventarle una tarea. */
 const compraDeMesa = c => (c.productos || []).some(p => p.categoria === "mesa");
+
+/* La compra trae más manillas de las que la mesa aguanta. No lo impide
+   nadie —ver asignarMesa()— pero se muestra siempre, no solo al asignar:
+   el que llega el sábado a mirar el plano tiene que verlo también. */
+const noEntra = (c, m) => !!(c && m && Number(c.manillas) > Number(m.manillas));
 
 /* ── la lista de compradores ── */
 function pintarCompradores(error) {
@@ -1081,6 +1148,7 @@ function pintarCompradores(error) {
             <th>Comprador</th><th>Contacto</th><th>Compró</th>
             <th class="n">Manillas</th><th class="n">Pagó</th>
             <th>Relacionador</th><th>Mesa</th>
+            ${SALON.editar ? `<th class="col-accion"></th>` : ""}
           </tr></thead>
           <tbody id="filasCompradores"></tbody>
         </table>
@@ -1120,11 +1188,12 @@ function pintarFilasCompradores() {
     : `${SALON.compras.length} ${SALON.compras.length === 1 ? "compra" : "compras"}`;
   tb.innerHTML = filas.length
     ? filas.map(filaCompra).join("")
-    : `<tr><td class="sin-nada" colspan="7">
+    : `<tr><td class="sin-nada" colspan="${SALON.editar ? 8 : 7}">
          Nadie con ese nombre ni ese teléfono en este evento.</td></tr>`;
 }
 
 function filaCompra(c) {
+  const m = mesaDeCompra(c);
   return `<tr data-orden="${esc(c.orden_id)}">
     <td><span class="prod-nombre">${esc(c.comprador || "Sin nombre")}</span>
       <em>${esc(fmtFH(c.fecha))}</em></td>
@@ -1134,11 +1203,244 @@ function filaCompra(c) {
         ? `<em>${num(c.manillas_usadas)} usadas</em>` : ""}</td>
     <td class="n">${bs(c.pagado)}</td>
     <td class="dato">${esc(c.rrpp_nombre || (c.canal === "rrpp" ? "sin nombre" : "Público"))}</td>
-    <td>${c.mesa_id
-      ? `<span class="chip-mesa">${esc(c.mesa_etiqueta)}<em>${esc(c.mesa_planta)}</em></span>`
+    <td>${m
+      ? `<span class="chip-mesa${noEntra(c, m) ? " chica" : ""}">${esc(m.etiqueta)}<em>${esc(m.planta)}</em></span>${
+          noEntra(c, m) ? `<em class="chica-nota">es de ${num(m.manillas)}</em>` : ""}`
       : compraDeMesa(c) ? `<span class="chip-mesa falta">sin asignar</span>`
                         : `<span class="tenue">—</span>`}</td>
+    ${SALON.editar ? `<td class="col-accion">${accionesCompra(c, m)}</td>` : ""}
   </tr>`;
+}
+
+function accionesCompra(c, m) {
+  if (SALON.asignando === c.orden_id) return selectorDeMesas(c, m);
+  return m
+    ? `<button type="button" class="btn plano chico" data-abrir="${esc(c.orden_id)}">Cambiar</button>
+       <button type="button" class="btn plano chico" data-liberar="${esc(c.orden_id)}">Liberar</button>`
+    : `<button type="button" class="btn plano chico" data-abrir="${esc(c.orden_id)}">Asignar mesa</button>`;
+}
+
+/* Las libres salen del mismo jsonb que pinta el plano, así que esta lista
+   no puede ofrecer una mesa que la chapa de al lado muestra ocupada. La
+   que ya tiene esta compra entra igual: cambiar de opinión no tiene por
+   qué ser liberar y volver a asignar. */
+function selectorDeMesas(c, actual) {
+  const libres = SALON.mesas.filter(m => !m.ocupada || (actual && m.id === actual.id));
+  if (!libres.length) return `<span class="tenue">No queda ninguna mesa libre.</span>
+    <button type="button" class="btn plano chico" data-cerrar="1">Cerrar</button>`;
+  return `<span class="picker">
+    <select id="selMesa" aria-label="Mesa para ${esc(c.comprador || "esta compra")}">
+      ${libres.map(m => `<option value="${esc(m.id)}"${actual && m.id === actual.id ? " selected" : ""}
+        >${esc(m.etiqueta)} · ${esc(m.planta)} · ${manillasTxt(m.manillas)}${
+          noEntra(c, m) ? ` — chica: la compra trae ${num(c.manillas)}` : ""}</option>`).join("")}
+    </select>
+    <button type="button" class="btn primario chico" data-confirmar="${esc(c.orden_id)}">Asignar</button>
+    <button type="button" class="btn plano chico" data-cerrar="1">Cancelar</button>
+  </span>`;
+}
+
+function clicEnCompradores(e) {
+  const b = e.target.closest("button[data-abrir],button[data-liberar],button[data-confirmar],button[data-cerrar]");
+  if (!b) return;
+  const d = b.dataset;
+  if (d.cerrar) { SALON.asignando = null; pintarFilasCompradores(); return; }
+  if (d.abrir)  { SALON.asignando = d.abrir; pintarFilasCompradores(); return; }
+  if (d.liberar) return liberarMesa(d.liberar);
+  if (d.confirmar) {
+    const sel = $("#selMesa");
+    if (sel && sel.value) return asignarMesa(d.confirmar, sel.value);
+  }
+}
+
+/* ── el plano ──
+   Una fila por mesa con x, y, w en PORCENTAJE del lienzo, no en píxeles:
+   el mismo salón tiene que caer igual en la pantalla de la oficina y en el
+   teléfono del que reparte. El lienzo pone el sistema de coordenadas
+   (position:relative + aspect-ratio) y cada chapa se centra en su punto
+   con translate(-50%,-50%). Es lo mismo que ya resolvía el plano de la
+   venta antes de que la mesa pasara a venderse como producto; lo que
+   cambia acá es el propósito: allá se elegía una para comprar, acá se
+   mira quién la tiene. */
+const PLANTA_TXT = { baja: "Planta baja", alta: "Planta alta" };
+const CAT_TXT = { mesa: "Mesa", lounge: "Lounge", palco: "Palco" };
+const ORDEN_PLANTA = { baja: 0, alta: 1 };   // la baja primero: es la que se llena
+
+function pintarPlano(error) {
+  const z = $("#zonaPlano");
+  if (!z) return;
+  const plantas = [...new Set(SALON.mesas.map(m => m.planta))].sort((a, b) =>
+    (ORDEN_PLANTA[a] ?? 9) - (ORDEN_PLANTA[b] ?? 9) || String(a).localeCompare(b));
+  const libres = SALON.mesas.filter(m => !m.ocupada).length;
+
+  z.innerHTML = `
+    <div class="cab-bloque">
+      <h3 class="titulo-bloque">Plano de mesas</h3>
+      <span class="conteo">${num(libres)} ${libres === 1 ? "libre" : "libres"} de ${num(SALON.mesas.length)}</span>
+      <span class="leyenda">
+        <span><i class="pip libre"></i>libre</span>
+        <span><i class="pip ocupada"></i>ocupada</span>
+      </span>
+    </div>
+    ${error ? `<p class="error">${esc(error.message)}</p>` : ""}
+    ${SALON.mesas.length ? plantas.map(p => {
+      const suyas = SALON.mesas.filter(m => m.planta === p);
+      const l = suyas.filter(m => !m.ocupada).length;
+      return `<section class="planta">
+        <h4>${esc(PLANTA_TXT[p] || "Planta " + p)}
+          <em>${num(l)} de ${num(suyas.length)} libres</em></h4>
+        <div class="lienzo">${suyas.map(chapa).join("")}</div>
+      </section>`;
+    }).join("")
+    : error ? "" : `<p class="vacio">Este evento no tiene mesas cargadas.</p>`}
+    <div id="fichaMesa"></div>`;
+  pintarFicha();
+}
+
+function chapa(m) {
+  const sel = SALON.sel === m.id;
+  return `<button type="button" class="chapa ${esc(m.categoria)}"
+    data-mesa="${esc(m.id)}" data-ocupada="${m.ocupada ? 1 : 0}" data-sel="${sel ? 1 : 0}"
+    aria-pressed="${sel}" aria-label="${esc(rotuloMesa(m))}"
+    style="left:${Number(m.x)}%;top:${Number(m.y)}%;width:${Number(m.w)}%"
+    ><span class="et">${esc(m.etiqueta)}</span></button>`;
+}
+
+function rotuloMesa(m) {
+  const cat = CAT_TXT[m.categoria] || "Mesa";
+  if (!m.ocupada) return `${cat} ${m.etiqueta}, ${manillasTxt(m.manillas)}, libre, ${bs(m.precio)}`;
+  /* Para el relacionador, la mesa de otro llega `ocupada: true` con
+     `comprador: null`. El corte ya lo hizo la base y acá se respeta tal
+     cual: ni un "de otro relacionador" inventado ni el orden_id crudo. Un
+     uuid no es un nombre, pero es un handle, y devolverlo por la pantalla
+     sería deshacer a mano lo que la función se guardó. Ocupada, y ya. */
+  return `${cat} ${m.etiqueta}, ${manillasTxt(m.manillas)}, ocupada` +
+         (m.comprador ? `, la tiene ${m.comprador}` : "");
+}
+
+function marcarSeleccion() {
+  document.querySelectorAll("#zonaPlano .chapa").forEach(b => {
+    const s = b.dataset.mesa === SALON.sel;
+    b.dataset.sel = s ? "1" : "0";
+    b.setAttribute("aria-pressed", String(s));
+  });
+  pintarFicha();
+}
+
+function pintarFicha() {
+  const f = $("#fichaMesa");
+  if (!f) return;
+  const m = SALON.mesas.find(x => x.id === SALON.sel);
+  if (!m) {
+    f.className = "ficha sin-mesa";
+    f.innerHTML = `<p class="ayuda">Tocá una mesa para ver de qué tamaño es,
+      cuánto cuesta y quién la tiene.</p>`;
+    return;
+  }
+  const dueño = SALON.compras.find(c => mesaDeCompra(c) === m);
+  const chica = noEntra(dueño, m);
+
+  f.className = "ficha" + (m.ocupada ? " ocupada" : "");
+  f.innerHTML = `
+    <div class="ficha-cab">
+      <span class="ficha-et">${esc(m.etiqueta)}</span>
+      <div>
+        <h4>${esc(CAT_TXT[m.categoria] || "Mesa")} ${esc(m.etiqueta)}
+          · ${esc((PLANTA_TXT[m.planta] || m.planta)).toLowerCase()}</h4>
+        <p>${manillasTxt(m.manillas)} · ${bs(m.precio)}</p>
+      </div>
+      <span class="pastilla ${m.ocupada ? "gris" : "verde"}">${m.ocupada ? "Ocupada" : "Libre"}</span>
+    </div>
+    ${m.ocupada ? `<p class="ficha-quien">${m.comprador
+        ? `La tiene <b>${esc(m.comprador)}</b>${m.rrpp_nombre ? ` · vendió ${esc(m.rrpp_nombre)}` : ""}`
+        : "Ocupada"}${m.orden_estado && m.orden_estado !== "pagada"
+        ? ` · la orden está <b>${esc(m.orden_estado)}</b>` : ""}</p>` : ""}
+    ${chica ? `<p class="chica-aviso">${esc(m.etiqueta)} es de ${num(m.manillas)} y
+       lo que compró ${esc(dueño.comprador || "esta orden")} trae ${num(dueño.manillas)}:
+       faltan ${num(Number(dueño.manillas) - Number(m.manillas))} lugares. Juntale otra mesa
+       o avisale al equipo.</p>` : ""}
+    ${SALON.editar ? accionesFicha(m) : ""}`;
+}
+
+function accionesFicha(m) {
+  if (m.ocupada) {
+    /* Sin orden_id no hay a quién liberarle: no puede pasar del lado del
+       administrador —mesas_evento() se lo da entero— y si pasara, un botón
+       que no sabe qué soltar es peor que no tenerlo. */
+    return m.orden_id
+      ? `<div class="ficha-acciones">
+           <button type="button" class="btn plano chico" data-liberar="${esc(m.orden_id)}">Liberar la mesa</button>
+         </div>` : "";
+  }
+  const sinMesa = SALON.compras.filter(c => !mesaDeCompra(c));
+  if (!sinMesa.length) return `<p class="ayuda">No queda ninguna compra esperando mesa.</p>`;
+  /* Primero las compras de mesa: son las que la están esperando de verdad.
+     Las otras quedan abajo por si el equipo decide sentar a alguien igual,
+     que es una decisión de la casa y no algo que la pantalla deba impedir. */
+  const orden = [...sinMesa].sort((a, b) =>
+    (compraDeMesa(b) ? 1 : 0) - (compraDeMesa(a) ? 1 : 0) ||
+    Number(b.manillas) - Number(a.manillas));
+  return `<div class="ficha-acciones">
+    <select id="selCompra" aria-label="Compra a la que darle la mesa ${esc(m.etiqueta)}">
+      ${orden.map(c => `<option value="${esc(c.orden_id)}"
+        >${esc(c.comprador || "Sin nombre")} · ${manillasTxt(c.manillas)} · ${esc(c.detalle || "")}${
+          noEntra(c, m) ? ` — no entra: la mesa es de ${num(m.manillas)}` : ""}</option>`).join("")}
+    </select>
+    <button type="button" class="btn primario chico" data-dar="${esc(m.id)}">Asignar</button>
+  </div>`;
+}
+
+function clicEnPlano(e) {
+  const ch = e.target.closest("button.chapa");
+  if (ch) {
+    SALON.sel = SALON.sel === ch.dataset.mesa ? null : ch.dataset.mesa;
+    marcarSeleccion();
+    return;
+  }
+  const b = e.target.closest("button[data-liberar],button[data-dar]");
+  if (!b) return;
+  if (b.dataset.liberar) return liberarMesa(b.dataset.liberar);
+  const sel = $("#selCompra");
+  if (sel && sel.value) return asignarMesa(sel.value, b.dataset.dar);
+}
+
+/* ── repartir ──
+   asignar_mesa() NO valida que la mesa alcance para las manillas del
+   combo, y es a propósito: los boliches juntan dos mesas para un grupo
+   grande todo el tiempo, y bloquearlo haría que el administrador pelee
+   con el sistema en vez de usarlo. Pero que la base no lo impida no
+   significa que la pantalla se calle: el que reparte tiene que enterarse
+   acá, no el sábado con veinte personas paradas frente a una mesa de
+   catorce. Avisa, dice cuánto falta, y deja seguir. */
+async function asignarMesa(ordenId, mesaId) {
+  const c = SALON.compras.find(x => x.orden_id === ordenId);
+  const m = SALON.mesas.find(x => x.id === mesaId);
+  if (noEntra(c, m) && !confirm(
+      `${m.etiqueta} es de ${m.manillas} y el combo trae ${c.manillas}: ` +
+      `faltan ${Number(c.manillas) - Number(m.manillas)} lugares.\n\n` +
+      `Se puede asignar igual —para eso se juntan mesas—, pero alguien se va a ` +
+      `quedar parado si nadie lo sabe. ¿La asigno?`)) return;
+
+  const { data, error } = await sb.rpc("asignar_mesa", { p_orden: ordenId, p_mesa: mesaId });
+  /* El error es el 'Sin permiso' de puede_editar(): no es un resultado del
+     reparto, es alguien que no debería haber llegado hasta acá. */
+  if (error) { avisar(error.message); return; }
+  /* `motivo` viene armado desde el SQL y se muestra TAL CUAL: nombra la
+     mesa y a quién la tiene, y el que lo lee está parado frente al
+     cliente. Rearmarlo acá perdería justo esos dos datos, que la pantalla
+     no tiene cuando el update toca cero filas. `codigo` es para la
+     máquina; para esto alcanza con `ok`. */
+  avisar(data.motivo);
+  SALON.asignando = null;
+  if (data.ok) SALON.sel = mesaId;
+  await refrescarSalon();
+}
+
+async function liberarMesa(ordenId) {
+  const { data, error } = await sb.rpc("liberar_mesa", { p_orden: ordenId });
+  if (error) { avisar(error.message); return; }
+  avisar(data.motivo);
+  SALON.asignando = null;
+  await refrescarSalon();
 }
 
 /* ── arranque: si ya había sesión, entrar directo ── */
