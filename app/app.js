@@ -494,9 +494,27 @@ async function mostrarListo() {
   pararReloj();
   $("#listoNota").textContent =
     `${S.entradas.length} ${S.entradas.length === 1 ? "entrada" : "entradas"} a nombre de ${S.comprador.nombre}.`;
+
+  // Este link es el único camino de vuelta si se cierra la pestaña sin
+  // descargar: por eso se muestra siempre, no solo cuando el correo falla.
+  const linkOrden = `${location.origin}/orden/?id=${S.orden.id}`;
+  $("#listoLink").textContent = linkOrden;
+  $("#btnCopiarLink").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(linkOrden);
+      avisar("Link copiado.");
+    } catch (err) {
+      avisar("No se pudo copiar: " + err.message);
+    }
+  };
+
+  // El correo depende de si RESEND_API_KEY está configurada de verdad
+  // (D.correo_configurado, que manda la función `evento`). Si no lo está,
+  // ningún correo sale nunca — prometerlo ahí sería mentir.
+  const correoOk = D.correo_configurado !== false;
   $("#listoRef").textContent =
-    `Orden ${S.orden.id}${S.orden.pago_ref ? " · pago " + S.orden.pago_ref : ""}. ` +
-    `También te las mandamos a ${S.comprador.email}.`;
+    `Orden ${S.orden.id}${S.orden.pago_ref ? " · pago " + S.orden.pago_ref : ""}.` +
+    (correoOk ? ` También te las mandamos a ${S.comprador.email}.` : "");
   $("#tickets").innerHTML = `<p class="rail-vacio">Dibujando tus entradas…</p>`;
 
   if (document.fonts && document.fonts.ready) await document.fonts.ready;

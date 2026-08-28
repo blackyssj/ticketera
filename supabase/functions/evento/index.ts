@@ -36,6 +36,12 @@ const rpc = (fn: string, args: Record<string, unknown>) =>
 // mejor mostrar la variable cruda que fingir "simulada" en silencio.
 const PASARELA = (Deno.env.get("PASARELA") ?? "").trim().toLowerCase() || "(sin configurar)";
 
+// Igual de fail-open que PASARELA antes de su arreglo: si no hay
+// RESEND_API_KEY, enviar-entradas nunca manda nada, así que la pantalla
+// final no puede prometer un correo que no va a salir. El frontend usa
+// este dato para no prometerlo.
+const CORREO_CONFIGURADO = !!Deno.env.get("RESEND_API_KEY");
+
 const MES = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
 const DIA = ["DOM","LUN","MAR","MIÉ","JUE","VIE","SÁB"];
 const q = (s: string) => encodeURIComponent(s);
@@ -92,6 +98,7 @@ Deno.serve(async (req) => {
     return json({
       ok: true,
       pasarela: PASARELA,
+      correo_configurado: CORREO_CONFIGURADO,
       organizador: { nombre: o.nombre, fee_pct: Number(o.fee_pct),
                      fee_fijo: Number(o.fee_fijo_transaccion), fee_piso: Number(o.fee_piso) },
       evento: {
