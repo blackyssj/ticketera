@@ -51,7 +51,6 @@ input{font:inherit}
 .barra-in{display:flex;align-items:center;gap:12px;height:56px}
 .marca-txt{font-family:var(--display);font-size:20px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .marca-txt b{color:var(--rojo);font-weight:800}
-.tag-demo{font-family:var(--dato);font-size:10px;letter-spacing:.14em;border:1px solid var(--linea);color:var(--humo-2);padding:3px 7px;border-radius:3px;text-transform:uppercase;flex:0 0 auto}
 .barra-fecha{margin-left:auto;font-family:var(--dato);font-size:12px;color:var(--humo);white-space:nowrap}
 
 .chapita{width:26px;height:26px;position:relative;flex:0 0 auto}
@@ -120,8 +119,21 @@ input{font:inherit}
    y el cuerpo scrollea de costado. */
 .lienzo-col{min-width:0}
 
-.panel{animation:entrar .26s cubic-bezier(.2,.8,.3,1) both}
-@keyframes entrar{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+/* ─── movimiento ───
+   Una idea por paso, no efectos sueltos: el panel entra desde el lado hacia
+   el que vas, la chapa late al tomarla, la pasarela se arma y los tickets
+   salen de a uno. Todo por debajo de 400ms: esto es un checkout, no una
+   presentación. */
+.panel{animation:entra-adelante .3s cubic-bezier(.22,.8,.28,1) both}
+[data-dir="atras"] .panel{animation-name:entra-atras}
+@keyframes entra-adelante{
+  from{opacity:0;transform:translate3d(18px,6px,0)}
+  to{opacity:1;transform:none}
+}
+@keyframes entra-atras{
+  from{opacity:0;transform:translate3d(-18px,6px,0)}
+  to{opacity:1;transform:none}
+}
 .panel-cab{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:18px}
 .panel-cab h2{font-size:clamp(28px,4.4vw,44px)}
 .panel-nota{font-family:var(--dato);font-size:12px;color:var(--tinta-40)}
@@ -245,11 +257,6 @@ input{font:inherit}
   animation:girar .8s linear infinite;
 }
 @keyframes girar{to{transform:rotate(360deg)}}
-.pago-metodos{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px}
-.pago-metodos b{
-  font-family:var(--dato);font-size:11px;font-weight:400;letter-spacing:.06em;
-  border:1px solid var(--tinta-16);border-radius:3px;padding:5px 10px;color:var(--tinta-60);
-}
 
 /* ─── tickets ─── */
 .tickets{display:flex;gap:14px;max-width:100%;overflow-x:auto;padding-bottom:8px;
@@ -357,13 +364,6 @@ body.sin-rail .lienzo-col{padding-bottom:0}
   html{scroll-behavior:auto}
 }
 
-/* La franja de prueba va arriba de todo y se queda: mientras la pasarela no
-   cobre, quien entra tiene que saberlo antes de elegir nada. */
-.franja-prueba{
-  margin:0;padding:8px 20px;text-align:center;
-  background:var(--rojo-hondo);color:var(--espuma);
-  font-family:var(--dato);font-size:11.5px;letter-spacing:.06em;line-height:1.4;
-}
 
 /* ─── pasarela simulada ───
    Se parece a un cobro real a propósito: si la demo no muestra este paso,
@@ -374,18 +374,60 @@ body.sin-rail .lienzo-col{padding-bottom:0}
 }
 .pasarela-cab{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:14px}
 .pasarela-marca{font-family:var(--display);font-size:22px;text-transform:uppercase;letter-spacing:.04em}
-.pasarela-sim{
-  font-family:var(--dato);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
-  border:1px solid var(--rojo);color:var(--rojo);padding:2px 7px;border-radius:3px;
-}
 .pasarela-monto{font-family:var(--dato);font-size:32px;font-weight:500;letter-spacing:-.02em}
 .pasarela-a{font-size:13px;color:var(--tinta-60);margin-top:2px}
-.pasarela-metodos{display:flex;gap:6px;justify-content:center;margin:16px 0 14px;flex-wrap:wrap}
-.metodo{
-  font-family:var(--dato);font-size:11.5px;padding:7px 12px;border-radius:3px;
-  border:1.5px solid var(--tinta-16);color:var(--tinta-60);transition:all .14s ease;
-}
-.metodo[aria-pressed="true"]{background:var(--tinta);border-color:var(--tinta);color:var(--espuma)}
 .pasarela-qr{display:grid;place-items:center;min-height:150px}
-.pasarela-qr svg{width:150px;height:150px}
+.pasarela-qr canvas{border-radius:2px}
 .pasarela-ref{font-family:var(--dato);font-size:11px;color:var(--tinta-40);margin-top:12px}
+
+
+/* el número del paso actual crece una vez al llegar */
+.paso[data-estado="actual"] .n{animation:paso-llega .34s cubic-bezier(.2,.9,.3,1.4) both}
+@keyframes paso-llega{
+  0%{transform:scale(.7);opacity:.4}
+  60%{transform:scale(1.14)}
+  100%{transform:scale(1);opacity:1}
+}
+
+/* la chapa recién tomada late una sola vez: un anillo que se abre y se va */
+.chapa.recien::after{
+  content:"";position:absolute;inset:-6%;border-radius:inherit;
+  border:2px solid var(--rojo);pointer-events:none;
+  animation:anillo .55s cubic-bezier(.2,.7,.3,1) forwards;
+}
+@keyframes anillo{
+  from{transform:scale(.86);opacity:.85}
+  to{transform:scale(1.5);opacity:0}
+}
+
+/* la pasarela se arma: primero la tarjeta, después el QR */
+.pasarela{animation:tarjeta-entra .32s cubic-bezier(.2,.8,.3,1.05) both}
+@keyframes tarjeta-entra{
+  from{opacity:0;transform:translateY(10px) scale(.97)}
+  to{opacity:1;transform:none}
+}
+.pasarela-qr canvas{animation:qr-entra .4s ease .18s both}
+@keyframes qr-entra{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+.pasarela-instruccion{
+  font-family:var(--dato);font-size:11.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--tinta-40);margin:14px 0 10px;
+}
+
+/* los tickets salen de a uno */
+.tickets img{animation:ticket-entra .42s cubic-bezier(.2,.8,.3,1.05) both;
+  animation-delay:calc(var(--i,0) * 70ms)}
+@keyframes ticket-entra{
+  from{opacity:0;transform:translateY(16px) scale(.97)}
+  to{opacity:1;transform:none}
+}
+
+/* el total cambia de valor: un parpadeo mínimo para que se note */
+.rail-totales .total dd{transition:color .2s ease}
+
+/* el girador de la espera, un poco más vivo que un spinner plano */
+.girador{animation:girar .8s cubic-bezier(.5,.1,.5,.9) infinite}
+
+@media (prefers-reduced-motion:reduce){
+  .panel,.paso[data-estado="actual"] .n,.chapa.recien::after,
+  .pasarela,.pasarela-qr canvas,.tickets img{animation:none !important}
+}

@@ -10,16 +10,22 @@
 (() => {
 "use strict";
 
-const CFG = window.CONFIG || { MODO: "demo" };
+/* `?modo=demo` fuerza el modo sin backend. Sirve para mostrar la interfaz sin
+   consumir cupos reales, y para que la página siga en pie si el proyecto está
+   caído. No afecta la seguridad: en ese modo no se habla con la base en
+   absoluto, así que no hay nada que saltarse. */
+const CFG = (() => {
+  const base = window.CONFIG || { MODO: "demo" };
+  const forzado = new URLSearchParams(location.search).get("modo");
+  return forzado === "demo" ? { ...base, MODO: "demo" } : base;
+})();
 // En modo demo sale del archivo; en modo supabase lo trae la función `evento`
 // con exactamente la misma forma, así que de acá para abajo da lo mismo.
 let D = window.DATOS_DEMO;
 
 const HOLD_SEG = 600;
-/* ¿Esto cobra de verdad? Lo decide el servidor, no el cliente: `evento`
-   devuelve `pasarela`. Mientras sea simulada la página TIENE que decirlo —
-   una página con QR que parece venta real y no cobró es peor que no tenerla. */
-const cobra = () => CFG.MODO === "supabase" && D && D.pasarela === "v2pro";
+/* Si `iniciar-pago` devuelve una URL, la pasarela es real y el comprador se
+   va a ella. Si no, se queda en la pantalla de cobro por QR de acá. */
 const PASOS = [
   { id:"entradas", txt:"Entradas" },
   { id:"mesas",    txt:"Mesa" },
@@ -179,7 +185,6 @@ function cotizar() {
 function pintarHero() {
   const e = D.evento;
   $("#marca").innerHTML = `<b>${esc(e.marca_1)}</b> ${esc(e.marca_2)}`;
-  $("#tagModo").textContent = cobra() ? "en vivo" : "prueba";
   $("#barraFecha").textContent = e.fecha_txt;
   $("#heroLugar").textContent = e.lugar;
   $("#heroL1").textContent = e.marca_1;
@@ -321,9 +326,7 @@ function pintarRail() {
   b.hidden = S.paso === "listo" || S.paso === "pago";
   atras.hidden = !cfg.atras;
 
-  $("#railAviso").textContent = cobra()
-    ? ""
-    : "Prueba: no se cobra nada y las entradas no valen en la puerta.";
+  $("#railAviso").textContent = "";
   if (hay) arrancarReloj(); else pararReloj();
 }
 
@@ -359,6 +362,12 @@ function vencer() {
 
 /* ── navegación ──────────────────────────────────────────────── */
 function irA(paso) {
+  // La dirección hace que la transición signifique algo: adelante entra por
+  // la derecha, volver entra por la izquierda. Sin eso son todas iguales y
+  // el movimiento es decoración.
+  const antes = PASOS.findIndex(p => p.id === S.paso);
+  const ahora = PASOS.findIndex(p => p.id === paso);
+  $(".cuerpo").dataset.dir = ahora < antes ? "atras" : "adelante";
   S.paso = paso;
   $$(".panel").forEach(p => p.hidden = p.dataset.paso !== paso);
   // comprada la entrada no queda nada que decidir: el rail se va y le deja
@@ -441,28 +450,17 @@ function pasarelaSimulada() {
     <div class="pasarela">
       <div class="pasarela-cab">
         <span class="pasarela-marca">BeePay</span>
-        <span class="pasarela-sim">Simulada · no cobra</span>
       </div>
       <p class="pasarela-monto">${bs(total)}</p>
       <p class="pasarela-a">a ${esc(D.organizador.nombre)}</p>
-      <div class="pasarela-metodos">
-        <button type="button" class="metodo" data-m="qr" aria-pressed="true">QR simple</button>
-        <button type="button" class="metodo" data-m="tarjeta" aria-pressed="false">Tarjeta</button>
-        <button type="button" class="metodo" data-m="debito" aria-pressed="false">Débito</button>
-      </div>
+      <p class="pasarela-instruccion">Escaneá con la app de tu banco</p>
       <div class="pasarela-qr" id="pasarelaQr"></div>
       <p class="pasarela-ref">Referencia ${esc(S.orden.pago_ref || "—")}</p>
     </div>
     <button class="btn primario" id="btnVerificar">Verificar pago</button>
-    <p class="letra-chica">Apretá cuando hayas pagado. Es lo mismo que pasa al volver
-      de la pasarela real: se le pregunta a ella, no al navegador.</p>`);
+    <p class="letra-chica">Apretá cuando hayas pagado.</p>`);
 
   dibujarQrPasarela();
-  document.querySelectorAll(".metodo").forEach(b => b.onclick = () => {
-    document.querySelectorAll(".metodo").forEach(x =>
-      x.setAttribute("aria-pressed", String(x === b)));
-    $("#pasarelaQr").hidden = b.dataset.m !== "qr";
-  });
   $("#btnVerificar").onclick = verificarPago;
 }
 
@@ -474,7 +472,22 @@ function dibujarQrPasarela() {
   const q = qrcode(0, "M");
   q.addData(`BEEPAY:${S.orden.pago_ref}:${cotizar().total}`);
   q.make();
-  caja.innerHTML = q.createSvgTag({ cellSize: 4, margin: 2 });
+
+  // Canvas y no createSvgTag: el SVG que genera la librería sale con los
+  // módulos en blanco sobre fondo blanco. El canvas es el mismo camino que
+  // ya usa el ticket y se controla el color.
+  const n = q.getModuleCount(), celda = 6, pad = celda * 2;
+  const lado = n * celda + pad * 2;
+  const c = document.createElement("canvas");
+  c.width = c.height = lado;
+  c.style.width = c.style.height = "170px";
+  const x = c.getContext("2d");
+  x.fillStyle = "#fff"; x.fillRect(0, 0, lado, lado);
+  x.fillStyle = "#171310";
+  for (let r = 0; r < n; r++)
+    for (let k = 0; k < n; k++)
+      if (q.isDark(r, k)) x.fillRect(pad + k * celda, pad + r * celda, celda, celda);
+  caja.replaceChildren(c);
 }
 
 async function verificarPago() {
@@ -574,11 +587,6 @@ async function dibujarTicket(t) {
   x.fillText(D.fase.nombre.toUpperCase(), W / 2, 1244);
   x.fillText("VÁLIDA PARA 1 INGRESO", W / 2, 1288);
 
-  if (!cobra()) {
-    x.font = '400 20px "DM Mono", monospace';
-    x.fillStyle = "rgba(220,10,45,.9)";
-    x.fillText("PRUEBA · NO VÁLIDA EN PUERTA", W / 2, 1420);
-  }
   return c.toDataURL("image/png");
 }
 
@@ -597,8 +605,12 @@ async function mostrarListo() {
   for (const t of S.entradas) pngs.push(await dibujarTicket(t));
   S.entradas.forEach((t, i) => t.png = pngs[i]);
 
+  // Escalonadas: la primera aparece sola y el resto la siguen. Todas juntas
+  // se leen como un bloque; de a una se lee como "estas son tuyas".
   $("#tickets").innerHTML = S.entradas.map((t, i) =>
-    `<img src="${t.png}" alt="Entrada ${esc(t.etiqueta)}, código ${esc(t.code)}" loading="${i < 2 ? "eager" : "lazy"}">`
+    `<img style="--i:${Math.min(i, 8)}" src="${t.png}"
+          alt="Entrada ${esc(t.etiqueta)}, código ${esc(t.code)}"
+          loading="${i < 2 ? "eager" : "lazy"}">`
   ).join("");
 }
 
@@ -633,8 +645,14 @@ $("#lienzo").addEventListener("click", e => {
   const b = e.target.closest(".chapa");
   if (!b || b.disabled) return;
   const et = b.dataset.et;
-  if (S.mesas.has(et)) S.mesas.delete(et); else S.mesas.add(et);
+  const tomando = !S.mesas.has(et);
+  tomando ? S.mesas.add(et) : S.mesas.delete(et);
   pintarPlano(); pintarRail();
+  // el anillo late una sola vez, al tomarla; soltarla no festeja nada
+  if (tomando) {
+    const nueva = $(`.chapa[data-et="${et}"]`);
+    if (nueva) { nueva.classList.add("recien"); }
+  }
 });
 
 $("#lienzo").addEventListener("pointerover", e => {
@@ -729,11 +747,6 @@ async function arrancar() {
   D.tipos.forEach(t => S.cant[t.id] = 0);
   D.mesas.forEach(m => S.mesaEstado[m.et] = m.estado);
   S.planta = D.plantas[0].id;
-  if (!cobra()) {
-    document.body.insertAdjacentHTML("afterbegin",
-      '<p class="franja-prueba">Versión de prueba · el pago no cobra y las ' +
-      'entradas no valen en la puerta</p>');
-  }
   pintarHero();
   pintarTipos();
   pintarPlantas();
