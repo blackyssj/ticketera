@@ -302,12 +302,57 @@ async function nuevaFase(eventoId) {
   const nombre = prompt("Nombre de la fase (Preventa 1, General…)");
   if (!nombre) return;
   const hasta = prompt("¿Hasta qué día vale? (AAAA-MM-DD, vacío = sin fin)");
+  /* orden fijo en 0 empataba con `order by orden` — Postgres desempataba a
+     su antojo y fase_vigente() podía resolver la fase incorrecta. Acá se
+     calcula el siguiente a partir del máximo que ya tenga el evento. */
+  const { data: ultima } = await sb.from("evento_fase").select("orden")
+    .eq("evento_id", eventoId).order("orden", { ascending: false }).limit(1);
+  const orden = (ultima && ultima[0] ? ultima[0].orden : -1) + 1;
   const { error } = await sb.from("evento_fase").insert({
     organizador_id: S.yo.organizador_id, evento_id: eventoId,
     nombre: nombre.trim(), desde: new Date().toISOString(),
-    hasta: hasta ? `${hasta}T23:59:00-04:00` : null, orden: 0 });
+    hasta: hasta ? `${hasta}T23:59:00-04:00` : null, orden });
   if (error) { avisar(error.message); return; }
   pantallaEntradas(eventoId);
+}
+
+/* El chequeo se muestra ANTES de que el organizador apriete, no como error
+   después. Un botón que se puede apretar y siempre falla enseña a ignorar
+   los mensajes. */
+async function zonaPublicar(eventoId, estado) {
+  const { data: chequeo } = await sb.rpc("listo_para_publicar", { p_evento: eventoId });
+  const listo = chequeo && chequeo.ok;
+  const faltan = (chequeo && chequeo.faltan) || [];
+  const publicado = estado === "publicado";
+  const url = `${location.origin}/${CFG.ORGANIZADOR}/`;
+
+  $("#zonaPublicar").innerHTML = `
+    <div class="publicar ${publicado ? "vivo" : ""}">
+      <div>
+        <h3>${publicado ? "A la venta" : "Sin publicar"}</h3>
+        <p>${publicado
+          ? `Cualquiera con el link puede comprar.`
+          : listo
+            ? "Está todo listo para ponerlo a la venta."
+            : "Falta esto antes de poder publicarlo:"}</p>
+        ${!publicado && !listo
+          ? `<ul class="faltan">${faltan.map(f => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
+      </div>
+      <button class="btn ${publicado ? "plano" : "primario"}" id="btnPublicar"
+        ${!publicado && !listo ? "disabled" : ""}>
+        ${publicado ? "Quitar de la venta" : "Poner a la venta"}</button>
+    </div>`;
+
+  $("#btnPublicar").onclick = async () => {
+    const { data, error } = await sb.rpc("publicar_evento",
+      { p_evento: eventoId, p_publicar: !publicado });
+    if (error) {
+      avisar(error.message.replace(/^.*NO_PUBLICABLE:\s*/, "Falta: "));
+      return;
+    }
+    avisar(data.estado === "publicado" ? "El evento está a la venta." : "Quitado de la venta.");
+    pantallaEntradas(eventoId);
+  };
 }
 
 /* ── arranque: si ya había sesión, entrar directo ── */
