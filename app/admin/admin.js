@@ -194,6 +194,122 @@ async function abrirEvento(id) {
   };
 }
 
+/* La grilla es fases × tipos porque el precio vive en el cruce. Con dos
+   listas separadas el organizador no ve que "General" cuesta distinto en
+   cada fase, y eso es justamente lo que está vendiendo. */
+async function pantallaEntradas(eventoId) {
+  $("#main").innerHTML = `<p class="cargando">Cargando…</p>`;
+
+  const [ev, tipos, fases, precios] = await Promise.all([
+    sb.from("eventos").select("id,nombre,estado").eq("id", eventoId).single(),
+    sb.from("tipo_entrada").select("*").eq("evento_id", eventoId).order("orden"),
+    sb.from("evento_fase").select("*").eq("evento_id", eventoId).order("orden"),
+    sb.from("fase_precio").select("*"),
+  ]);
+  const T = tipos.data || [], F = fases.data || [];
+  const idsFase = new Set(F.map(f => f.id));
+  const P = new Map((precios.data || [])
+    .filter(p => idsFase.has(p.fase_id))
+    .map(p => [`${p.fase_id}|${p.tipo_id}`, p]));
+
+  $("#main").innerHTML = `
+    <div class="cab-seccion">
+      <button class="btn plano chico" id="btnVolver">← ${esc(ev.data.nombre)}</button>
+      <h2>Entradas y precios</h2>
+    </div>
+    <div class="grilla-envoltorio">
+      <table class="grilla">
+        <thead><tr><th>Tipo</th>
+          ${F.map(f => `<th>${esc(f.nombre)}<em>${ventana(f)}</em></th>`).join("")}
+          <th class="col-accion"><button class="btn plano chico" id="btnFase">+ Fase</button></th>
+        </tr></thead>
+        <tbody>
+          ${T.map(t => `<tr data-tipo="${t.id}">
+            <th>${esc(t.nombre)}<em>${esc(t.descripcion || "")}</em></th>
+            ${F.map(f => {
+              const p = P.get(`${f.id}|${t.id}`);
+              return `<td>
+                <input class="celda-precio" data-f="${f.id}" data-t="${t.id}"
+                       type="number" min="0" step="1" placeholder="—"
+                       value="${p ? Number(p.precio) : ""}" aria-label="Precio">
+                <input class="celda-cupo" data-f="${f.id}" data-t="${t.id}"
+                       type="number" min="1" placeholder="sin tope"
+                       value="${p && p.cupo != null ? p.cupo : ""}" aria-label="Cupo">
+              </td>`;
+            }).join("")}
+            <td class="col-accion"></td></tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div class="acciones">
+      <button class="btn plano" id="btnTipo">+ Tipo de entrada</button>
+      <button class="btn primario" id="btnGuardarGrilla">Guardar precios</button>
+    </div>
+    <p class="ayuda">Precio vacío = ese tipo no se vende en esa fase. Cupo vacío = sin tope.</p>
+    <div id="zonaPublicar"></div>`;
+
+  $("#btnVolver").onclick = () => abrirEvento(eventoId);
+  $("#btnTipo").onclick = () => nuevoTipo(eventoId);
+  $("#btnFase").onclick = () => nuevaFase(eventoId);
+  $("#btnGuardarGrilla").onclick = () => guardarGrilla(eventoId, P);
+  zonaPublicar(eventoId, ev.data.estado);
+}
+
+function ventana(f) {
+  const d = x => x ? new Date(x).toLocaleDateString("es-BO", { day: "numeric", month: "short" }) : "";
+  if (!f.desde && !f.hasta) return "siempre";
+  return `${d(f.desde)} → ${d(f.hasta) || "sin fin"}`;
+}
+
+async function guardarGrilla(eventoId, P) {
+  const filas = [], borrar = [];
+  document.querySelectorAll(".celda-precio").forEach(inp => {
+    const f = inp.dataset.f, t = inp.dataset.t;
+    const cupoInp = document.querySelector(`.celda-cupo[data-f="${f}"][data-t="${t}"]`);
+    const precio = inp.value.trim();
+    if (precio === "") { if (P.has(`${f}|${t}`)) borrar.push({ f, t }); return; }
+    filas.push({ organizador_id: S.yo.organizador_id, fase_id: f, tipo_id: t,
+                 precio: Number(precio),
+                 cupo: cupoInp.value.trim() === "" ? null : Number(cupoInp.value) });
+  });
+
+  for (const b of borrar) {
+    await sb.from("fase_precio").delete().eq("fase_id", b.f).eq("tipo_id", b.t);
+  }
+  if (filas.length) {
+    const { error } = await sb.from("fase_precio")
+      .upsert(filas, { onConflict: "fase_id,tipo_id" });
+    if (error) { avisar("No se pudo guardar: " + error.message); return; }
+  }
+  avisar("Precios guardados.");
+  pantallaEntradas(eventoId);
+}
+
+async function nuevoTipo(eventoId) {
+  const nombre = prompt("Nombre del tipo de entrada (General, VIP, Palco…)");
+  if (!nombre) return;
+  const { error } = await sb.from("tipo_entrada").insert({
+    organizador_id: S.yo.organizador_id, evento_id: eventoId,
+    nombre: nombre.trim(), orden: Date.parse(new Date().toISOString()) % 1000 });
+  if (error) {
+    avisar(error.code === "23505" ? "Ya existe un tipo con ese nombre." : error.message);
+    return;
+  }
+  pantallaEntradas(eventoId);
+}
+
+async function nuevaFase(eventoId) {
+  const nombre = prompt("Nombre de la fase (Preventa 1, General…)");
+  if (!nombre) return;
+  const hasta = prompt("¿Hasta qué día vale? (AAAA-MM-DD, vacío = sin fin)");
+  const { error } = await sb.from("evento_fase").insert({
+    organizador_id: S.yo.organizador_id, evento_id: eventoId,
+    nombre: nombre.trim(), desde: new Date().toISOString(),
+    hasta: hasta ? `${hasta}T23:59:00-04:00` : null, orden: 0 });
+  if (error) { avisar(error.message); return; }
+  pantallaEntradas(eventoId);
+}
+
 /* ── arranque: si ya había sesión, entrar directo ── */
 (async () => {
   try {
