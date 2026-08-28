@@ -82,7 +82,29 @@ on conflict (id) do update set nombre      = excluded.nombre,
                                orden       = excluded.orden,
                                activo      = excluded.activo;
 
--- Lo de la demo (General, VIP, Amstel Club, Branca Lounge, Mesas) se apaga,
+-- ── las entradas sueltas ─────────────────────────────────────────────────
+-- El flyer que mandó el cliente es solo de reservas, así que estos dos
+-- precios son PROVISORIOS hasta que confirme los suyos. Van igual porque no
+-- todo el que va a la Fexpo reserva mesa, y una página que solo vende mesas
+-- deja afuera a la mayoría.
+insert into tipo_entrada (id, organizador_id, evento_id, nombre, descripcion, incluye,
+                          categoria, manillas, orden, activo) values
+ ('11000000-0000-4000-8000-000000000001','a0000000-0000-4000-8000-000000000001',
+  'e0000000-0000-4000-8000-000000000001','General',
+  'Acceso al predio durante la noche.', null,'entrada',1,10,true),
+ ('11000000-0000-4000-8000-000000000002','a0000000-0000-4000-8000-000000000001',
+  'e0000000-0000-4000-8000-000000000001','VIP',
+  'Sector elevado, con barra propia.',
+  'Dos Amstel de bienvenida.','entrada',1,11,true)
+on conflict (id) do update set nombre      = excluded.nombre,
+                               descripcion = excluded.descripcion,
+                               incluye     = excluded.incluye,
+                               categoria   = excluded.categoria,
+                               manillas    = excluded.manillas,
+                               orden       = excluded.orden,
+                               activo      = excluded.activo;
+
+-- Lo que quedó de la demo vieja (Amstel Club, Branca Lounge, Mesas) se apaga,
 -- no se borra: apagado deja de venderse (0020) y el historial queda.
 update tipo_entrada set activo = false
  where evento_id = 'e0000000-0000-4000-8000-000000000001'
@@ -90,7 +112,9 @@ update tipo_entrada set activo = false
                   '11000000-0000-4000-8000-000000000012',
                   '11000000-0000-4000-8000-000000000013',
                   '11000000-0000-4000-8000-000000000014',
-                  '11000000-0000-4000-8000-000000000015');
+                  '11000000-0000-4000-8000-000000000015',
+                  '11000000-0000-4000-8000-000000000001',
+                  '11000000-0000-4000-8000-000000000002');
 
 -- ── precio y cupo ────────────────────────────────────────────────────────
 -- El cupo es cuántas reservas de cada combo hay para vender. El flyer no lo
@@ -100,6 +124,8 @@ insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo) values
  ('a0000000-0000-4000-8000-000000000001','22000000-0000-4000-8000-000000000010','11000000-0000-4000-8000-000000000012',5500,14),
  ('a0000000-0000-4000-8000-000000000001','22000000-0000-4000-8000-000000000010','11000000-0000-4000-8000-000000000013',3000,12),
  ('a0000000-0000-4000-8000-000000000001','22000000-0000-4000-8000-000000000010','11000000-0000-4000-8000-000000000014',2000,18),
- ('a0000000-0000-4000-8000-000000000001','22000000-0000-4000-8000-000000000010','11000000-0000-4000-8000-000000000015',1500,20)
+ ('a0000000-0000-4000-8000-000000000001','22000000-0000-4000-8000-000000000010','11000000-0000-4000-8000-000000000015',1500,20),
+ ('a0000000-0000-4000-8000-000000000001','22000000-0000-4000-8000-000000000010','11000000-0000-4000-8000-000000000001',120,400),
+ ('a0000000-0000-4000-8000-000000000001','22000000-0000-4000-8000-000000000010','11000000-0000-4000-8000-000000000002',250,60)
 on conflict (fase_id, tipo_id) do update set precio = excluded.precio,
                                              cupo   = excluded.cupo;

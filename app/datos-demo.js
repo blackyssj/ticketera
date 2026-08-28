@@ -15,6 +15,13 @@ window.DATOS_DEMO = {
   },
   fase: { nombre: "Preventa", hasta_txt: "hasta el 12 de septiembre" },
   tipos: [
+    { id:"gen", nombre:"General", precio:120, antes:null, cupo:400,
+      manillas:1, categoria:"entrada",
+      desc:"Acceso al predio durante la noche.", incluye:null },
+    { id:"vip", nombre:"VIP", precio:250, antes:null, cupo:60,
+      manillas:1, categoria:"entrada",
+      desc:"Sector elevado, con barra propia.",
+      incluye:"Dos Amstel de bienvenida." },
     { id:"sab-serenata", nombre:"Combo Sábados + Serenata", precio:8000, antes:null, cupo:10,
       manillas:10, categoria:"mesa",
       desc:"Tu mesa para los sábados y la noche de serenata.",
