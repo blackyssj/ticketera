@@ -1,8 +1,9 @@
 # Ticketera
 
 Ticketera multi-tenant con landing pública de autoservicio.
-Diseño: `docs/superpowers/specs/2026-08-27-ticketera-design.md`
-Plan del bloque 1: `docs/superpowers/plans/2026-08-27-ticketera-bloque1-base.md`
+- **Diseño y decisiones:** [`docs/diseno.md`](docs/diseno.md)
+- **Plan del bloque 1 (la base):** [`docs/plan-bloque1-base.md`](docs/plan-bloque1-base.md)
+- **Por qué existe el producto:** [`docs/traspaso.md`](docs/traspaso.md)
 
 **En producción:** https://ticketera-coral.vercel.app
 
@@ -16,6 +17,7 @@ Plan del bloque 1: `docs/superpowers/plans/2026-08-27-ticketera-bloque1-base.md`
 | `supabase/seed.sql` | El evento de prueba (Amstel Ferial) |
 | `supabase/tests/invariantes.sql` | Los 4 guardas estructurales |
 | `scripts/` | Correr SQL y desplegar funciones con un PAT, sin la CLI |
+| `docs/` | Diseño, plan y el análisis que originó el producto |
 
 **Proyecto Supabase:** `mjotxzcddhqqpuhkcetl` (sa-east-1).
 La contraseña de la base está en `.credenciales`, que no se versiona.
