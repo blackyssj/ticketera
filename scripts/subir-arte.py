@@ -2,8 +2,8 @@
 """Sube el modelo de la entrada y lo ata al evento o a una fase.
 
     export SUPABASE_PAT=...
-    python3 scripts/subir-arte.py amstel ferial arte.png            # al evento
-    python3 scripts/subir-arte.py amstel ferial arte.png "Preventa 2"  # a una fase
+    python3 scripts/subir-arte.py amstel red-circle arte.png            # al evento
+    python3 scripts/subir-arte.py amstel red-circle arte.png "Reservas"  # a una fase
 
 El QR se dibuja ENCIMA de esta imagen, en el mismo lugar que en Bowie y
 BurTown: caja blanca del 52% del ancho, desde el 29% de la altura. Un arte

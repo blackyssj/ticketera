@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
     const o = await uno(`organizadores?slug=eq.${q(org)}&activo=is.true&select=id,nombre,fee_pct,fee_fijo_transaccion,fee_piso`);
     if (!o) return json({ ok: false, motivo: "Ese organizador no existe." }, 404);
 
-    const e = await uno(`eventos?organizador_id=eq.${o.id}&slug=eq.${q(ev)}&select=id,nombre,lugar,fecha,hora_inicio,edad_min,estado,tope_entradas_orden,arte_url`);
+    const e = await uno(`eventos?organizador_id=eq.${o.id}&slug=eq.${q(ev)}&select=id,nombre,descripcion,lugar,fecha,hora_inicio,edad_min,estado,tope_entradas_orden,arte_url`);
     if (!e) return json({ ok: false, motivo: "Ese evento no existe." }, 404);
     if (e.estado !== "publicado") return json({ ok: false, motivo: "El evento todavía no está a la venta." }, 404);
 
@@ -85,8 +85,12 @@ Deno.serve(async (req) => {
     tipos.sort((a, b) => a.orden - b.orden);
 
     // El comprador ya no elige mesa en un plano: compra el producto y el
-    // relacionador le asigna cuál. Solo se cuentan, para el dato del hero.
-    const mesas = await rest(`mesas?evento_id=eq.${e.id}&select=id`);
+    // relacionador le asigna cuál. El dato del hero sale del cupo que queda
+    // de los productos de mesa, NO de cuántas filas hay en `mesas`: ahí
+    // están todas las del predio, vendidas incluidas, y el hero prometía 24
+    // disponibles con cero para vender.
+    const reservas = tipos.filter((t) => t.categoria === "mesa")
+                          .reduce((n, t) => n + (t.cupo === 9999 ? 0 : t.cupo), 0);
 
     // el público ve tres estados y ninguno lleva el nombre de nadie
     const f = new Date(e.fecha + "T00:00:00-04:00");
@@ -107,11 +111,11 @@ Deno.serve(async (req) => {
         marca_2: partes.slice(1).join(" "),
         lugar: e.lugar ?? "",
         fecha_txt: `${DIA[f.getDay()]} ${f.getDate()} ${MES[f.getMonth()]} · ${String(e.hora_inicio).slice(0,5)}`,
-        bajada: "",
+        bajada: e.descripcion ?? "",
         datos: [["Puertas", String(e.hora_inicio).slice(0,5)],
                 ["Edad mínima", String(e.edad_min)],
-                ["Mesas", `${(mesas ?? []).length} disponibles`],
-                ["Pago", "QR, tarjeta y débito"]],
+                ["Reservas", `${reservas} disponibles`],
+                ["Pago", "Con QR"]],
         tope_entradas_orden: e.tope_entradas_orden,
         arte_url: e.arte_url ?? null,
       },

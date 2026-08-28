@@ -13,5 +13,5 @@ window.CONFIG = {
   SUPABASE_URL: "https://mjotxzcddhqqpuhkcetl.supabase.co",
   SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qb3R4emNkZGhxcXB1aGtjZXRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4NTk2NzMsImV4cCI6MjEwMzQzNTY3M30.yym969pECvbp_01-vM4d5QCVEvUV_kPUmNhtp51a0g0",
   ORGANIZADOR: "amstel",
-  EVENTO: "ferial"
+  EVENTO: "red-circle"
 };
