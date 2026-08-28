@@ -17,12 +17,21 @@ BASE = pathlib.Path(__file__).resolve().parent.parent / "supabase" / "functions"
 TODAS = ["evento", "crear-orden", "iniciar-pago", "estado-orden",
          "orden", "enviar-entradas"]
 
+# Por defecto False: evento, crear-orden, iniciar-pago, estado-orden y orden
+# las llama el público con la anon key, sin sesión. enviar-entradas es la
+# excepción — solo la llama estado-orden, del lado del servidor, con
+# cabeceras de service_role — así que va con JWT exigido. Antes mandaba
+# False para las seis por igual; eso la dejaba pública sin que nadie lo
+# hubiera decidido.
+VERIFY_JWT = {"enviar-entradas": True}
+
 def main() -> int:
     token = pat()
     fallos = 0
     for slug in (sys.argv[1:] or TODAS):
         cuerpo = (BASE / slug / "index.ts").read_text()
-        carga = json.dumps({"slug": slug, "name": slug, "body": cuerpo, "verify_jwt": False})
+        verify_jwt = VERIFY_JWT.get(slug, False)
+        carga = json.dumps({"slug": slug, "name": slug, "body": cuerpo, "verify_jwt": verify_jwt})
         h = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
         slug_q = quote(slug, safe="")
         for metodo, url in [
