@@ -14,41 +14,13 @@ fue una decisión, no un olvido.
 (llega con el bloque de la puerta). Agregarlo acá sin esa migración hace que
 el alta falle justo en el insert de perfiles.
 """
-import json, os, pathlib, secrets, string, subprocess, sys
+import json, re, secrets, string, sys
+from urllib.parse import quote
 
-REF = os.environ.get("TICKETERA_REF", "mjotxzcddhqqpuhkcetl")
+from _api import REF, pat, request, service_key
+
 ROLES = ("admin", "staff", "rrpp")
-
-
-def pat() -> str:
-    if os.environ.get("SUPABASE_PAT"):
-        return os.environ["SUPABASE_PAT"].strip()
-    f = pathlib.Path.home() / ".supabase_pat"
-    if f.exists():
-        return f.read_text().strip()
-    sys.exit("Falta el PAT. Exportá SUPABASE_PAT o dejalo en ~/.supabase_pat")
-
-
-def curl(url, metodo="GET", cabeceras=None, cuerpo=None):
-    args = ["curl", "-s", "-w", "\n%{http_code}", "-X", metodo, url]
-    for k, v in (cabeceras or {}).items():
-        args += ["-H", f"{k}: {v}"]
-    if cuerpo is not None:
-        args += ["--data-binary", "@-"]
-    p = subprocess.run(args, input=cuerpo, capture_output=True, text=True)
-    body, _, code = p.stdout.rpartition("\n")
-    return code.strip(), body
-
-
-def service_key(token: str) -> str:
-    code, body = curl(f"https://api.supabase.com/v1/projects/{REF}/api-keys",
-                      cabeceras={"Authorization": f"Bearer {token}"})
-    if code not in ("200", "201"):
-        sys.exit(f"No pude leer las api-keys: {body[:200]}")
-    for k in json.loads(body):
-        if k.get("name") == "service_role":
-            return k["api_key"]
-    sys.exit("No encontré la service_role key")
+USUARIO_RE = re.compile(r"^[a-z0-9.-]{3,30}$")
 
 
 def main() -> int:
@@ -57,6 +29,9 @@ def main() -> int:
     org_slug, usuario, nombre, rol = sys.argv[1:5]
     if rol not in ROLES:
         sys.exit(f"Rol inválido. Alguno de: {', '.join(ROLES)}")
+    if not USUARIO_RE.match(usuario):
+        sys.exit("Usuario inválido: solo minúsculas, números, '.' y '-', "
+                  "entre 3 y 30 caracteres.")
 
     token = pat()
     srv = service_key(token)
@@ -64,8 +39,8 @@ def main() -> int:
     h = {"apikey": srv, "Authorization": f"Bearer {srv}",
          "Content-Type": "application/json"}
 
-    code, body = curl(f"{base}/rest/v1/organizadores?slug=eq.{org_slug}&select=id",
-                      cabeceras=h)
+    code, body = request(f"{base}/rest/v1/organizadores?slug=eq.{quote(org_slug, safe='')}&select=id",
+                         cabeceras=h)
     filas = json.loads(body or "[]")
     if not filas:
         sys.exit(f"No existe el organizador '{org_slug}'")
@@ -74,7 +49,7 @@ def main() -> int:
     alfabeto = string.ascii_letters + string.digits
     clave = "".join(secrets.choice(alfabeto) for _ in range(14))
 
-    code, body = curl(f"{base}/auth/v1/admin/users", "POST", h, json.dumps({
+    code, body = request(f"{base}/auth/v1/admin/users", "POST", h, json.dumps({
         "email": f"{usuario}@ticketera.local",
         "password": clave,
         "email_confirm": True,
@@ -83,12 +58,12 @@ def main() -> int:
         sys.exit(f"No pude crear el usuario: {body[:300]}")
     uid = json.loads(body)["id"]
 
-    code, body = curl(f"{base}/rest/v1/perfiles", "POST",
-                      {**h, "Prefer": "return=representation"},
-                      json.dumps({"id": uid, "organizador_id": org_id,
-                                  "nombre": nombre, "rol": rol}))
+    code, body = request(f"{base}/rest/v1/perfiles", "POST",
+                         {**h, "Prefer": "return=representation"},
+                         json.dumps({"id": uid, "organizador_id": org_id,
+                                     "nombre": nombre, "rol": rol}))
     if code not in ("200", "201"):
-        sys.exit(f"Usuario creado pero sin perfil: {body[:300]}")
+        sys.exit(f"Usuario creado (uid={uid}) pero sin perfil: {body[:300]}")
 
     print(f"usuario:  {usuario}")
     print(f"clave:    {clave}")

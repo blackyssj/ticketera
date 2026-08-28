@@ -11,44 +11,10 @@ hecho para Puerta sirve acá sin rehacerlo.
 
 Dejá esa zona despejada en el diseño, o el QR va a tapar algo.
 """
-import json, mimetypes, os, pathlib, subprocess, sys
+import json, mimetypes, pathlib, sys
+from urllib.parse import quote
 
-REF = os.environ.get("TICKETERA_REF", "mjotxzcddhqqpuhkcetl")
-
-
-def pat() -> str:
-    if os.environ.get("SUPABASE_PAT"):
-        return os.environ["SUPABASE_PAT"].strip()
-    f = pathlib.Path.home() / ".supabase_pat"
-    if f.exists():
-        return f.read_text().strip()
-    sys.exit("Falta el PAT. Exportá SUPABASE_PAT o dejalo en ~/.supabase_pat")
-
-
-def curl(url, metodo="GET", cabeceras=None, cuerpo=None, archivo=None):
-    args = ["curl", "-s", "-w", "\n%{http_code}", "-X", metodo, url]
-    for k, v in (cabeceras or {}).items():
-        args += ["-H", f"{k}: {v}"]
-    if archivo:
-        args += ["--data-binary", f"@{archivo}"]
-        p = subprocess.run(args, capture_output=True, text=True)
-    else:
-        if cuerpo is not None:
-            args += ["--data-binary", "@-"]
-        p = subprocess.run(args, input=cuerpo, capture_output=True, text=True)
-    body, _, code = p.stdout.rpartition("\n")
-    return code.strip(), body
-
-
-def service_key(token):
-    code, body = curl(f"https://api.supabase.com/v1/projects/{REF}/api-keys",
-                      cabeceras={"Authorization": f"Bearer {token}"})
-    if code not in ("200", "201"):
-        sys.exit(f"No pude leer las api-keys: {body[:200]}")
-    for k in json.loads(body):
-        if k.get("name") == "service_role":
-            return k["api_key"]
-    sys.exit("No encontré la service_role key")
+from _api import REF, pat, request, service_key
 
 
 def main() -> int:
@@ -70,36 +36,42 @@ def main() -> int:
     base = f"https://{REF}.supabase.co"
     h = {"apikey": srv, "Authorization": f"Bearer {srv}"}
 
-    org = json.loads(curl(f"{base}/rest/v1/organizadores?slug=eq.{org_slug}&select=id",
-                          cabeceras=h)[1] or "[]")
+    org_q = quote(org_slug, safe="")
+    ev_q = quote(ev_slug, safe="")
+
+    org = json.loads(request(f"{base}/rest/v1/organizadores?slug=eq.{org_q}&select=id",
+                             cabeceras=h)[1] or "[]")
     if not org:
         sys.exit(f"No existe el organizador '{org_slug}'")
-    ev = json.loads(curl(
-        f"{base}/rest/v1/eventos?organizador_id=eq.{org[0]['id']}&slug=eq.{ev_slug}&select=id",
+    ev = json.loads(request(
+        f"{base}/rest/v1/eventos?organizador_id=eq.{org[0]['id']}&slug=eq.{ev_q}&select=id",
         cabeceras=h)[1] or "[]")
     if not ev:
         sys.exit(f"No existe el evento '{ev_slug}'")
 
     # La primera carpeta es el organizador: así lo exige la policy del bucket.
-    destino = f"{org_slug}/{ev_slug}/{'fase-' + fase_nombre.lower().replace(' ', '-') if fase_nombre else 'evento'}{img.suffix}"
-    code, body = curl(f"{base}/storage/v1/object/arte/{destino}", "POST",
-                      {**h, "Content-Type": tipo, "x-upsert": "true"}, archivo=str(img))
-    if code not in ("200", "201"):
+    nombre_archivo = ("fase-" + fase_nombre.lower().replace(" ", "-")) if fase_nombre else "evento"
+    destino = f"{org_q}/{ev_q}/{quote(nombre_archivo, safe='')}{img.suffix}"
+    codigo, body = request(f"{base}/storage/v1/object/arte/{destino}", "POST",
+                           {**h, "Content-Type": tipo, "x-upsert": "true"},
+                           img.read_bytes())
+    if codigo not in ("200", "201"):
         sys.exit(f"No se pudo subir: {body[:300]}")
 
     url = f"{base}/storage/v1/object/public/arte/{destino}"
 
     if fase_nombre:
-        r = curl(f"{base}/rest/v1/evento_fase?evento_id=eq.{ev[0]['id']}&nombre=eq."
-                 + fase_nombre.replace(" ", "%20"), "PATCH",
-                 {**h, "Content-Type": "application/json", "Prefer": "return=representation"},
-                 json.dumps({"arte_url": url}))
-        if not json.loads(r[1] or "[]"):
+        codigo, body = request(
+            f"{base}/rest/v1/evento_fase?evento_id=eq.{ev[0]['id']}&nombre=eq.{quote(fase_nombre, safe='')}",
+            "PATCH",
+            {**h, "Content-Type": "application/json", "Prefer": "return=representation"},
+            json.dumps({"arte_url": url}))
+        if not json.loads(body or "[]"):
             sys.exit(f"Subí la imagen pero no encontré la fase '{fase_nombre}'. URL: {url}")
         print(f"arte de la fase '{fase_nombre}' actualizado")
     else:
-        curl(f"{base}/rest/v1/eventos?id=eq.{ev[0]['id']}", "PATCH",
-             {**h, "Content-Type": "application/json"}, json.dumps({"arte_url": url}))
+        request(f"{base}/rest/v1/eventos?id=eq.{ev[0]['id']}", "PATCH",
+               {**h, "Content-Type": "application/json"}, json.dumps({"arte_url": url}))
         print("arte del evento actualizado")
 
     print(url)
