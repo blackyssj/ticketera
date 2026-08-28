@@ -693,4 +693,130 @@ begin
   raise notice 'OK cada relacionador ve solo lo suyo y la comision no sigue al precio';
 end $$;
 
+-- ============================================================
+-- 0031 — el portero, probado por lo que NO puede
+--
+-- El portero trabaja toda la noche desde un teléfono prestado en la puerta
+-- de un boliche. Si ese teléfono queda sobre la barra con la sesión
+-- abierta, lo que importa no es lo que el portero sabe hacer sino lo que
+-- la base le deja hacer a quien lo agarre. Por eso el test empieza por lo
+-- que tiene que rebotar y recién al final comprueba lo único que sí puede.
+--
+-- Las tres escrituras (tipo_entrada, fase_precio, eventos) no tiran error:
+-- la policy no matchea y el update toca cero filas, silencioso. Por eso no
+-- alcanza con que no explote — hay que ir a mirar la fila después, con el
+-- rol ya reseteado, y ver que sigue diciendo lo mismo.
+--
+-- `ordenes` es la que más importa de las lecturas negadas: ahí viven el
+-- correo, el teléfono y el total del comprador. El portero necesita saber
+-- si la manilla es buena, no quién la pagó ni cuánto.
+-- ============================================================
+do $$
+declare v_org   uuid := '03100031-0031-4031-8031-000000000001';
+        v_org2  uuid := '03100031-0031-4031-8031-000000000002';  -- el otro tenant
+        v_port  uuid := '03100031-0031-4031-8031-000000000003';
+        v_ev    uuid := '03100031-0031-4031-8031-000000000004';
+        v_ev2   uuid := '03100031-0031-4031-8031-000000000005';
+        v_tipo  uuid := '03100031-0031-4031-8031-000000000006';
+        v_fase  uuid := '03100031-0031-4031-8031-000000000007';
+        v_ord   uuid := '03100031-0031-4031-8031-000000000008';
+        v_ent   uuid := '03100031-0031-4031-8031-000000000009';
+        v_ent2  uuid := '03100031-0031-4031-8031-00000000000a';
+        v_n int;
+begin
+  insert into organizadores (id, slug, nombre) values
+    (v_org,  'prueba-0031',  'Prueba 0031'),
+    (v_org2, 'prueba-0031b', 'Prueba 0031 otro');
+  insert into auth.users (id, email) values (v_port, 'portero-0031@ticketera.local');
+
+  -- Acá falla todo antes de la migración: perfiles_rol_check todavía no
+  -- conoce 'portero'.
+  insert into perfiles (id, organizador_id, nombre, rol) values
+    (v_port, v_org, 'Un Portero', 'portero');
+
+  insert into eventos (id, organizador_id, slug, nombre, fecha, estado) values
+    (v_ev,  v_org,  'evento-0031',  'Evento 0031',  current_date + 10, 'publicado'),
+    (v_ev2, v_org2, 'evento-0031b', 'Evento 0031 B', current_date + 10, 'publicado');
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre) values
+    (v_tipo, v_org, v_ev, 'General');
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta) values
+    (v_fase, v_org, v_ev, 'F1', now() - interval '1 hour', now() + interval '10 days');
+  insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo) values
+    (v_org, v_fase, v_tipo, 100, null);
+
+  -- una orden con los datos del comprador, que es lo que el portero no tiene
+  -- por qué ver
+  insert into ordenes (id, organizador_id, evento_id, estado, expira_at,
+                       comprador_nombre, comprador_email, comprador_telefono,
+                       subtotal, fee, total)
+  values (v_ord, v_org, v_ev, 'pagada', now() + interval '1 day',
+          'Comprador', 'comprador@ejemplo.com', '70000000', 100, 7, 107);
+
+  -- una entrada propia y una del otro tenant, para el corte de organizador
+  insert into entradas (id, organizador_id, evento_id, orden_id, code, canal,
+                        tipo_id, fase_id, cliente, precio) values
+    (v_ent, v_org, v_ev, v_ord, 'PORTERO000AA', 'publico', v_tipo, v_fase, 'Comprador', 100);
+  insert into entradas (id, organizador_id, evento_id, code, canal, precio) values
+    (v_ent2, v_org2, v_ev2, 'PORTERO000BB', 'publico', 100);
+
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_port::text, true);
+
+  -- ── 1) no escribe el catálogo ni el evento ──────────────
+  begin
+    update tipo_entrada set nombre = 'Hackeado' where id = v_tipo;
+  exception when others then null;
+  end;
+  begin
+    update fase_precio set precio = 1 where fase_id = v_fase and tipo_id = v_tipo;
+  exception when others then null;
+  end;
+  begin
+    update eventos set nombre = 'Hackeado' where id = v_ev;
+  exception when others then null;
+  end;
+
+  -- ── 2) no lee las órdenes ───────────────────────────────
+  select count(*) into v_n from ordenes where id = v_ord;
+  if v_n <> 0 then
+    raise exception 'TEST_FAIL: el portero leyo una orden — ahi estan el correo, el telefono y el total';
+  end if;
+
+  -- ── 3) sí lee las entradas de SU organizador ────────────
+  select count(*) into v_n from entradas where id = v_ent;
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: el portero no puede leer las entradas de su organizador, que es lo unico que necesita';
+  end if;
+
+  -- ── 4) y ninguna otra ───────────────────────────────────
+  select count(*) into v_n from entradas where id = v_ent2;
+  if v_n <> 0 then
+    raise exception 'TEST_FAIL: el portero leyo una entrada de OTRO organizador';
+  end if;
+
+  -- ── 5) es_portero() se reconoce a sí mismo, puede_editar() lo rechaza ──
+  if not es_portero() then
+    raise exception 'TEST_FAIL: es_portero() dijo que no para un perfil con rol portero';
+  end if;
+  if puede_editar() then
+    raise exception 'TEST_FAIL: puede_editar() dejo pasar al portero';
+  end if;
+
+  reset role;
+
+  -- Las escrituras de arriba no tiraron error: tocaron cero filas. Se
+  -- comprueba mirando la fila, no atrapando la excepción que no hubo.
+  if exists (select 1 from tipo_entrada where id = v_tipo and nombre = 'Hackeado') then
+    raise exception 'TEST_FAIL: el portero cambio el nombre de un tipo de entrada';
+  end if;
+  if exists (select 1 from fase_precio where fase_id = v_fase and tipo_id = v_tipo and precio = 1) then
+    raise exception 'TEST_FAIL: el portero cambio un precio';
+  end if;
+  if exists (select 1 from eventos where id = v_ev and nombre = 'Hackeado') then
+    raise exception 'TEST_FAIL: el portero cambio el nombre del evento';
+  end if;
+
+  raise notice 'OK el portero lee las entradas de su organizador y nada mas';
+end $$;
+
 rollback;

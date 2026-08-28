@@ -10,16 +10,18 @@ El correo es sintético: <usuario>@ticketera.local. No se usa para nada más
 que como identificador de Supabase — no hay recuperación por correo, y eso
 fue una decisión, no un olvido.
 
-'portero' no está en la lista: el check de perfiles.rol todavía no lo acepta
-(llega con el bloque de la puerta). Agregarlo acá sin esa migración hace que
-el alta falle justo en el insert de perfiles.
+'portero' entró en la lista con 0031, que es la migración que enseñó a
+perfiles_rol_check a aceptarlo. Antes de esa migración el alta fallaba
+justo en el insert de perfiles, con el usuario de auth ya creado: por eso
+había quedado afuera y no por olvido. Contra una base sin 0031 aplicada
+vuelve a fallar igual, así que el orden importa — primero la migración.
 """
 import json, re, secrets, string, sys
 from urllib.parse import quote
 
 from _api import REF, pat, request, service_key
 
-ROLES = ("admin", "staff", "rrpp")
+ROLES = ("admin", "staff", "rrpp", "portero")
 USUARIO_RE = re.compile(r"^[a-z0-9.-]{3,30}$")
 
 
