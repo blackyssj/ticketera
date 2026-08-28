@@ -4,6 +4,7 @@ Ticketera multi-tenant con landing pública de autoservicio.
 - **Diseño y decisiones:** [`docs/diseno.md`](docs/diseno.md)
 - **Vistas internas (admin, relacionador, puerta):** [`docs/diseno-vistas-internas.md`](docs/diseno-vistas-internas.md)
 - **Plan del bloque 1 (la base):** [`docs/plan-bloque1-base.md`](docs/plan-bloque1-base.md)
+- **Plan del bloque 4a (administración):** [`docs/plan-bloque4a-admin.md`](docs/plan-bloque4a-admin.md)
 - **Por qué existe el producto:** [`docs/traspaso.md`](docs/traspaso.md)
 
 **En producción:** https://ticketera-coral.vercel.app
