@@ -136,7 +136,12 @@ async function abrirEvento(id) {
   let e = { nombre: "", slug: "", lugar: "", fecha: "", hora_inicio: "21:00",
             edad_min: 18, tope_entradas_orden: 10, estado: "borrador" };
   if (id) {
-    const { data } = await sb.from("eventos").select("*").eq("id", id).single();
+    const { data, error } = await sb.from("eventos").select("*").eq("id", id).single();
+    if (error || !data) {
+      avisar("Ese evento ya no existe.");
+      mostrar("eventos");
+      return;
+    }
     e = data;
   }
   $("#main").innerHTML = `
@@ -147,7 +152,7 @@ async function abrirEvento(id) {
     <form class="form-evento" id="formEvento">
       <label><span>Nombre</span><input id="fNombre" value="${esc(e.nombre)}" required></label>
       <label><span>Link público</span>
-        <input id="fSlug" value="${esc(e.slug)}" pattern="[a-z0-9-]{2,60}" required>
+        <input id="fSlug" value="${esc(e.slug)}" pattern="[a-z0-9\\-]{2,60}" required>
         <em class="ayuda">/${esc(CFG.ORGANIZADOR)}/<b id="vistaSlug">${esc(e.slug || "…")}</b></em></label>
       <label><span>Lugar</span><input id="fLugar" value="${esc(e.lugar || "")}"></label>
       <label><span>Fecha</span><input id="fFecha" type="date" value="${e.fecha || ""}" required></label>
@@ -201,7 +206,7 @@ async function pantallaEntradas(eventoId) {
   $("#main").innerHTML = `<p class="cargando">Cargando…</p>`;
 
   const [ev, tipos, fases, precios] = await Promise.all([
-    sb.from("eventos").select("id,nombre,estado").eq("id", eventoId).single(),
+    sb.from("eventos").select("id,nombre,estado,slug").eq("id", eventoId).single(),
     sb.from("tipo_entrada").select("*").eq("evento_id", eventoId).order("orden"),
     sb.from("evento_fase").select("*").eq("evento_id", eventoId).order("orden"),
     sb.from("fase_precio").select("*"),
@@ -252,7 +257,7 @@ async function pantallaEntradas(eventoId) {
   $("#btnTipo").onclick = () => nuevoTipo(eventoId);
   $("#btnFase").onclick = () => nuevaFase(eventoId);
   $("#btnGuardarGrilla").onclick = () => guardarGrilla(eventoId, P);
-  zonaPublicar(eventoId, ev.data.estado);
+  zonaPublicar(eventoId, ev.data.estado, ev.data.slug);
 }
 
 function ventana(f) {
@@ -319,12 +324,12 @@ async function nuevaFase(eventoId) {
 /* El chequeo se muestra ANTES de que el organizador apriete, no como error
    después. Un botón que se puede apretar y siempre falla enseña a ignorar
    los mensajes. */
-async function zonaPublicar(eventoId, estado) {
+async function zonaPublicar(eventoId, estado, slug) {
   const { data: chequeo } = await sb.rpc("listo_para_publicar", { p_evento: eventoId });
   const listo = chequeo && chequeo.ok;
   const faltan = (chequeo && chequeo.faltan) || [];
   const publicado = estado === "publicado";
-  const url = `${location.origin}/${CFG.ORGANIZADOR}/`;
+  const url = `${location.origin}/${CFG.ORGANIZADOR}/${slug}`;
 
   $("#zonaPublicar").innerHTML = `
     <div class="publicar ${publicado ? "vivo" : ""}">
@@ -337,11 +342,26 @@ async function zonaPublicar(eventoId, estado) {
             : "Falta esto antes de poder publicarlo:"}</p>
         ${!publicado && !listo
           ? `<ul class="faltan">${faltan.map(f => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
+        ${publicado ? `<p class="link-publico">
+          <code>${esc(url)}</code>
+          <button type="button" class="btn plano chico" id="btnCopiarLink">Copiar link</button>
+        </p>` : ""}
       </div>
       <button class="btn ${publicado ? "plano" : "primario"}" id="btnPublicar"
         ${!publicado && !listo ? "disabled" : ""}>
         ${publicado ? "Quitar de la venta" : "Poner a la venta"}</button>
     </div>`;
+
+  if (publicado) {
+    $("#btnCopiarLink").onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(url);
+        avisar("Link copiado.");
+      } catch (err) {
+        avisar("No se pudo copiar: " + err.message);
+      }
+    };
+  }
 
   $("#btnPublicar").onclick = async () => {
     const { data, error } = await sb.rpc("publicar_evento",
