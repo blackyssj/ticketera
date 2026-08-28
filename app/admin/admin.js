@@ -205,16 +205,23 @@ async function abrirEvento(id) {
 async function pantallaEntradas(eventoId) {
   $("#main").innerHTML = `<p class="cargando">Cargando…</p>`;
 
-  const [ev, tipos, fases, precios] = await Promise.all([
+  const [ev, tipos, fases] = await Promise.all([
     sb.from("eventos").select("id,nombre,estado,slug").eq("id", eventoId).single(),
     sb.from("tipo_entrada").select("*").eq("evento_id", eventoId).order("orden"),
     sb.from("evento_fase").select("*").eq("evento_id", eventoId).order("orden"),
-    sb.from("fase_precio").select("*"),
   ]);
   const T = tipos.data || [], F = fases.data || [];
-  const idsFase = new Set(F.map(f => f.id));
+  /* fase_precio sin filtro traía las de TODO el organizador, y PostgREST
+     corta en 1000 filas sin avisar: un precio fuera del corte desaparecía
+     de la pantalla y, como el código creía que no existía, dejar la
+     celda vacía tampoco lo borraba — quedaba invisible pero vendiendo.
+     Acá ya tenemos los ids de fase de este evento, así que se filtra del
+     lado del servidor con ellos. */
+  const idsFase = F.map(f => f.id);
+  const precios = idsFase.length
+    ? await sb.from("fase_precio").select("*").in("fase_id", idsFase)
+    : { data: [] };
   const P = new Map((precios.data || [])
-    .filter(p => idsFase.has(p.fase_id))
     .map(p => [`${p.fase_id}|${p.tipo_id}`, p]));
 
   $("#main").innerHTML = `
@@ -256,7 +263,7 @@ async function pantallaEntradas(eventoId) {
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
   $("#btnTipo").onclick = () => nuevoTipo(eventoId);
   $("#btnFase").onclick = () => nuevaFase(eventoId);
-  $("#btnGuardarGrilla").onclick = () => guardarGrilla(eventoId, P);
+  $("#btnGuardarGrilla").onclick = () => guardarGrilla(eventoId);
   zonaPublicar(eventoId, ev.data.estado, ev.data.slug);
 }
 
@@ -266,26 +273,35 @@ function ventana(f) {
   return `${d(f.desde)} → ${d(f.hasta) || "sin fin"}`;
 }
 
-async function guardarGrilla(eventoId, P) {
-  const filas = [], borrar = [];
+/* Antes: un .delete() por celda vaciada y después un .upsert() con el
+   resto — requests HTTP separados, sin transacción. Si el upsert fallaba,
+   los borrados ya estaban aplicados y la base perdía precios mientras se
+   avisaba "no se pudo guardar". Y el error de cada .delete() no se leía
+   nunca. guardar_precios() hace las dos cosas en una sola llamada — la
+   misma transacción — y deja en la base exactamente las filas de
+   p_filas para las fases del evento. */
+async function guardarGrilla(eventoId) {
+  const filas = [];
+  const vistos = new Set();
   document.querySelectorAll(".celda-precio").forEach(inp => {
     const f = inp.dataset.f, t = inp.dataset.t;
-    const cupoInp = document.querySelector(`.celda-cupo[data-f="${f}"][data-t="${t}"]`);
     const precio = inp.value.trim();
-    if (precio === "") { if (P.has(`${f}|${t}`)) borrar.push({ f, t }); return; }
-    filas.push({ organizador_id: S.yo.organizador_id, fase_id: f, tipo_id: t,
+    if (precio === "") return;   // vacío = ese tipo no se vende en esa fase
+    const clave = `${f}|${t}`;
+    // guardar_precios() no se defiende de pares fase+tipo repetidos y
+    // fallaría con un error feo de Postgres. Con esta grilla no puede
+    // pasar (un input por cruce), pero deduplicar es barato y saca la
+    // dependencia de que el render nunca cambie.
+    if (vistos.has(clave)) return;
+    vistos.add(clave);
+    const cupoInp = document.querySelector(`.celda-cupo[data-f="${f}"][data-t="${t}"]`);
+    filas.push({ fase_id: f, tipo_id: t,
                  precio: Number(precio),
                  cupo: cupoInp.value.trim() === "" ? null : Number(cupoInp.value) });
   });
 
-  for (const b of borrar) {
-    await sb.from("fase_precio").delete().eq("fase_id", b.f).eq("tipo_id", b.t);
-  }
-  if (filas.length) {
-    const { error } = await sb.from("fase_precio")
-      .upsert(filas, { onConflict: "fase_id,tipo_id" });
-    if (error) { avisar("No se pudo guardar: " + error.message); return; }
-  }
+  const { error } = await sb.rpc("guardar_precios", { p_evento: eventoId, p_filas: filas });
+  if (error) { avisar("No se pudo guardar: " + error.message); return; }
   avisar("Precios guardados.");
   pantallaEntradas(eventoId);
 }
