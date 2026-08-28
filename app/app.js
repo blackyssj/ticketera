@@ -13,11 +13,24 @@
 /* `?modo=demo` fuerza el modo sin backend. Sirve para mostrar la interfaz sin
    consumir cupos reales, y para que la página siga en pie si el proyecto está
    caído. No afecta la seguridad: en ese modo no se habla con la base en
-   absoluto, así que no hay nada que saltarse. */
+   absoluto, así que no hay nada que saltarse.
+
+   El link público que arma la administración es `/<organizador>/<evento>`
+   (rewrite a este mismo index.html en app/vercel.json). config.js queda
+   solo de respaldo: para el modo demo, y para cuando la ruta no trae los
+   dos segmentos (por ejemplo `/` sirviendo el evento por defecto). */
 const CFG = (() => {
   const base = window.CONFIG || { MODO: "demo" };
   const forzado = new URLSearchParams(location.search).get("modo");
-  return forzado === "demo" ? { ...base, MODO: "demo" } : base;
+  const cfg = forzado === "demo" ? { ...base, MODO: "demo" } : { ...base };
+
+  const RESERVADAS = new Set(["admin", "orden"]);
+  const seg = location.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  if (seg.length >= 2 && !RESERVADAS.has(seg[0])) {
+    cfg.ORGANIZADOR = seg[0];
+    cfg.EVENTO = seg[1];
+  }
+  return cfg;
 })();
 // En modo demo sale del archivo; en modo supabase lo trae la función `evento`
 // con exactamente la misma forma, así que de acá para abajo da lo mismo.
