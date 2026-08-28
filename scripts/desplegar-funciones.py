@@ -12,7 +12,8 @@ import json, os, pathlib, subprocess, sys
 
 REF = os.environ.get("TICKETERA_REF", "mjotxzcddhqqpuhkcetl")
 BASE = pathlib.Path(__file__).resolve().parent.parent / "supabase" / "functions"
-TODAS = ["evento", "crear-orden", "iniciar-pago", "estado-orden"]
+TODAS = ["evento", "crear-orden", "iniciar-pago", "estado-orden",
+         "orden", "enviar-entradas"]
 
 def token() -> str:
     if os.environ.get("SUPABASE_PAT"):

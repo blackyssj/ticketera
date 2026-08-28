@@ -431,3 +431,13 @@ body.sin-rail .lienzo-col{padding-bottom:0}
   .panel,.paso[data-estado="actual"] .n,.chapa.recien::after,
   .pasarela,.pasarela-qr canvas,.tickets img{animation:none !important}
 }
+
+/* una entrada ya usada se marca, para no discutir en la puerta */
+.ticket-fig{margin:0;position:relative;flex:0 0 auto}
+.ticket-usada{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-8deg);
+  background:rgba(11,10,10,.86);color:var(--espuma);
+  font-family:var(--dato);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  padding:7px 14px;border:1.5px solid var(--rojo);border-radius:3px;
+}
+.ticket-fig img{display:block}
