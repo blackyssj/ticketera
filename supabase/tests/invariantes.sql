@@ -61,15 +61,18 @@ end $$;
 do $$
 declare v_malas text;
 begin
-  -- Toda policy que permita escribir tiene que nombrar a puede_editar() o a
-  -- auth.uid(). Una que solo mire el tenant deja escribir a cualquier
-  -- usuario del organizador, que es exactamente el agujero de 0012.
+  -- Toda policy que permita escribir tiene que nombrar a puede_editar(),
+  -- mi_rol() o auth.uid(). Una que solo mire el tenant deja escribir a
+  -- cualquier usuario del organizador, que es exactamente el agujero de
+  -- 0012. Esto es una heuristica de texto: reconoce que la policy NOMBRA
+  -- un chequeo de rol, no verifica que lo use bien.
   select string_agg(tablename || '.' || policyname, ', ') into v_malas
   from pg_policies
   where schemaname = 'public'
     and cmd in ('ALL','INSERT','UPDATE','DELETE')
     and 'authenticated' = any(roles)
     and coalesce(qual, '') || coalesce(with_check, '') not like '%puede_editar%'
+    and coalesce(qual, '') || coalesce(with_check, '') not like '%mi_rol(%'
     and coalesce(qual, '') || coalesce(with_check, '') not like '%auth.uid()%';
   if v_malas is not null then
     raise exception 'TEST_FAIL: policies de escritura sin filtro de rol: %', v_malas;

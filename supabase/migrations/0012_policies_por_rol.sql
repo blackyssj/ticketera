@@ -85,13 +85,3 @@ drop policy if exists "eventos: el admin los administra" on eventos;
 create policy "eventos escribir" on eventos for all to authenticated
   using  (organizador_id = mi_organizador() and puede_editar())
   with check (organizador_id = mi_organizador() and puede_editar());
-
--- ── perfiles: mismo mecanismo que el resto, para que el invariante 5 lo
--- reconozca. Esta policy es de 0002 y ya era admin-only (mi_rol() =
--- 'admin'); acá solo se agrega puede_editar() como AND redundante —
--- mi_rol() = 'admin' implica puede_editar() = true, así que quién puede
--- escribir no cambia (sigue siendo solo admin, staff no administra cuentas).
-drop policy if exists "perfiles: el admin administra los suyos" on perfiles;
-create policy "perfiles escribir" on perfiles for all to authenticated
-  using  (organizador_id = mi_organizador() and puede_editar() and mi_rol() = 'admin')
-  with check (organizador_id = mi_organizador() and puede_editar() and mi_rol() = 'admin');
