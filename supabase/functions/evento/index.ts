@@ -30,7 +30,11 @@ const rpc = (fn: string, args: Record<string, unknown>) =>
 
 // El frontend tiene que poder decirle al comprador que esto todavía no cobra.
 // Si el dato no viaja, la página parece una venta real y no lo es.
-const PASARELA = Deno.env.get("PASARELA") ?? "simulada";
+// Normalizado igual que en iniciar-pago y estado-orden (recortado,
+// minúsculas): acá no se falla cerrado porque este endpoint solo informa,
+// no cobra ni emite — pero si el valor no es ninguno de los dos esperados,
+// mejor mostrar la variable cruda que fingir "simulada" en silencio.
+const PASARELA = (Deno.env.get("PASARELA") ?? "").trim().toLowerCase() || "(sin configurar)";
 
 const MES = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
 const DIA = ["DOM","LUN","MAR","MIÉ","JUE","VIE","SÁB"];

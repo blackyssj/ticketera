@@ -26,13 +26,22 @@ const uno = async (ruta: string) => (await rest(ruta))?.[0] ?? null;
 const rpc = (fn: string, args: Record<string, unknown>) =>
   rest(`rpc/${fn}`, { method: "POST", body: JSON.stringify(args) });
 
-const PASARELA = Deno.env.get("PASARELA") ?? "simulada";
+// Normalizado (recortado, minúsculas) para que "V2PRO" o " simulada " no
+// caigan por afuera de las dos comparaciones exactas de abajo. Si no viene
+// una de las dos, la función se niega a operar en vez de asumir cuál es:
+// el default anterior (?? "simulada") era fail-open — sin la variable
+// puesta, cualquiera cobraba en modo simulado sin que nadie lo supiera.
+const PASARELA = (Deno.env.get("PASARELA") ?? "").trim().toLowerCase();
 const V2PRO    = Deno.env.get("V2PRO_URL") ?? "https://pay.scrum-technology.com/api/v2pro";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ ok: false, motivo: "Usá POST." }, 405);
   try {
+    if (PASARELA !== "simulada" && PASARELA !== "v2pro") {
+      console.error(`PASARELA mal configurada: "${Deno.env.get("PASARELA") ?? ""}"`);
+      return json({ ok: false, motivo: "La pasarela no está configurada correctamente. Avisale al organizador." }, 500);
+    }
     const { orden } = await req.json();
     if (!orden) return json({ ok: false, motivo: "Falta la orden." }, 400);
 
