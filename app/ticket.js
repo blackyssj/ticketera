@@ -7,7 +7,67 @@
 window.dibujarTicket = (function () {
 "use strict";
 
+/* Carga una imagen y espera a que esté lista. crossOrigin porque el arte
+   vive en el storage de Supabase, otro origen: sin esto el canvas queda
+   "tainted" y toDataURL tira SecurityError. */
+function cargarImagen(url) {
+  return new Promise((ok, mal) => {
+    const i = new Image();
+    i.crossOrigin = "anonymous";
+    i.onload = () => ok(i);
+    i.onerror = () => mal(new Error("No se pudo cargar el arte."));
+    i.src = url;
+  });
+}
+
+/* Con arte subido: el QR va ENCIMA de la imagen del organizador, como en
+   Bowie y BurTown. Mismas proporciones que allá — caja blanca del 52% del
+   ancho desde el 29% de la altura — para que un arte hecho para Puerta sirva
+   acá sin rehacerlo. */
+async function sobreArte(t, evento, fase, arte) {
+  const img = await cargarImagen(arte);
+  const W = img.naturalWidth, H = img.naturalHeight;
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const x = c.getContext("2d");
+  x.drawImage(img, 0, 0);
+
+  const caja = W * 0.52, bx = (W - caja) / 2, by = H * 0.29, rad = caja * 0.07;
+  x.fillStyle = "#fff";
+  x.beginPath(); x.roundRect(bx, by, caja, caja, rad); x.fill();
+
+  const q = qrcode(0, "M");
+  q.addData(`EVT:${evento.id}:${t.code}`);
+  q.make();
+  const n = q.getModuleCount(), pad = caja * 0.06, celda = (caja - 2 * pad) / n;
+  x.fillStyle = "#000";
+  for (let r = 0; r < n; r++)
+    for (let k = 0; k < n; k++)
+      if (q.isDark(r, k)) x.fillRect(bx + pad + k * celda, by + pad + r * celda, celda + 0.5, celda + 0.5);
+
+  // sombra para que el código se lea sobre cualquier arte, claro u oscuro
+  x.textAlign = "center";
+  x.shadowColor = "rgba(0,0,0,.9)"; x.shadowBlur = W * 0.02;
+  x.fillStyle = "#fff";
+  x.font = `700 ${Math.round(W * 0.078)}px "DM Mono", monospace`;
+  x.fillText("#" + t.code, W / 2, by + caja + H * 0.055);
+  x.font = `500 ${Math.round(W * 0.042)}px "Inter Tight", sans-serif`;
+  x.fillText(t.cliente || "—", W / 2, by + caja + H * 0.055 + W * 0.075);
+  return c.toDataURL("image/png");
+}
+
 async function dibujarTicket(t, evento, fase) {
+  // El arte de la fase gana sobre el del evento: una preventa se distingue a
+  // simple vista sin cambiarle nada al resto.
+  const arte = (fase && fase.arte_url) || evento.arte_url;
+  if (arte) {
+    try { return await sobreArte(t, evento, fase, arte); }
+    catch (e) {
+      // Si el arte no carga, la entrada igual sale. Una venta cobrada no se
+      // queda sin ticket porque una imagen no respondió.
+      console.error("arte no disponible, se dibuja el ticket propio:", e.message);
+    }
+  }
   const W = 900, H = 1500;
   const c = document.createElement("canvas");
   c.width = W; c.height = H;

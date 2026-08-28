@@ -50,14 +50,14 @@ Deno.serve(async (req) => {
     const o = await uno(`organizadores?slug=eq.${q(org)}&activo=is.true&select=id,nombre,fee_pct,fee_fijo_transaccion,fee_piso`);
     if (!o) return json({ ok: false, motivo: "Ese organizador no existe." }, 404);
 
-    const e = await uno(`eventos?organizador_id=eq.${o.id}&slug=eq.${q(ev)}&select=id,nombre,lugar,fecha,hora_inicio,edad_min,estado,tope_entradas_orden`);
+    const e = await uno(`eventos?organizador_id=eq.${o.id}&slug=eq.${q(ev)}&select=id,nombre,lugar,fecha,hora_inicio,edad_min,estado,tope_entradas_orden,arte_url`);
     if (!e) return json({ ok: false, motivo: "Ese evento no existe." }, 404);
     if (e.estado !== "publicado") return json({ ok: false, motivo: "El evento todavía no está a la venta." }, 404);
 
     const faseId = await rpc("fase_vigente", { p_evento: e.id });
     if (!faseId) return json({ ok: false, motivo: "No hay ninguna fase de venta abierta." }, 409);
 
-    const fase = await uno(`evento_fase?id=eq.${faseId}&select=nombre,hasta`);
+    const fase = await uno(`evento_fase?id=eq.${faseId}&select=nombre,hasta,arte_url`);
     const precios = await rest(`fase_precio?fase_id=eq.${faseId}&select=tipo_id,precio,cupo,tipo_entrada(id,nombre,descripcion,orden,activo)`);
 
     const tipos = [];
@@ -110,8 +110,9 @@ Deno.serve(async (req) => {
                 ["Mesas", `${(mesas ?? []).length} en ${plantas.length} plantas`],
                 ["Pago", "QR, tarjeta y débito"]],
         tope_entradas_orden: e.tope_entradas_orden,
+        arte_url: e.arte_url ?? null,
       },
-      fase: { nombre: fase?.nombre ?? "", hasta_txt: fase?.hasta
+      fase: { nombre: fase?.nombre ?? "", arte_url: fase?.arte_url ?? null, hasta_txt: fase?.hasta
         ? "hasta el " + new Date(fase.hasta).toLocaleDateString("es-BO",
             { day: "numeric", month: "long", timeZone: "America/La_Paz" })
         : "" },

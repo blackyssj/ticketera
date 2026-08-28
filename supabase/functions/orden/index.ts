@@ -42,10 +42,10 @@ Deno.serve(async (req) => {
     if (o.estado !== "pagada")
       return json({ ok: true, estado: o.estado, motivo: "Esta compra todavía no está pagada." });
 
-    const e = await uno(`eventos?id=eq.${o.evento_id}&select=id,nombre,lugar,fecha,hora_inicio`);
+    const e = await uno(`eventos?id=eq.${o.evento_id}&select=id,nombre,lugar,fecha,hora_inicio,arte_url`);
     const ent = await rest(`entradas?orden_id=eq.${id}&select=code,precio,estado,used_at,fase_id,tipo_entrada(nombre),mesas(etiqueta,categoria)&order=created_at`);
     const fase = ent?.[0]?.fase_id
-      ? await uno(`evento_fase?id=eq.${ent[0].fase_id}&select=nombre`) : null;
+      ? await uno(`evento_fase?id=eq.${ent[0].fase_id}&select=nombre,arte_url`) : null;
 
     const MES = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
     const DIA = ["DOM","LUN","MAR","MIÉ","JUE","VIE","SÁB"];
@@ -61,8 +61,9 @@ Deno.serve(async (req) => {
         id: e.id, marca_1: partes[0], marca_2: partes.slice(1).join(" "),
         lugar: e.lugar ?? "",
         fecha_txt: `${DIA[f.getDay()]} ${f.getDate()} ${MES[f.getMonth()]} · ${String(e.hora_inicio).slice(0,5)}`,
+        arte_url: e.arte_url ?? null,
       },
-      fase: { nombre: fase?.nombre ?? "" },
+      fase: { nombre: fase?.nombre ?? "", arte_url: fase?.arte_url ?? null },
       entradas: (ent ?? []).map((x) => ({
         code: x.code, cliente: o.comprador_nombre, estado: x.estado, used_at: x.used_at,
         etiqueta: x.tipo_entrada?.nombre
