@@ -356,4 +356,67 @@ begin
   raise notice 'OK un rrpp no puede llamar guardar_precios';
 end $$;
 
+-- ============================================================
+-- 0024 — comision_de(): monto fijo, el acuerdo de la persona por encima
+-- del default del evento, y el precio de la entrada nunca entra en la
+-- cuenta. Bloque propio, fixtures propios (no reusa los de arriba: esos
+-- ya se manipularon en sus propios pasos). Se reproduce el bug real de
+-- Plataforma Puerta -la manilla subió de 60 a 70 y la comisión la siguió-
+-- para confirmar que acá, con la comisión como dato separado, no pasa.
+-- ============================================================
+do $$
+declare v_org   uuid := '02400024-0024-4024-8024-000000000001';
+        v_rrpp  uuid := '02400024-0024-4024-8024-000000000002';
+        v_ev    uuid := '02400024-0024-4024-8024-000000000003';
+        v_tipo  uuid := '02400024-0024-4024-8024-000000000004';
+        v_fase  uuid := '02400024-0024-4024-8024-000000000005';
+begin
+  insert into organizadores (id, slug, nombre) values
+    (v_org, 'prueba-0024', 'Prueba 0024');
+  insert into auth.users (id, email) values
+    (v_rrpp, 'rrpp-0024@ticketera.local');
+  insert into perfiles (id, organizador_id, nombre, rol) values
+    (v_rrpp, v_org, 'Rrpp 0024', 'rrpp');
+  insert into eventos (id, organizador_id, slug, nombre, fecha) values
+    (v_ev, v_org, 'evento-0024', 'Evento 0024', current_date + 10);
+
+  update eventos set comision_entrada = 15 where id = v_ev;
+
+  -- sin acuerdo propio: gana el del evento
+  update perfiles set comision_entrada = null where id = v_rrpp;
+  if comision_de(v_rrpp, v_ev) <> 15 then
+    raise exception 'TEST_FAIL: sin acuerdo propio deberia dar 15, dio %', comision_de(v_rrpp, v_ev);
+  end if;
+
+  -- con acuerdo propio: gana el de la persona
+  update perfiles set comision_entrada = 25 where id = v_rrpp;
+  if comision_de(v_rrpp, v_ev) <> 25 then
+    raise exception 'TEST_FAIL: con acuerdo propio deberia dar 25, dio %', comision_de(v_rrpp, v_ev);
+  end if;
+
+  -- vuelve a depender del evento para lo que sigue
+  update perfiles set comision_entrada = null where id = v_rrpp;
+
+  -- el precio de la entrada NO entra en la cuenta: se sube de 60 a 70,
+  -- calcada la subida real de la manilla en Plataforma Puerta, y la
+  -- comision_de() tiene que quedarse exactamente donde estaba.
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre) values
+    (v_tipo, v_org, v_ev, 'General');
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta) values
+    (v_fase, v_org, v_ev, 'F1', now() - interval '1 hour', now() + interval '10 days');
+  insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo) values
+    (v_org, v_fase, v_tipo, 60, 50);
+
+  if comision_de(v_rrpp, v_ev) <> 15 then
+    raise exception 'TEST_FAIL: con la manilla a 60 deberia dar 15, dio %', comision_de(v_rrpp, v_ev);
+  end if;
+
+  update fase_precio set precio = 70 where fase_id = v_fase and tipo_id = v_tipo;
+  if comision_de(v_rrpp, v_ev) <> 15 then
+    raise exception 'TEST_FAIL: la comision se movio sola cuando subio el precio de la entrada, dio %', comision_de(v_rrpp, v_ev);
+  end if;
+
+  raise notice 'OK la comision es un monto fijo, con la de la persona por encima, y no se mueve con el precio';
+end $$;
+
 rollback;
