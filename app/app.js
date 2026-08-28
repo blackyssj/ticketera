@@ -82,6 +82,8 @@ function fijarVocabulario() {
   PASOS[3].txt = soloMesas ? "Tu reserva" : "Tu entrada";
   const h2 = $('[data-paso="entradas"] .panel-cab h2');
   if (h2) h2.textContent = PASOS[0].txt;
+  const gm = GRUPOS.find(g => g.cat === "mesa");
+  if (gm) gm.titulo = soloMesas ? null : "Mesas y lounges";
   $("#railResumen").textContent = VOCAB.elegi;
 }
 
@@ -248,8 +250,12 @@ function pintarTipos() {
   $("#tipos").innerHTML = GRUPOS.map(g => {
     const suyos = D.tipos.filter(t => (t.categoria || "entrada") === g.cat);
     if (!suyos.length) return "";
-    return (g.titulo
-        ? `<div class="grupo-cab"><h3>${esc(g.titulo)}</h3>` +
+    // El título del grupo se calla cuando no separa nada — con mesas y nada
+    // más, "Mesas y lounges" repite el encabezado del panel. La nota queda:
+    // esa sí dice algo que el comprador no sabe.
+    return ((g.titulo || g.nota)
+        ? `<div class="grupo-cab">` +
+          (g.titulo ? `<h3>${esc(g.titulo)}</h3>` : "") +
           (g.nota ? `<p>${esc(g.nota)}</p>` : "") + `</div>`
         : "") +
       suyos.map(t => tarjetaTipo(t, tope, usadas)).join("");

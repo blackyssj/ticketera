@@ -13,7 +13,7 @@ window.DATOS_DEMO = {
     datos: [["Puertas","21:00"],["Edad mínima","18"],["Reservas","74 disponibles"],["Pago","Con QR"]],
     tope_entradas_orden: 10
   },
-  fase: { nombre: "Reservas", hasta_txt: "hasta el 12 de septiembre" },
+  fase: { nombre: "Preventa", hasta_txt: "hasta el 12 de septiembre" },
   tipos: [
     { id:"sab-serenata", nombre:"Combo Sábados + Serenata", precio:8000, antes:null, cupo:10,
       manillas:10, categoria:"mesa",

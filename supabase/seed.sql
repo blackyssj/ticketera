@@ -46,7 +46,7 @@ delete from evento_fase f
 insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta, orden)
 values ('22000000-0000-4000-8000-000000000010','a0000000-0000-4000-8000-000000000001',
         'e0000000-0000-4000-8000-000000000001',
-        'Reservas', now() - interval '1 day', '2026-09-12 23:00-04', 1)
+        'Preventa', now() - interval '1 day', '2026-09-12 23:00-04', 1)
 on conflict (id) do update set nombre = excluded.nombre,
                                desde  = excluded.desde,
                                hasta  = excluded.hasta;
