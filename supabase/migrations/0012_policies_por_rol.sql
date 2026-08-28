@@ -20,6 +20,22 @@ grant execute on function puede_editar() to authenticated;
 comment on function puede_editar() is
   'Quién puede tocar el catálogo. rrpp y portero leen lo suyo y nada más.';
 
+create function chequeo_policies_sin_rol() returns text
+  language sql stable security definer set search_path = public as $$
+  select string_agg(tablename || '.' || policyname, ', ')
+  from pg_policies
+  where schemaname = 'public'
+    and cmd in ('ALL','INSERT','UPDATE','DELETE')
+    and 'authenticated' = any(roles)
+    and coalesce(qual, '') || coalesce(with_check, '') not like '%puede_editar%'
+    and coalesce(qual, '') || coalesce(with_check, '') not like '%mi_rol(%'
+    and coalesce(qual, '') || coalesce(with_check, '') not like '%auth.uid()%'
+$$;
+revoke execute on function chequeo_policies_sin_rol() from public, anon, authenticated;
+
+comment on function chequeo_policies_sin_rol() is
+  'Única fuente del patrón "escribir pide rol": lista las policies que permiten escribir sin nombrar puede_editar(), mi_rol() ni auth.uid(). La usan el invariante 5 y su propio test en policies.sql — no se copia el patrón en dos lugares. No se expone a authenticated: es auditoría de esquema, no una RPC de la app.';
+
 -- ── catálogo: leer todo el tenant, escribir solo admin/staff ──
 drop policy if exists "tipos: los míos"   on tipo_entrada;
 drop policy if exists "fases: las mías"   on evento_fase;
@@ -85,3 +101,11 @@ drop policy if exists "eventos: el admin los administra" on eventos;
 create policy "eventos escribir" on eventos for all to authenticated
   using  (organizador_id = mi_organizador() and puede_editar())
   with check (organizador_id = mi_organizador() and puede_editar());
+
+-- ── nadie autenticado trunca nada ──
+-- TRUNCATE no pasa por RLS: una policy no lo cubre. Viene de los grants por
+-- defecto de Supabase en cada tabla nueva (junto con TRIGGER y REFERENCES,
+-- que tampoco hacían falta), y sin este revoke cualquier usuario logueado
+-- podía vaciar `ordenes` y `entradas` enteras aunque no pudiera escribir
+-- una sola fila por policy.
+revoke truncate, trigger, references on all tables in schema public from anon, authenticated;

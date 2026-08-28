@@ -38,11 +38,11 @@ end $$;
 
 rollback;
 
--- El invariante 5 es una heurística de texto (busca puede_editar(), mi_rol()
--- o auth.uid() en qual/with_check). Esto prueba esa heurística sola: una
--- policy con mi_rol() tiene que pasar, una sin ningún chequeo de rol tiene
--- que hacerla fallar. Es el hallazgo del falso positivo de perfiles,
--- convertido en algo que grita solo si alguien vuelve a angostar el patrón.
+-- El invariante 5 corre chequeo_policies_sin_rol() (0012). Este test NO
+-- copia su patrón de texto: siembra una policy con mi_rol() y otra sin
+-- ningún chequeo de rol, llama a la MISMA función, y verifica que devuelva
+-- justo la segunda. Si el patrón real cambia, este test corre el cambio
+-- real — no puede quedar en verde por revisar una copia vieja.
 begin;
 
 create policy "prueba invariante: con mi_rol" on eventos for update to authenticated
@@ -51,28 +51,15 @@ create policy "prueba invariante: sin chequeo" on eventos for update to authenti
   using (true);
 
 do $$
-declare v_con_rol_atrapada boolean;
-        v_sin_rol_atrapada boolean;
+declare v_malas text;
 begin
-  select coalesce(qual, '') || coalesce(with_check, '') not like '%puede_editar%'
-     and coalesce(qual, '') || coalesce(with_check, '') not like '%mi_rol(%'
-     and coalesce(qual, '') || coalesce(with_check, '') not like '%auth.uid()%'
-    into v_con_rol_atrapada
-  from pg_policies
-  where schemaname = 'public' and policyname = 'prueba invariante: con mi_rol';
+  select chequeo_policies_sin_rol() into v_malas;
 
-  if v_con_rol_atrapada then
+  if v_malas like '%con mi_rol%' then
     raise exception 'TEST_FAIL: el invariante no reconoce mi_rol() como filtro de rol';
   end if;
 
-  select coalesce(qual, '') || coalesce(with_check, '') not like '%puede_editar%'
-     and coalesce(qual, '') || coalesce(with_check, '') not like '%mi_rol(%'
-     and coalesce(qual, '') || coalesce(with_check, '') not like '%auth.uid()%'
-    into v_sin_rol_atrapada
-  from pg_policies
-  where schemaname = 'public' and policyname = 'prueba invariante: sin chequeo';
-
-  if not v_sin_rol_atrapada then
+  if v_malas is null or v_malas not like '%sin chequeo%' then
     raise exception 'TEST_FAIL: el invariante no atrapa una policy sin ningun chequeo de rol';
   end if;
 
@@ -80,3 +67,34 @@ begin
 end $$;
 
 rollback;
+
+-- 0012 reemplaza siete policies que leían Y escribían con el mismo
+-- `for all ... using (organizador_id = mi_organizador())`, sin ningún
+-- chequeo de rol — el agujero original. `drop policy if exists <nombre>`
+-- no falla si el nombre no coincide: si algún nombre estuviera mal escrito,
+-- la policy vieja seguiría viva, se combinaría por OR con la nueva, y el
+-- agujero seguiría abierto en esa tabla sin que ningún otro test lo note
+-- (policies.sql solo prueba el comportamiento en tipo_entrada). Esto
+-- verifica, tabla por tabla, que ninguno de los siete nombres viejos
+-- sobrevive. No hace falta simular sesión: es una consulta directa a
+-- pg_policies.
+do $$
+declare v_malas text;
+begin
+  select string_agg(tablename || '.' || policyname, ', ') into v_malas
+  from pg_policies
+  where schemaname = 'public'
+    and (tablename, policyname) in (
+      ('tipo_entrada', 'tipos: los míos'),
+      ('evento_fase',  'fases: las mías'),
+      ('fase_precio',  'precios: los míos'),
+      ('mesas',        'mesas: las mías'),
+      ('ordenes',      'ordenes: las de mi organizador'),
+      ('orden_items',  'items: los de mi organizador'),
+      ('entradas',     'entradas: las de mi organizador')
+    );
+  if v_malas is not null then
+    raise exception 'TEST_FAIL: policies viejas de antes de 0012 todavía existen: %', v_malas;
+  end if;
+  raise notice 'OK las siete policies viejas de 0012 fueron reemplazadas, no duplicadas';
+end $$;
