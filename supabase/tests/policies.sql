@@ -36,6 +36,76 @@ begin
   raise notice 'OK un rrpp no escribe el catalogo';
 end $$;
 
+-- publicar_evento()/listo_para_publicar() (0013): el rrpp de arriba no
+-- alcanza porque puede_editar() exige admin/staff, así que este bloque
+-- siembra un staff propio del mismo organizador y simula sesión con él
+-- (mismo mecanismo: set local role authenticated + set_config del sub).
+-- El tipo_entrada sembrado arriba (ffffffff...1) ya existe activo, así que
+-- para reproducir el estado "sin fase NI precio" del brief (dos cosas
+-- faltando, no una) se lo desactiva un momento y se reactiva antes de
+-- darle fase y precio — así el chequeo de "al menos un tipo de entrada
+-- activo" también queda ejercitado, no solo el de la fase.
+do $$
+declare v_ev    uuid := 'eeeeeeee-0000-4000-8000-000000000001';
+        v_tipo  uuid := 'ffffffff-0000-4000-8000-000000000001';
+        v_staff uuid := 'dddddddd-0000-4000-8000-000000000002';
+        v_fase  uuid; v_r jsonb;
+begin
+  insert into auth.users (id, email) values
+    (v_staff, 'staff@ticketera.local');
+  insert into perfiles (id, organizador_id, nombre, rol) values
+    (v_staff, 'cccccccc-0000-4000-8000-000000000001', 'Un Staff', 'staff');
+
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+
+  update tipo_entrada set activo = false where id = v_tipo;
+
+  -- sin tipo de entrada activo, sin fase ni precio: no se publica y dice qué falta
+  v_r := listo_para_publicar(v_ev);
+  if (v_r->>'ok')::boolean is not false then
+    raise exception 'TEST_FAIL: dijo que estaba listo sin fase ni precio';
+  end if;
+  if jsonb_array_length(v_r->'faltan') < 2 then
+    raise exception 'TEST_FAIL: deberia listar las dos cosas que faltan, dijo %', v_r->'faltan';
+  end if;
+
+  begin
+    perform publicar_evento(v_ev, true);
+    raise exception 'TEST_FAIL: publico un evento sin fase ni precio';
+  exception when others then
+    if sqlerrm not like 'NO_PUBLICABLE:%' then raise; end if;
+  end;
+
+  -- con fase abierta y precio: publica
+  update tipo_entrada set activo = true where id = v_tipo;
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta)
+  values (gen_random_uuid(), 'cccccccc-0000-4000-8000-000000000001', v_ev, 'F1',
+          now() - interval '1 hour', now() + interval '10 days')
+  returning id into v_fase;
+  insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo)
+  values ('cccccccc-0000-4000-8000-000000000001', v_fase, v_tipo, 100, 50);
+
+  v_r := listo_para_publicar(v_ev);
+  if (v_r->>'ok')::boolean is not true then
+    raise exception 'TEST_FAIL: con fase y precio deberia estar listo: %', v_r;
+  end if;
+
+  perform publicar_evento(v_ev, true);
+  if (select estado from eventos where id = v_ev) <> 'publicado' then
+    raise exception 'TEST_FAIL: no quedo publicado';
+  end if;
+
+  -- despublicar siempre se puede: es la salida de emergencia
+  perform publicar_evento(v_ev, false);
+  if (select estado from eventos where id = v_ev) <> 'borrador' then
+    raise exception 'TEST_FAIL: no volvio a borrador';
+  end if;
+
+  reset role;
+  raise notice 'OK publicar exige fase abierta y precio';
+end $$;
+
 rollback;
 
 -- El invariante 5 corre chequeo_policies_sin_rol() (0012). Este test NO
