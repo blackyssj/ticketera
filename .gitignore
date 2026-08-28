@@ -1,0 +1,16 @@
+# Credenciales. La contraseña de la base vive acá y no se versiona nunca.
+.credenciales
+.env
+.env.*
+!.env.example
+
+# Vercel: .env.local trae un token OIDC de corta vida y .vercel el link del
+# proyecto. Ninguno de los dos es de nadie más.
+.vercel/
+**/.vercel/
+.env.local
+**/.env.local
+
+node_modules/
+.DS_Store
+*.log

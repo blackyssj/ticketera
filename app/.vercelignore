@@ -1,0 +1,5 @@
+# config.js SÍ se publica: la anon key es pública por diseño.
+# Lo que nunca debe subir es cualquier cosa con service_role o PAT.
+*.md
+.env.local
+.vercel
