@@ -472,6 +472,42 @@ input[type="date"],input[type="time"]{color-scheme:dark}
   .cifra-grande.plata .valor{font-size:30px}
 }
 
+/* ─── cabecera de bloque ───
+   El título, el conteo y el buscador en la misma línea: el conteo cambia
+   mientras se escribe y ahí es donde se lo mira. */
+.cab-bloque{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px}
+.cab-bloque.sep{margin-top:34px;padding-top:22px;border-top:1px solid var(--linea)}
+.cab-bloque .titulo-bloque{margin:0}
+.conteo{font-family:var(--dato);font-size:11.5px;color:var(--txt-3);white-space:nowrap}
+.buscador{
+  margin-left:auto;width:min(300px,100%);padding:9px 13px;
+  font-family:var(--dato);font-size:13px;
+}
+.buscador::-webkit-search-cancel-button{filter:invert(.7)}
+.cab-bloque .buscador+.conteo{margin-left:0}
+
+select{
+  padding:9px 12px;border:1px solid var(--linea-2);border-radius:var(--r-chico);
+  background:var(--hundido);color:var(--txt);font:inherit;font-size:13.5px;
+  max-width:100%;
+}
+select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--rojo-suave)}
+.cab-bloque select{margin-left:auto}
+
+/* La mesa de una compra: la chapa se reconoce por su etiqueta, no por
+   leer una columna. En rojo la que falta repartir. */
+.chip-mesa{
+  display:inline-flex;flex-direction:column;gap:1px;padding:4px 10px;border-radius:8px;
+  background:var(--sup-3);font-family:var(--dato);font-size:12.5px;white-space:nowrap;
+}
+.chip-mesa em{font-style:normal;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em}
+.chip-mesa.falta{background:var(--peligro-bg);color:var(--peligro);box-shadow:inset 0 0 0 1px rgba(251,113,133,.3)}
+
+@media (max-width:760px){
+  .buscador{margin-left:0;width:100%}
+  .cab-bloque select{margin-left:0;width:100%}
+}
+
 /* ─── botones ───
    El primario lleva sombra de su propio color: eso es lo que le da peso y lo
    separa de un rectángulo pintado. */

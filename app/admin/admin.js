@@ -663,6 +663,18 @@ async function pantallaMisVentas() {
   const entradas = ventas.reduce((a, v) => a + Number(v.entradas || 0), 0);
   const total = ventas.reduce((a, v) => a + Number(v.comision || 0), 0);
 
+  /* Sus compradores y el plano cuelgan de UN evento, y él puede estar
+     repartiendo links de varios a la vez: sin elegir cuál, la lista sería
+     la de cualquiera. Junta los que están a la venta con aquellos donde ya
+     vendió algo, aunque estén cerrados: por esos le siguen preguntando al
+     día siguiente. */
+  const evs = [];
+  const vistos = new Set();
+  (re.data || []).forEach(e => {
+    vistos.add(e.id);
+    evs.push({ id: e.id, nombre: e.nombre, fecha: e.fecha });
+  });
+
   $("#main").innerHTML = `
     <div class="cab-seccion"><h2>Mis ventas</h2></div>
 
@@ -692,9 +704,29 @@ async function pantallaMisVentas() {
         <span class="monto">${bs(total)}</span>
       </div>`
     : `<p class="vacio">Todavía no vendiste nada. En cuanto alguien compre
-         entrando por tu link y pague, acá aparecen las entradas y tu comisión.</p>`}`;
+         entrando por tu link y pague, acá aparecen las entradas y tu comisión.</p>`}
+
+    ${evs.length ? `
+      <div class="cab-bloque sep">
+        <h3 class="titulo-bloque">Tu salón</h3>
+        ${evs.length > 1
+          ? `<select id="selEventoSalon" aria-label="Evento del que ver compradores y mesas">
+               ${evs.map(e => `<option value="${esc(e.id)}">${esc(e.nombre)} · ${fmtF(e.fecha)}</option>`).join("")}
+             </select>`
+          : `<span class="conteo">${esc(evs[0].nombre)} · ${fmtF(evs[0].fecha)}</span>`}
+      </div>
+      <section id="zonaCompradores"></section>` : ""}`;
 
   cablearCopiar();
+
+  /* El mismo componente del tablero, sin una segunda versión:
+     compradores_evento() ya le devuelve solo sus órdenes, así que no hay
+     nada que filtrar acá. `editar` es false y le saca los botones. */
+  if (evs.length) {
+    const sel = $("#selEventoSalon");
+    if (sel) sel.onchange = () => montarSalon(sel.value, { editar: puedeEditar() });
+    montarSalon(evs[0].id, { editar: puedeEditar() });
+  }
 }
 
 /* Un link con el ?r= vacío no falla: se vende igual y la venta no es de
@@ -792,6 +824,10 @@ async function pantallaRelacionadores(eventoId) {
 
 const num = n => Number(n || 0).toLocaleString("es-BO");
 const pct = n => (Number(n || 0) % 1 ? Number(n).toFixed(1) : Number(n || 0).toFixed(0)) + "%";
+const fmtFH = t => t
+  ? new Date(t).toLocaleString("es-BO",
+      { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+  : "";
 /* Una manilla es una persona, y "1 manillas" en una lista que se lee de
    corrido delata que el texto lo armó una máquina justo donde hay que
    confiar en lo que dice. */async function pantallaTablero(eventoId) {
@@ -808,10 +844,14 @@ const pct = n => (Number(n || 0) % 1 ? Number(n).toFixed(1) : Number(n || 0).toF
       <button class="btn plano chico" id="btnVolver">← ${esc(ev.data.nombre)}</button>
       <h2>Tablero</h2>
     </div>
-    <div id="zonaResumen"><p class="cargando">Cargando…</p></div>`;
+    <div id="zonaResumen"><p class="cargando">Cargando…</p></div>
+    <section id="zonaCompradores"></section>`;
 
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
-  await refrescarResumen(eventoId);
+  await Promise.all([
+    refrescarResumen(eventoId),
+    montarSalon(eventoId, { editar: puedeEditar() }),
+  ]);
 }
 
 async function refrescarResumen(eventoId) {
@@ -981,6 +1021,124 @@ function bloqueDesgloses(r) {
       </div>
     </div>
   </div>`;
+}
+
+/* ══ el salón: quién compró y dónde se sienta ═════════════════════
+   La lista de compradores y el plano son dos vistas del mismo hecho, así
+   que comparten estado: van a tener que recargarse juntos.
+
+   Es la MISMA pantalla para el administrador y para el relacionador, y no
+   hay un solo `if` de rol acá adentro: compradores_evento() ya devuelve
+   todas las órdenes al que puede editar y solo las suyas al que no, y
+   mesas_evento() manda las 24 mesas a los dos pero con el nombre del
+   comprador únicamente donde corresponde. `editar` decide una cosa sola:
+   si se dibujan los botones de repartir. */
+const SALON = { evento: null, editar: false, compras: [], busca: "" };
+
+async function montarSalon(eventoId, opts) {
+  Object.assign(SALON, {
+    evento: eventoId, editar: !!(opts && opts.editar), compras: [], busca: "",
+  });
+  const c = $("#zonaCompradores");
+  if (c) c.innerHTML = `<p class="cargando">Cargando compradores…</p>`;
+  await cargarSalon();
+}
+
+/* Las dos listas llegan enteras, un jsonb cada una: no hay paginado que
+   pueda comerse una fila en silencio como hace PostgREST a las 1000, y el
+   filtro por evento y por rol ya viajó adentro de la función. Es lo que
+   además deja que el buscador de abajo trabaje sin volver a la base. */
+async function cargarSalon() {
+  // sin default en todos sus parámetros: se pasan siempre los dos
+  const rc = await sb.rpc("compradores_evento",
+    { p_evento: SALON.evento, p_solo_mios: false });
+  SALON.compras = rc.data || [];
+  pintarCompradores(rc.error);
+}
+
+/* Que una compra sea "de mesa" lo dice el producto, no el precio: a quien
+   compró cuatro generales no le falta ninguna mesa, y marcarle "sin
+   asignar" sería inventarle una tarea. */
+const compraDeMesa = c => (c.productos || []).some(p => p.categoria === "mesa");
+
+/* ── la lista de compradores ── */
+function pintarCompradores(error) {
+  const z = $("#zonaCompradores");
+  if (!z) return;
+  z.innerHTML = `
+    <div class="cab-bloque">
+      <h3 class="titulo-bloque">Compradores</h3>
+      ${SALON.compras.length ? `<input id="buscaComprador" class="buscador" type="search"
+         autocomplete="off" placeholder="Buscar por nombre o teléfono"
+         value="${esc(SALON.busca)}" aria-label="Buscar comprador por nombre o teléfono">` : ""}
+      <span class="conteo" id="conteoCompradores"></span>
+    </div>
+    ${error ? `<p class="error">${esc(error.message)}</p>` : ""}
+    ${SALON.compras.length ? `
+      <div class="grilla-envoltorio">
+        <table class="tabla tabla-compras">
+          <thead><tr>
+            <th>Comprador</th><th>Contacto</th><th>Compró</th>
+            <th class="n">Manillas</th><th class="n">Pagó</th>
+            <th>Relacionador</th><th>Mesa</th>
+          </tr></thead>
+          <tbody id="filasCompradores"></tbody>
+        </table>
+      </div>`
+      : error ? "" : `<p class="vacio">Todavía no hay compras pagadas en este evento.</p>`}`;
+
+  const b = $("#buscaComprador");
+  /* El buscador filtra sobre lo que YA está en memoria: en la puerta se
+     busca a alguien que dice "compré y no me llegó", y con el 4G del
+     boliche una consulta por tecla es medio segundo de espera por letra.
+     La lista entera de un evento son decenas de filas, no miles. */
+  if (b) b.oninput = () => { SALON.busca = b.value; pintarFilasCompradores(); };
+  pintarFilasCompradores();
+}
+
+function filtrarCompras() {
+  const q = SALON.busca.trim().toLowerCase();
+  if (!q) return SALON.compras;
+  // El teléfono se compara también sin separadores: quien lo busca lo
+  // escribe como se lo dictaron y en la base puede estar con espacios,
+  // guiones o +591 adelante.
+  const soloNum = s => String(s || "").replace(/\D/g, "");
+  const qn = soloNum(q);
+  return SALON.compras.filter(c =>
+    String(c.comprador || "").toLowerCase().includes(q) ||
+    String(c.telefono || "").toLowerCase().includes(q) ||
+    (qn.length >= 3 && soloNum(c.telefono).includes(qn)));
+}
+
+function pintarFilasCompradores() {
+  const tb = $("#filasCompradores");
+  if (!tb) return;
+  const filas = filtrarCompras();
+  const cont = $("#conteoCompradores");
+  if (cont) cont.textContent = SALON.busca.trim()
+    ? `${filas.length} de ${SALON.compras.length}`
+    : `${SALON.compras.length} ${SALON.compras.length === 1 ? "compra" : "compras"}`;
+  tb.innerHTML = filas.length
+    ? filas.map(filaCompra).join("")
+    : `<tr><td class="sin-nada" colspan="7">
+         Nadie con ese nombre ni ese teléfono en este evento.</td></tr>`;
+}
+
+function filaCompra(c) {
+  return `<tr data-orden="${esc(c.orden_id)}">
+    <td><span class="prod-nombre">${esc(c.comprador || "Sin nombre")}</span>
+      <em>${esc(fmtFH(c.fecha))}</em></td>
+    <td class="dato">${esc(c.telefono || "—")}${c.email ? `<em>${esc(c.email)}</em>` : ""}</td>
+    <td class="detalle">${esc(c.detalle || "—")}</td>
+    <td class="n">${num(c.manillas)}${c.manillas_usadas
+        ? `<em>${num(c.manillas_usadas)} usadas</em>` : ""}</td>
+    <td class="n">${bs(c.pagado)}</td>
+    <td class="dato">${esc(c.rrpp_nombre || (c.canal === "rrpp" ? "sin nombre" : "Público"))}</td>
+    <td>${c.mesa_id
+      ? `<span class="chip-mesa">${esc(c.mesa_etiqueta)}<em>${esc(c.mesa_planta)}</em></span>`
+      : compraDeMesa(c) ? `<span class="chip-mesa falta">sin asignar</span>`
+                        : `<span class="tenue">—</span>`}</td>
+  </tr>`;
 }
 
 /* ── arranque: si ya había sesión, entrar directo ── */
