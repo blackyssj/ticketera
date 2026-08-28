@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
     if (!faseId) return json({ ok: false, motivo: "No hay ninguna fase de venta abierta." }, 409);
 
     const fase = await uno(`evento_fase?id=eq.${faseId}&select=nombre,hasta,arte_url`);
-    const precios = await rest(`fase_precio?fase_id=eq.${faseId}&select=tipo_id,precio,cupo,tipo_entrada(id,nombre,descripcion,orden,activo)`);
+    const precios = await rest(`fase_precio?fase_id=eq.${faseId}&select=tipo_id,precio,cupo,tipo_entrada(id,nombre,descripcion,incluye,categoria,manillas,orden,activo)`);
 
     const tipos = [];
     for (const p of precios ?? []) {
@@ -66,31 +66,23 @@ Deno.serve(async (req) => {
       if (!t?.activo) continue;
       const disp = await rpc("disponibilidad_tipo", { p_fase: faseId, p_tipo: p.tipo_id });
       tipos.push({ id: t.id, nombre: t.nombre, desc: t.descripcion ?? "",
+                   incluye: t.incluye ?? null,
+                   categoria: t.categoria ?? "entrada",
                    precio: Number(p.precio), antes: null,
                    cupo: p.cupo === null ? 9999 : Number(disp ?? 0),
-                   manillas: 1, orden: t.orden });
+                   manillas: t.manillas ?? 1, orden: t.orden });
     }
     tipos.sort((a, b) => a.orden - b.orden);
 
-    const mesas = await rest(`mesas?evento_id=eq.${e.id}&select=id,etiqueta,planta,categoria,x,y,w,precio,manillas,estado&order=etiqueta`);
+    // El comprador ya no elige mesa en un plano: compra el producto y el
+    // relacionador le asigna cuál. Solo se cuentan, para el dato del hero.
+    const mesas = await rest(`mesas?evento_id=eq.${e.id}&select=id`);
 
     // el público ve tres estados y ninguno lleva el nombre de nadie
-    const visible = (s: string) =>
-      s === "disponible" ? "disponible" : s === "bloqueada" ? "bloqueada" : "vendida";
-
     const f = new Date(e.fecha + "T00:00:00-04:00");
     // Orden deliberado: la planta baja primero. Derivarlo del orden de las
     // mesas lo dejaba alfabético (A1 antes que M1) y abría en la alta.
-    const ORDEN = ["baja", "alta", "terraza"];
-    const plantas = [...new Set((mesas ?? []).map((m) => m.planta))]
-      .sort((a, b) => (ORDEN.indexOf(a) + 1 || 99) - (ORDEN.indexOf(b) + 1 || 99)
-                      || String(a).localeCompare(String(b)))
-      .map((id) => ({
-      id, nombre: id === "baja" ? "Planta baja" : id === "alta" ? "Planta alta" : String(id),
-      barra: id === "baja"
-        ? { texto: "Barra principal", left: "4%", top: "84%", width: "92%", height: "8%" }
-        : { texto: "Chopería", left: "4%", top: "6%", width: "20%", height: "22%" },
-    }));
+
 
     const partes = String(e.nombre).split(" ");
     return json({
@@ -107,7 +99,7 @@ Deno.serve(async (req) => {
         bajada: "",
         datos: [["Puertas", String(e.hora_inicio).slice(0,5)],
                 ["Edad mínima", String(e.edad_min)],
-                ["Mesas", `${(mesas ?? []).length} en ${plantas.length} plantas`],
+                ["Mesas", `${(mesas ?? []).length} disponibles`],
                 ["Pago", "QR, tarjeta y débito"]],
         tope_entradas_orden: e.tope_entradas_orden,
         arte_url: e.arte_url ?? null,
@@ -116,12 +108,7 @@ Deno.serve(async (req) => {
         ? "hasta el " + new Date(fase.hasta).toLocaleDateString("es-BO",
             { day: "numeric", month: "long", timeZone: "America/La_Paz" })
         : "" },
-      tipos, plantas,
-      mesas: (mesas ?? []).map((m) => ({
-        id: m.id, et: m.etiqueta, planta: m.planta, cat: m.categoria,
-        x: Number(m.x), y: Number(m.y), w: Number(m.w),
-        precio: Number(m.precio), manillas: m.manillas, estado: visible(m.estado),
-      })),
+      tipos,
     });
   } catch (err) {
     return json({ ok: false, motivo: String((err as Error).message ?? err) }, 500);

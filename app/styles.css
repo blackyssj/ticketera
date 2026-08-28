@@ -1,7 +1,6 @@
 /* ══════════════════════════════════════════════════════════════
    Ticketera — landing pública
    Paleta: noche / rojo / dorado cerveza / espuma.
-   Las mesas son chapas: tapa corona dentada, dorada si está libre.
    ══════════════════════════════════════════════════════════════ */
 
 :root{
@@ -117,12 +116,10 @@ input{font:inherit}
 /* Un ítem de grid trae min-width:auto, así que el minmax(0,1fr) limita la
    pista pero NO al hijo: sin esto la tira de tickets estira la página entera
    y el cuerpo scrollea de costado. */
-.lienzo-col{min-width:0}
 
 /* ─── movimiento ───
    Una idea por paso, no efectos sueltos: el panel entra desde el lado hacia
-   el que vas, la chapa late al tomarla, la pasarela se arma y los tickets
-   salen de a uno. Todo por debajo de 400ms: esto es un checkout, no una
+   el que vas, la pasarela se arma y los tickets salen de a uno. Todo por debajo de 400ms: esto es un checkout, no una
    presentación. */
 .panel{animation:entra-adelante .3s cubic-bezier(.22,.8,.28,1) both}
 [data-dir="atras"] .panel{animation-name:entra-atras}
@@ -165,72 +162,7 @@ input{font:inherit}
 .stepper output{width:36px;text-align:center;font-family:var(--dato);font-size:15px;font-variant-numeric:tabular-nums}
 
 /* ─── planimetría ─── */
-.plano-cab{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
-.plantas{display:inline-flex;border:1.5px solid var(--tinta);border-radius:3px;overflow:hidden}
-.plantas button{padding:7px 15px;font-family:var(--dato);font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--tinta);transition:background .14s ease}
-.plantas button[aria-pressed="true"]{background:var(--tinta);color:var(--espuma)}
-.leyenda{margin-left:auto;display:flex;gap:14px;flex-wrap:wrap;font-family:var(--dato);font-size:11px;color:var(--tinta-60)}
-.leyenda span{display:inline-flex;align-items:center;gap:6px}
-.pip{width:12px;height:12px;border-radius:50%;flex:0 0 auto}
-.pip.libre{background:linear-gradient(150deg,#F3C868,var(--dorado-hondo))}
-.pip.sel{background:var(--rojo)}
-.pip.bloq{background:#8C8375}
-.pip.vend{background:#332F2A}
 
-.plano{position:relative;background:var(--tinta);border-radius:6px;padding:clamp(12px,2.2vw,24px);overflow:hidden}
-.plano::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(70% 42% at 50% -6%, rgba(220,10,45,.30), transparent 62%)}
-.lienzo{position:relative;width:100%;aspect-ratio:16/9.6;min-height:270px}
-.escenario{
-  position:absolute;left:50%;transform:translateX(-50%);top:1.5%;width:46%;height:9%;
-  border:1.5px solid rgba(246,241,228,.35);border-radius:3px;display:grid;place-items:center;
-  font-family:var(--dato);font-size:clamp(9px,1.1vw,12px);letter-spacing:.22em;
-  color:rgba(246,241,228,.66);text-transform:uppercase;
-}
-.barra-plano{
-  position:absolute;border:1px dashed rgba(246,241,228,.22);border-radius:3px;
-  display:grid;place-items:center;font-family:var(--dato);
-  font-size:clamp(8px,1vw,11px);letter-spacing:.16em;color:rgba(246,241,228,.4);text-transform:uppercase;
-}
-
-.chapa{position:absolute;transform:translate(-50%,-50%);aspect-ratio:1;padding:0;border-radius:50%;transition:transform .16s cubic-bezier(.2,.8,.3,1.2),filter .16s ease;z-index:2}
-.chapa .teeth{position:absolute;inset:0;border-radius:50%}
-.chapa .disc{position:absolute;inset:11%;border-radius:50%}
-.chapa .num{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--dato);font-size:clamp(8px,1.05vw,12.5px);font-weight:500;pointer-events:none}
-
-.chapa[data-estado="disponible"] .teeth{background:repeating-conic-gradient(var(--dorado-hondo) 0deg 11deg, transparent 11deg 17.14deg)}
-.chapa[data-estado="disponible"] .disc{background:radial-gradient(circle at 34% 26%, #F7D98F, var(--dorado) 46%, var(--dorado-hondo));box-shadow:inset 0 -3px 6px rgba(0,0,0,.42), 0 2px 10px rgba(233,180,76,.18)}
-.chapa[data-estado="disponible"] .num{color:#3A2A08}
-.chapa[data-estado="disponible"]:hover{transform:translate(-50%,-50%) scale(1.14);filter:brightness(1.12);z-index:3}
-
-.chapa[data-estado="elegida"] .teeth{background:repeating-conic-gradient(var(--rojo-hondo) 0deg 11deg, transparent 11deg 17.14deg)}
-.chapa[data-estado="elegida"] .disc{background:radial-gradient(circle at 34% 26%, #FF4059, var(--rojo) 48%, var(--rojo-hondo));box-shadow:inset 0 -3px 6px rgba(0,0,0,.5), 0 0 0 3px rgba(220,10,45,.28), 0 0 22px rgba(220,10,45,.5)}
-.chapa[data-estado="elegida"] .num{color:#fff}
-.chapa[data-estado="elegida"]{transform:translate(-50%,-50%) scale(1.1);z-index:3}
-
-.chapa[data-estado="bloqueada"] .teeth{background:repeating-conic-gradient(#5C5348 0deg 11deg, transparent 11deg 17.14deg)}
-.chapa[data-estado="bloqueada"] .disc{background:linear-gradient(150deg,#8C8375,#5C5348)}
-.chapa[data-estado="bloqueada"] .num{color:rgba(255,255,255,.82);font-size:clamp(9px,1.2vw,14px)}
-.chapa[data-estado="bloqueada"]{cursor:not-allowed}
-
-.chapa[data-estado="vendida"] .teeth{background:repeating-conic-gradient(#332F2A 0deg 11deg, transparent 11deg 17.14deg)}
-.chapa[data-estado="vendida"] .disc{background:#332F2A;box-shadow:inset 0 2px 5px rgba(0,0,0,.6)}
-.chapa[data-estado="vendida"] .num{color:rgba(246,241,228,.26)}
-.chapa[data-estado="vendida"]{cursor:not-allowed}
-
-.chapa.lounge .disc{border-radius:22%}
-.chapa.lounge .teeth{border-radius:26%}
-
-.globo{
-  position:absolute;z-index:5;pointer-events:none;transform:translate(-50%,-118%);
-  background:var(--espuma);color:var(--tinta);border-radius:3px;padding:7px 10px;
-  font-family:var(--dato);font-size:11.5px;line-height:1.35;white-space:nowrap;
-  box-shadow:0 6px 20px rgba(0,0,0,.5);
-}
-.globo b{display:block;font-size:13px}
-
-.plano-pie{margin-top:14px;font-family:var(--dato);font-size:11.5px;color:var(--tinta-60)}
-
-/* ─── formulario ─── */
 .form{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:640px}
 .campo{display:flex;flex-direction:column;gap:6px}
 .campo.ancho{grid-column:1 / -1}
@@ -352,7 +284,6 @@ body.sin-rail .lienzo-col{padding-bottom:0}
   .reloj.escritorio{display:none !important}
   .form{grid-template-columns:1fr}
   .leyenda{width:100%;margin-left:0;gap:10px}
-  .lienzo{aspect-ratio:3/4.1}
   .tipo{grid-template-columns:1fr;gap:10px}
   .tipo-der{grid-column:1;grid-row:auto;justify-content:space-between}
   .tipo-precio{text-align:left}
@@ -389,16 +320,6 @@ body.sin-rail .lienzo-col{padding-bottom:0}
   100%{transform:scale(1);opacity:1}
 }
 
-/* la chapa recién tomada late una sola vez: un anillo que se abre y se va */
-.chapa.recien::after{
-  content:"";position:absolute;inset:-6%;border-radius:inherit;
-  border:2px solid var(--rojo);pointer-events:none;
-  animation:anillo .55s cubic-bezier(.2,.7,.3,1) forwards;
-}
-@keyframes anillo{
-  from{transform:scale(.86);opacity:.85}
-  to{transform:scale(1.5);opacity:0}
-}
 
 /* la pasarela se arma: primero la tarjeta, después el QR */
 .pasarela{animation:tarjeta-entra .32s cubic-bezier(.2,.8,.3,1.05) both}
@@ -428,7 +349,7 @@ body.sin-rail .lienzo-col{padding-bottom:0}
 .girador{animation:girar .8s cubic-bezier(.5,.1,.5,.9) infinite}
 
 @media (prefers-reduced-motion:reduce){
-  .panel,.paso[data-estado="actual"] .n,.chapa.recien::after,
+  .panel,.paso[data-estado="actual"] .n,
   .pasarela,.pasarela-qr canvas,.tickets img{animation:none !important}
 }
 
@@ -441,3 +362,14 @@ body.sin-rail .lienzo-col{padding-bottom:0}
   padding:7px 14px;border:1.5px solid var(--rojo);border-radius:3px;
 }
 .ticket-fig img{display:block}
+
+/* ─── grupos de producto ───
+   Una entrada y una mesa se compran distinto: mezclarlas en una lista sola
+   hace que la de 3.000 parezca una entrada carísima. */
+.grupo-cab{margin:26px 0 10px}
+.grupo-cab h3{font-family:var(--display);font-size:26px;text-transform:uppercase;color:var(--tinta)}
+.grupo-cab p{font-family:var(--dato);font-size:11.5px;color:var(--tinta-40);margin-top:4px}
+.tipo.es-mesa{border-color:rgba(169,116,27,.45);background:linear-gradient(#fff,#FFFDF7)}
+.tipo-incluye{grid-column:1;font-size:13px;color:var(--tinta-60);margin-top:2px}
+.tipo-incluye b{font-family:var(--dato);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--dorado-hondo);margin-right:6px}

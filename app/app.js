@@ -26,9 +26,12 @@ let D = window.DATOS_DEMO;
 const HOLD_SEG = 600;
 /* Si `iniciar-pago` devuelve una URL, la pasarela es real y el comprador se
    va a ella. Si no, se queda en la pantalla de cobro por QR de acá. */
+/* Sin paso de mesa: el comprador elige un producto, no un lugar del plano.
+   La mesa física se la asigna el relacionador después de vender. Eso saca de
+   la venta pública el problema más caro que tenía — dos personas peleando por
+   la misma chapa mientras pagan. */
 const PASOS = [
   { id:"entradas", txt:"Entradas" },
-  { id:"mesas",    txt:"Mesa" },
   { id:"datos",    txt:"Tus datos" },
   { id:"pago",     txt:"Pago" },
   { id:"listo",    txt:"Tu entrada" }
@@ -38,9 +41,6 @@ const PASOS = [
 const S = {
   paso: "entradas",
   cant: {},                    // tipo_id → cantidad
-  mesas: new Set(),            // etiquetas elegidas
-  planta: null,
-  mesaEstado: {},              // etiqueta → estado (el demo lo muta)
   comprador: { nombre:"", telefono:"", email:"" },
   orden: null,
   entradas: [],
@@ -66,8 +66,6 @@ function avisar(txt) {
   tToast = setTimeout(() => t.dataset.on = "0", 4200);
 }
 
-const mesaDe = et => D.mesas.find(m => m.et === et);
-const idMesa = et => { const m = mesaDe(et); return (m && m.id) || et; };
 const tipoDe = id => D.tipos.find(t => t.id === id);
 const esperar = ms => new Promise(r => setTimeout(r, ms));
 
@@ -83,21 +81,9 @@ function apiDemo() {
     async evento() { return { ok: true, ...window.DATOS_DEMO }; },
     async crearOrden(items, comprador) {
       await esperar(220);
-      const et = id => (D.mesas.find(m => (m.id || m.et) === id) || {}).et;
-      for (const it of items) {
-        if (!it.mesa_id) continue;
-        if (S.mesaEstado[et(it.mesa_id)] !== "disponible") {
-          throw new Error("Alguien tomó esa mesa hace un momento. Elegí otra.");
-        }
-      }
-      items.forEach(it => { if (it.mesa_id) S.mesaEstado[et(it.mesa_id)] = "bloqueada"; });
       const { subtotal, fee, total } = cotizar();
-      return {
-        id: crypto.randomUUID(),
-        subtotal, fee, total,
-        expira_at: Date.now() + HOLD_SEG * 1000,
-        comprador
-      };
+      return { id: crypto.randomUUID(), subtotal, fee, total,
+               expira_at: Date.now() + HOLD_SEG * 1000, comprador };
     },
     async iniciarPago(orden) {
       await esperar(700);
@@ -112,20 +98,12 @@ function apiDemo() {
       const out = [];
       Object.entries(S.cant).forEach(([id, q]) => {
         const t = tipoDe(id);
-        for (let i = 0; i < q; i++) {
+        // una mesa emite una entrada por persona que entra con ella
+        for (let i = 0; i < q * (t.manillas || 1); i++) {
           out.push({ code: nuevoCode(), etiqueta: t.nombre, precio: t.precio,
                      cliente: orden.comprador.nombre });
         }
       });
-      S.mesas.forEach(et => {
-        const m = mesaDe(et);
-        for (let i = 0; i < m.manillas; i++) {
-          out.push({ code: nuevoCode(),
-                     etiqueta: (m.cat === "lounge" ? "Lounge " : "Mesa ") + m.et,
-                     precio: 0, cliente: orden.comprador.nombre });
-        }
-      });
-      S.mesas.forEach(et => S.mesaEstado[et] = "pagada");
       return out;
     }
   };
@@ -167,12 +145,6 @@ function cotizar() {
     subtotal += t.precio * q; entradas += q;
     lineas.push({ q: q + "×", n: t.nombre, v: t.precio * q, quitarTipo: t.id });
   });
-  S.mesas.forEach(et => {
-    const m = mesaDe(et);
-    subtotal += m.precio;
-    lineas.push({ q: "1×", n: (m.cat === "lounge" ? "Lounge " : "Mesa ") + m.et,
-                  v: m.precio, quitarMesa: et });
-  });
 
   const o = D.organizador;
   const fee = lineas.length
@@ -211,81 +183,60 @@ function pintarPasos() {
   }).join("");
 }
 
+/* Dos grupos, no una lista sola: una entrada y una mesa se compran distinto
+   —una es una persona, la otra es un espacio para un grupo— y mezclarlas hace
+   que la de 3.000 parezca una entrada carísima. */
+const GRUPOS = [
+  { cat: "entrada", titulo: null },
+  { cat: "mesa", titulo: "Mesas y lounges",
+    nota: "El lugar exacto te lo asigna el equipo el día del evento." },
+];
+
 function pintarTipos() {
   const tope = D.evento.tope_entradas_orden;
   const usadas = Object.values(S.cant).reduce((a, b) => a + b, 0);
-  $("#tipos").innerHTML = D.tipos.map(t => {
-    const q = S.cant[t.id];
-    const restanTipo = t.cupo - q;
-    const cls = t.cupo === 0 ? "agotado" : t.cupo <= 20 ? "poco" : "";
-    const txtCupo = t.cupo === 0 ? "Agotado"
-      : t.cupo <= 20 ? `Quedan ${t.cupo}` : `${t.cupo} disponibles`;
-    const topeMas = q >= t.cupo || usadas >= tope;
-    return `<article class="tipo" data-activo="${q ? 1 : 0}">
-      <h3 class="tipo-nombre">${esc(t.nombre)}</h3>
-      <p class="tipo-desc">${esc(t.desc)}</p>
-      <p class="tipo-cupo ${cls}">${txtCupo}</p>
-      <div class="tipo-der">
-        <span class="tipo-precio">${bs(t.precio)}${t.antes ? `<s>antes ${t.antes} Bs</s>` : ""}</span>
-        <div class="stepper">
-          <button type="button" data-paso-t="-1" data-tipo="${t.id}"
-            aria-label="Quitar una ${esc(t.nombre)}"${q === 0 ? " disabled" : ""}>−</button>
-          <output>${q}</output>
-          <button type="button" data-paso-t="1" data-tipo="${t.id}"
-            aria-label="Agregar una ${esc(t.nombre)}"${topeMas ? " disabled" : ""}>+</button>
-        </div>
-      </div>
-    </article>`;
+
+  $("#tipos").innerHTML = GRUPOS.map(g => {
+    const suyos = D.tipos.filter(t => (t.categoria || "entrada") === g.cat);
+    if (!suyos.length) return "";
+    return (g.titulo
+        ? `<div class="grupo-cab"><h3>${esc(g.titulo)}</h3>` +
+          (g.nota ? `<p>${esc(g.nota)}</p>` : "") + `</div>`
+        : "") +
+      suyos.map(t => tarjetaTipo(t, tope, usadas)).join("");
   }).join("");
+
   if (usadas >= tope) {
     $("#tipos").insertAdjacentHTML("beforeend",
-      `<p class="letra-chica">Máximo ${tope} entradas por compra. Para más, hacé otra compra.</p>`);
+      `<p class="letra-chica">Máximo ${tope} por compra. Para más, hacé otra compra.</p>`);
   }
 }
 
-function pintarPlantas() {
-  $("#plantas").innerHTML = D.plantas.map(p =>
-    `<button type="button" data-planta="${p.id}" aria-pressed="${p.id === S.planta}">${esc(p.nombre)}</button>`
-  ).join("");
-}
+function tarjetaTipo(t, tope, usadas) {
+  const q = S.cant[t.id];
+  const esMesa = (t.categoria || "entrada") === "mesa";
+  const cls = t.cupo === 0 ? "agotado" : t.cupo <= 20 ? "poco" : "";
+  const txtCupo = t.cupo === 0 ? "Agotado"
+    : t.cupo <= 20 ? `Quedan ${t.cupo}` : `${t.cupo} disponibles`;
+  const topeMas = q >= t.cupo || usadas >= tope;
 
-function pintarPlano() {
-  const l = $("#lienzo");
-  l.querySelectorAll(".chapa, .barra-plano").forEach(n => n.remove());
-
-  const p = D.plantas.find(x => x.id === S.planta);
-  const barra = document.createElement("div");
-  barra.className = "barra-plano";
-  barra.textContent = p.barra.texto;
-  Object.assign(barra.style, { left: p.barra.left, top: p.barra.top,
-                               width: p.barra.width, height: p.barra.height });
-  l.appendChild(barra);
-
-  D.mesas.filter(m => m.planta === S.planta).forEach(m => {
-    const elegida = S.mesas.has(m.et);
-    const est = elegida ? "elegida" : S.mesaEstado[m.et];
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "chapa" + (m.cat === "lounge" ? " lounge" : "");
-    b.dataset.estado = est;
-    b.dataset.et = m.et;
-    b.style.left = m.x + "%"; b.style.top = m.y + "%"; b.style.width = m.w + "%";
-    b.disabled = est === "vendida" || est === "bloqueada";
-    const rotulo = est === "vendida" ? "vendida"
-      : est === "bloqueada" ? "alguien la está pagando"
-      : elegida ? `elegida, ${bs(m.precio)}` : `libre, ${bs(m.precio)}`;
-    b.setAttribute("aria-label",
-      `${m.cat === "lounge" ? "Lounge" : "Mesa"} ${m.et}, ${m.manillas} personas, ${rotulo}`);
-    b.setAttribute("aria-pressed", String(elegida));
-    b.innerHTML = `<span class="teeth"></span><span class="disc"></span>` +
-                  `<span class="num">${est === "bloqueada" ? "⏱" : esc(m.et)}</span>`;
-    l.appendChild(b);
-  });
-
-  const libres = D.mesas.filter(m => m.planta === S.planta &&
-    S.mesaEstado[m.et] === "disponible" && !S.mesas.has(m.et)).length;
-  $("#planoPie").textContent =
-    `${libres} libres en ${p.nombre.toLowerCase()} · mesa 8 personas · lounge 12`;
+  return `<article class="tipo${esMesa ? " es-mesa" : ""}" data-activo="${q ? 1 : 0}">
+    <h3 class="tipo-nombre">${esc(t.nombre)}</h3>
+    <p class="tipo-desc">${esc(t.desc)}</p>
+    ${t.incluye ? `<p class="tipo-incluye"><b>Incluye</b> ${esc(t.incluye)}</p>` : ""}
+    <p class="tipo-cupo ${cls}">${txtCupo}${
+      esMesa && t.manillas > 1 ? ` · entran ${t.manillas}` : ""}</p>
+    <div class="tipo-der">
+      <span class="tipo-precio">${bs(t.precio)}${t.antes ? `<s>antes ${t.antes} Bs</s>` : ""}</span>
+      <div class="stepper">
+        <button type="button" data-paso-t="-1" data-tipo="${t.id}"
+          aria-label="Quitar ${esc(t.nombre)}"${q === 0 ? " disabled" : ""}>−</button>
+        <output>${q}</output>
+        <button type="button" data-paso-t="1" data-tipo="${t.id}"
+          aria-label="Agregar ${esc(t.nombre)}"${topeMas ? " disabled" : ""}>+</button>
+      </div>
+    </div>
+  </article>`;
 }
 
 function pintarRail() {
@@ -308,16 +259,18 @@ function pintarRail() {
   $("#railTotalChico").textContent = bs(total);
 
   const partes = [];
-  if (entradas) partes.push(entradas + (entradas === 1 ? " entrada" : " entradas"));
-  if (S.mesas.size) partes.push(S.mesas.size + (S.mesas.size === 1 ? " mesa" : " mesas"));
+  const mesas = D.tipos.filter(t => t.categoria === "mesa")
+                       .reduce((a, t) => a + (S.cant[t.id] || 0), 0);
+  const sueltas = entradas - mesas;
+  if (sueltas) partes.push(sueltas + (sueltas === 1 ? " entrada" : " entradas"));
+  if (mesas) partes.push(mesas + (mesas === 1 ? " mesa" : " mesas"));
   $("#railResumen").textContent = hay ? partes.join(" · ") : "Elegí tus entradas";
 
   // el botón cambia de nombre y de habilitación según el paso
   const b = $("#btnSeguir"), atras = $("#btnAtras");
   const cfg = {
-    entradas: { txt: hay ? "Elegir mesa" : "Ver mesas", on: true,  atras: false },
-    mesas:    { txt: "Seguir",        on: hay,          atras: true  },
-    datos:    { txt: "Ir a pagar",    on: formValido(false), atras: true },
+    entradas: { txt: "Seguir",     on: hay,               atras: false },
+    datos:    { txt: "Ir a pagar", on: formValido(false), atras: true  },
     pago:     { txt: "Procesando…",   on: false,        atras: false },
     listo:    { txt: "Listo",         on: false,        atras: false }
   }[S.paso];
@@ -352,8 +305,6 @@ function dibujarReloj() {
 }
 function vencer() {
   pararReloj();
-  S.mesas.forEach(et => S.mesaEstado[et] = "disponible");
-  S.mesas.clear();
   D.tipos.forEach(t => S.cant[t.id] = 0);
   S.orden = null;
   irA("entradas");
@@ -376,7 +327,6 @@ function irA(paso) {
   document.body.classList.toggle("sin-rail", paso === "listo");
   $("#hero").classList.toggle("compacto", paso !== "entradas");
   pintarPasos();
-  if (paso === "mesas") { pintarPlantas(); pintarPlano(); }
   if (paso === "entradas") pintarTipos();
   pintarRail();
   const y = $("#pasos").getBoundingClientRect().top + window.scrollY - 70;
@@ -427,8 +377,7 @@ async function pagar() {
       <p>Guardamos lo que elegiste por 10 minutos mientras pagás.</p>`);
     const items = [];
     Object.entries(S.cant).forEach(([id, q]) => { if (q) items.push({ tipo_id: id, cantidad: q }); });
-    S.mesas.forEach(et => items.push({ mesa_id: idMesa(et) }));
-    S.orden = await API.crearOrden(items, { ...S.comprador });
+      S.orden = await API.crearOrden(items, { ...S.comprador });
 
     pagoDice(`<div class="girador"></div><h3>Abriendo la pasarela</h3>
       <p>Un segundo.</p>`);
@@ -578,50 +527,11 @@ $("#tipos").addEventListener("click", e => {
   pintarTipos(); pintarRail();
 });
 
-$("#lienzo").addEventListener("click", e => {
-  const b = e.target.closest(".chapa");
-  if (!b || b.disabled) return;
-  const et = b.dataset.et;
-  const tomando = !S.mesas.has(et);
-  tomando ? S.mesas.add(et) : S.mesas.delete(et);
-  pintarPlano(); pintarRail();
-  // el anillo late una sola vez, al tomarla; soltarla no festeja nada
-  if (tomando) {
-    const nueva = $(`.chapa[data-et="${et}"]`);
-    if (nueva) { nueva.classList.add("recien"); }
-  }
-});
-
-$("#lienzo").addEventListener("pointerover", e => {
-  const b = e.target.closest(".chapa");
-  const globo = $("#globo");
-  if (!b) { globo.hidden = true; return; }
-  const m = mesaDe(b.dataset.et);
-  const est = b.dataset.estado;
-  globo.innerHTML = `<b>${esc(m.cat === "lounge" ? "Lounge " : "Mesa ")}${esc(m.et)}</b>` +
-    (est === "vendida" ? "Vendida"
-     : est === "bloqueada" ? "Alguien la está pagando"
-     : `${bs(m.precio)} · ${m.manillas} personas`);
-  const p = b.getBoundingClientRect(), c = $(".plano").getBoundingClientRect();
-  globo.style.left = (p.left - c.left + p.width / 2) + "px";
-  globo.style.top  = (p.top  - c.top) + "px";
-  globo.hidden = false;
-});
-$("#lienzo").addEventListener("pointerleave", () => $("#globo").hidden = true);
-
-$("#plantas").addEventListener("click", e => {
-  const b = e.target.closest("button[data-planta]");
-  if (!b) return;
-  S.planta = b.dataset.planta;
-  pintarPlantas(); pintarPlano();
-});
-
 $("#railLineas").addEventListener("click", e => {
-  const m = e.target.closest("[data-quitar-mesa]");
   const t = e.target.closest("[data-quitar-tipo]");
-  if (m) { S.mesas.delete(m.dataset.quitarMesa); pintarPlano(); }
-  if (t) { S.cant[t.dataset.quitarTipo] = 0; pintarTipos(); }
-  if (m || t) pintarRail();
+  if (!t) return;
+  S.cant[t.dataset.quitarTipo] = 0;
+  pintarTipos(); pintarRail();
 });
 
 $("#pasos").addEventListener("click", e => {
@@ -630,16 +540,14 @@ $("#pasos").addEventListener("click", e => {
 });
 
 $("#btnSeguir").addEventListener("click", () => {
-  if (S.paso === "entradas") return irA("mesas");
-  if (S.paso === "mesas")    return irA("datos");
+  if (S.paso === "entradas") return irA("datos");
   if (S.paso === "datos") {
     if (!formValido(true)) { avisar("Revisá los datos marcados."); return; }
     return pagar();
   }
 });
 $("#btnAtras").addEventListener("click", () => {
-  if (S.paso === "mesas") return irA("entradas");
-  if (S.paso === "datos") return irA("mesas");
+  if (S.paso === "datos") return irA("entradas");
 });
 
 Object.keys(REGLAS).forEach(id => {
@@ -662,7 +570,7 @@ $("#railTirador").addEventListener("click", () => {
 $("#btnDescargar").addEventListener("click", descargar);
 $("#btnOtra").addEventListener("click", () => {
   D.tipos.forEach(t => S.cant[t.id] = 0);
-  S.mesas.clear(); S.orden = null; S.entradas = [];
+  S.orden = null; S.entradas = [];
   pintarTipos(); irA("entradas");
 });
 
@@ -682,11 +590,8 @@ async function arrancar() {
     }
   }
   D.tipos.forEach(t => S.cant[t.id] = 0);
-  D.mesas.forEach(m => S.mesaEstado[m.et] = m.estado);
-  S.planta = D.plantas[0].id;
   pintarHero();
   pintarTipos();
-  pintarPlantas();
   irA("entradas");
 }
 arrancar();
