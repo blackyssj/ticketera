@@ -36,6 +36,21 @@ const CFG = (() => {
 // con exactamente la misma forma, así que de acá para abajo da lo mismo.
 let D = window.DATOS_DEMO;
 
+/* La atribución del relacionador. Se guarda al entrar y se arrastra hasta el
+   checkout: el comprador puede mirar, irse y volver sin el ?r=, y la venta
+   sigue siendo de quien le pasó el link.
+   sessionStorage y no localStorage a propósito: dura la visita, no para
+   siempre — si el mismo teléfono compra un mes después por otro lado, ya no
+   es de él. */
+const REL = (() => {
+  const key = "ticketera.r";
+  const url = new URLSearchParams(location.search).get("r");
+  try {
+    if (url) sessionStorage.setItem(key, url);
+    return sessionStorage.getItem(key) || null;
+  } catch { return url || null; }   // navegador con storage bloqueado
+})();
+
 const HOLD_SEG = 600;
 /* Si `iniciar-pago` devuelve una URL, la pasarela es real y el comprador se
    va a ella. Si no, se queda en la pantalla de cobro por QR de acá. */
@@ -134,7 +149,8 @@ function apiSupabase() {
     evento: () => fn("evento", { organizador: CFG.ORGANIZADOR, evento: CFG.EVENTO }),
     crearOrden: async (items, comprador) => {
       const r = await fn("crear-orden", { organizador: CFG.ORGANIZADOR, evento: CFG.EVENTO,
-                                          items, comprador, client_key: crypto.randomUUID() });
+                                          items, comprador, r: REL,
+                                          client_key: crypto.randomUUID() });
       return { id: r.orden, subtotal: r.subtotal, fee: r.fee, total: r.total, comprador };
     },
     iniciarPago: orden => fn("iniciar-pago", { orden: orden.id }),
