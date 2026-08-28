@@ -1013,4 +1013,286 @@ begin
   raise notice 'OK validar consume una sola vez, filtro no consume, deshacer devuelve y anulada no es no_existe';
 end $$;
 
+-- ============================================================
+-- 0029 — asignar_mesa() / liberar_mesa()
+--
+-- La prueba que importa es la de dos órdenes peleando por una mesa. Acá
+-- corre secuencial, dentro de una sola sesión: la segunda asignación tiene
+-- que fallar con una frase que se entienda y la mesa tiene que quedar con
+-- la primera. Eso verifica el resultado del candado, no el candado.
+--
+-- El candado de verdad —dos sesiones a la vez— no se puede montar desde
+-- este archivo: scripts/sql.py manda el .sql entero en un POST a la API de
+-- gestión, o sea UNA conexión y UNA transacción por corrida, y no hay
+-- forma de dejarla abierta mientras arranca otra. Dos corridas en paralelo
+-- tampoco alcanzan: la segunda sesión no vería los datos sembrados por la
+-- primera hasta que los commitee, y este archivo no commitea nada contra
+-- la base real. Queda dicho acá para que nadie lo lea como "ya está
+-- probado".
+--
+-- Lo que sí queda cubierto: la condición vive adentro del `update` (0029),
+-- que es lo que hace que las dos sesiones se serialicen sobre la fila y la
+-- segunda re-evalúe el where; y el índice único parcial sobre
+-- ordenes.mesa_asignada_id, que se prueba abajo a mano y atrapa el empate
+-- incluso si alguien esquiva la función.
+--
+-- El resto: el reparto es del equipo y NINGÚN relacionador asigna —ni
+-- siquiera las mesas de las órdenes que vendió él—, reasignar libera la
+-- mesa vieja, y una mesa de otro evento o de otro tenant se rechaza.
+-- ============================================================
+do $$
+declare v_org   uuid := '02900029-0029-4029-8029-000000000001';
+        v_org2  uuid := '02900029-0029-4029-8029-000000000002';   -- otro tenant
+        v_a     uuid := '02900029-0029-4029-8029-000000000003';   -- relacionador A
+        v_b     uuid := '02900029-0029-4029-8029-000000000004';   -- relacionador B
+        v_staff uuid := '02900029-0029-4029-8029-000000000005';
+        v_otro  uuid := '02900029-0029-4029-8029-000000000006';   -- staff del OTRO tenant
+        v_ev    uuid := '02900029-0029-4029-8029-000000000007';
+        v_ev2   uuid := '02900029-0029-4029-8029-000000000008';   -- mismo tenant, otro evento
+        v_ev3   uuid := '02900029-0029-4029-8029-000000000009';   -- evento del otro tenant
+        v_tipo  uuid := '02900029-0029-4029-8029-00000000000a';
+        v_tipo3 uuid := '02900029-0029-4029-8029-00000000000b';
+        v_fase  uuid := '02900029-0029-4029-8029-00000000000c';
+        v_fase3 uuid := '02900029-0029-4029-8029-00000000000d';
+        v_m1    uuid := '02900029-0029-4029-8029-000000000011';   -- M1, evento A
+        v_m2    uuid := '02900029-0029-4029-8029-000000000012';   -- M2, evento A
+        v_m3    uuid := '02900029-0029-4029-8029-000000000013';   -- M3, evento A
+        v_mx    uuid := '02900029-0029-4029-8029-000000000014';   -- del evento B
+        v_mz    uuid := '02900029-0029-4029-8029-000000000015';   -- del otro tenant
+        v_o1 uuid; v_o2 uuid; v_o3 uuid;
+        v_r jsonb; v_est text; v_ord uuid; v_asig uuid;
+begin
+  insert into organizadores (id, slug, nombre) values
+    (v_org,  'prueba-0029',  'Prueba 0029'),
+    (v_org2, 'prueba-0029b', 'Prueba 0029 otro');
+  insert into auth.users (id, email) values
+    (v_a,     'rrpp-a-0029@ticketera.local'),
+    (v_b,     'rrpp-b-0029@ticketera.local'),
+    (v_staff, 'staff-0029@ticketera.local'),
+    (v_otro,  'staff-otro-0029@ticketera.local');
+  insert into perfiles (id, organizador_id, nombre, rol, slug) values
+    (v_a,     v_org,  'Ana',        'rrpp',  'ana-0029'),
+    (v_b,     v_org,  'Beto',       'rrpp',  'beto-0029'),
+    (v_staff, v_org,  'Staff',      'staff', null),
+    (v_otro,  v_org2, 'Staff Otro', 'staff', null);
+
+  insert into eventos (id, organizador_id, slug, nombre, fecha, estado) values
+    (v_ev,  v_org,  'evento-0029-a', 'Evento 0029 A', current_date + 10, 'publicado'),
+    (v_ev2, v_org,  'evento-0029-b', 'Evento 0029 B', current_date + 20, 'publicado'),
+    (v_ev3, v_org2, 'evento-0029-c', 'Evento 0029 C', current_date + 10, 'publicado');
+  -- el combo se vende como producto (0015): el comprador paga esto, no una
+  -- chapa del plano. La mesa física se la da el equipo después, que es de
+  -- lo que va toda esta prueba.
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre, categoria, manillas) values
+    (v_tipo,  v_org,  v_ev,  'Combo Sabados', 'mesa', 8),
+    (v_tipo3, v_org2, v_ev3, 'General C',     'entrada', 1);
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta) values
+    (v_fase,  v_org,  v_ev,  'F1', now() - interval '1 hour', now() + interval '10 days'),
+    (v_fase3, v_org2, v_ev3, 'F1', now() - interval '1 hour', now() + interval '10 days');
+  insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo) values
+    (v_org,  v_fase,  v_tipo,  1200, null),
+    (v_org2, v_fase3, v_tipo3,  100, null);
+
+  -- las mesas físicas: tres del evento A, una del evento B del mismo
+  -- organizador y una del otro tenant
+  insert into mesas (id, organizador_id, evento_id, etiqueta, x, y, w, precio, manillas) values
+    (v_m1, v_org,  v_ev,  'M1', 10, 10, 5, 1200, 8),
+    (v_m2, v_org,  v_ev,  'M2', 20, 10, 5, 1200, 8),
+    (v_m3, v_org,  v_ev,  'M3', 30, 10, 5, 1200, 8),
+    (v_mx, v_org,  v_ev2, 'X1', 10, 10, 5, 1200, 8),
+    (v_mz, v_org2, v_ev3, 'Z1', 10, 10, 5, 1200, 8);
+
+  -- dos ventas pagadas, cada una de su relacionador, por el camino real
+  v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 1)),
+                       '{"nombre":"Juan Perez"}'::jsonb, null::uuid, null::text, v_a)->>'orden')::uuid;
+  perform emitir_orden(v_o1);
+  v_o2 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 1)),
+                       '{"nombre":"Sofia Rojas"}'::jsonb, null::uuid, null::text, v_b)->>'orden')::uuid;
+  perform emitir_orden(v_o2);
+  -- una tercera que quedó pendiente: con ella se ve que la mesa queda
+  -- 'reservada' y no 'pagada' cuando todavía nadie pagó
+  v_o3 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 1)),
+                       '{"nombre":"Pendiente"}'::jsonb, null::uuid, null::text, v_a)->>'orden')::uuid;
+
+  -- ── 1) el reparto es del equipo: ningun relacionador asigna ──
+  -- Ni siquiera la mesa de una orden que vendió él. Dos personas
+  -- repartiendo el mismo salón es como dos grupos terminan parados frente
+  -- a la misma mesa, y eso no se arregla con un update.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_a::text, true);
+  begin
+    perform asignar_mesa(v_o1, v_m1);   -- v_o1 la vendio A: da igual
+    raise exception 'TEST_FAIL: un relacionador asigno la mesa de su propia venta';
+  exception when others then
+    if sqlerrm <> 'Sin permiso' then raise; end if;
+  end;
+  begin
+    perform liberar_mesa(v_o1);
+    raise exception 'TEST_FAIL: un relacionador libero la mesa de su propia venta';
+  exception when others then
+    if sqlerrm <> 'Sin permiso' then raise; end if;
+  end;
+  -- y menos todavia una orden de otro
+  perform set_config('request.jwt.claim.sub', v_b::text, true);
+  begin
+    perform asignar_mesa(v_o1, v_m1);
+    raise exception 'TEST_FAIL: un relacionador asigno la mesa de una venta ajena';
+  exception when others then
+    if sqlerrm <> 'Sin permiso' then raise; end if;
+  end;
+
+  reset role;
+  select orden_id, estado into v_ord, v_est from mesas where id = v_m1;
+  if v_ord is not null or v_est <> 'disponible' then
+    raise exception 'TEST_FAIL: el intento sin permiso igual toco la mesa: % (%)', v_ord, v_est;
+  end if;
+  raise notice 'OK el relacionador vende el combo pero no reparte el salon';
+
+  -- el staff del otro tenant tampoco, aunque puede_editar() le diga que si
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_otro::text, true);
+  begin
+    perform asignar_mesa(v_o1, v_m1);
+    raise exception 'TEST_FAIL: el staff de otro organizador acomodo una orden ajena';
+  exception when others then
+    if sqlerrm <> 'Sin permiso' then raise; end if;
+  end;
+  raise notice 'OK puede_editar() no alcanza sin el corte de organizador';
+
+  -- ── 2) dos ordenes, una mesa ────────────────────────────
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+
+  v_r := asignar_mesa(v_o1, v_m1);
+  if (v_r->>'ok')::boolean is not true then
+    raise exception 'TEST_FAIL: el staff no pudo asignar una mesa libre: %', v_r;
+  end if;
+  if (v_r->>'etiqueta') <> 'M1' then
+    raise exception 'TEST_FAIL: deberia devolver la etiqueta de la mesa: %', v_r;
+  end if;
+  if (v_r->>'estado') <> 'pagada' then
+    raise exception 'TEST_FAIL: la orden esta pagada, la mesa deberia quedar pagada: %', v_r;
+  end if;
+
+  -- la segunda orden pide la misma mesa: rebota, y con una frase que se
+  -- entienda parado frente al cliente
+  v_r := asignar_mesa(v_o2, v_m1);
+  if (v_r->>'ok')::boolean is not false then
+    raise exception 'TEST_FAIL: reasigno una mesa ya tomada sin liberarla: %', v_r;
+  end if;
+  if (v_r->>'codigo') <> 'MESA_TOMADA' then
+    raise exception 'TEST_FAIL: el codigo deberia ser MESA_TOMADA, dio %', v_r;
+  end if;
+  -- el mensaje se muestra tal cual: tiene que decir CUAL mesa y DE QUIEN
+  if (v_r->>'motivo') not like '%M1%' or (v_r->>'motivo') not like '%Juan Perez%' then
+    raise exception 'TEST_FAIL: el motivo no dice cual mesa ni a quien esta asignada: %', v_r->>'motivo';
+  end if;
+
+  reset role;
+  select orden_id, estado into v_ord, v_est from mesas where id = v_m1;
+  if v_ord <> v_o1 or v_est <> 'pagada' then
+    raise exception 'TEST_FAIL: la mesa tenia que quedar con la primera orden, quedo con % (%)', v_ord, v_est;
+  end if;
+  select mesa_asignada_id into v_asig from ordenes where id = v_o2;
+  if v_asig is not null then
+    raise exception 'TEST_FAIL: la orden que perdio quedo con mesa_asignada_id = %', v_asig;
+  end if;
+  raise notice 'OK dos ordenes por una mesa: gana la primera y la segunda se entera por que';
+
+  -- ── 3) reasignar libera la mesa anterior ───────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  v_r := asignar_mesa(v_o1, v_m2);
+  if (v_r->>'ok')::boolean is not true then
+    raise exception 'TEST_FAIL: no se pudo cambiar de mesa al cliente: %', v_r;
+  end if;
+  if (v_r->>'mesa_liberada')::uuid <> v_m1 then
+    raise exception 'TEST_FAIL: deberia avisar que solto la M1: %', v_r;
+  end if;
+
+  reset role;
+  select orden_id, estado into v_ord, v_est from mesas where id = v_m1;
+  if v_ord is not null or v_est <> 'disponible' then
+    raise exception 'TEST_FAIL: la M1 quedo ocupada por una orden que ya se sento en otra: % (%)', v_ord, v_est;
+  end if;
+  select orden_id into v_ord from mesas where id = v_m2;
+  select mesa_asignada_id into v_asig from ordenes where id = v_o1;
+  if v_ord <> v_o1 or v_asig <> v_m2 then
+    raise exception 'TEST_FAIL: los dos lados no quedaron de acuerdo: mesa.orden_id=% orden.mesa=%', v_ord, v_asig;
+  end if;
+
+  -- repetir la misma asignacion no rompe ni miente: avisa que ya estaba
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  v_r := asignar_mesa(v_o1, v_m2);
+  if (v_r->>'ok')::boolean is not true or (v_r->>'repetida')::boolean is not true then
+    raise exception 'TEST_FAIL: reasignar la misma mesa a la misma orden deberia ser repetida: %', v_r;
+  end if;
+  raise notice 'OK cambiar de mesa libera la anterior y no deja mesas muertas';
+
+  -- ── 4) una mesa de otro evento se rechaza ──────────────
+  v_r := asignar_mesa(v_o1, v_mx);
+  if (v_r->>'ok')::boolean is not false or (v_r->>'codigo') <> 'MESA_DE_OTRO_EVENTO' then
+    raise exception 'TEST_FAIL: acepto una mesa de otro evento: %', v_r;
+  end if;
+
+  -- y una de otro organizador se contesta como inexistente: confirmar la
+  -- etiqueta ya seria contarle a un tenant que tiene el otro
+  v_r := asignar_mesa(v_o1, v_mz);
+  if (v_r->>'ok')::boolean is not false or (v_r->>'codigo') <> 'MESA_INEXISTENTE' then
+    raise exception 'TEST_FAIL: una mesa de otro tenant no deberia ni reconocerse: %', v_r;
+  end if;
+  if (v_r::text) like '%Z1%' then
+    raise exception 'TEST_FAIL: filtro la etiqueta de una mesa de otro organizador: %', v_r;
+  end if;
+
+  reset role;
+  select orden_id into v_ord from mesas where id = v_mz;
+  if v_ord is not null then
+    raise exception 'TEST_FAIL: escribio en una mesa de otro tenant';
+  end if;
+  raise notice 'OK una mesa de otro evento o de otro tenant no se asigna';
+
+  -- ── 5) orden pendiente: la mesa queda reservada, no pagada ──
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  v_r := asignar_mesa(v_o3, v_m3);
+  if (v_r->>'ok')::boolean is not true or (v_r->>'estado') <> 'reservada' then
+    raise exception 'TEST_FAIL: sobre una orden pendiente la mesa deberia quedar reservada: %', v_r;
+  end if;
+
+  -- ── 6) liberar: la misma historia al reves ─────────────
+  v_r := liberar_mesa(v_o1);
+  if (v_r->>'ok')::boolean is not true or (v_r->>'libero')::boolean is not true then
+    raise exception 'TEST_FAIL: no se pudo liberar la mesa de la orden: %', v_r;
+  end if;
+  reset role;
+  select orden_id, estado into v_ord, v_est from mesas where id = v_m2;
+  select mesa_asignada_id into v_asig from ordenes where id = v_o1;
+  if v_ord is not null or v_est <> 'disponible' or v_asig is not null then
+    raise exception 'TEST_FAIL: liberar dejo los dos lados a medias: mesa=%/% orden=%', v_ord, v_est, v_asig;
+  end if;
+
+  -- liberada la M2, recien ahora se le puede dar a la otra orden
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  v_r := asignar_mesa(v_o2, v_m2);
+  if (v_r->>'ok')::boolean is not true then
+    raise exception 'TEST_FAIL: la mesa liberada no se pudo reasignar: %', v_r;
+  end if;
+  reset role;
+  raise notice 'OK liberar devuelve la mesa al ruedo y pide el mismo permiso que asignar';
+
+  -- ── 7) el candado de la tabla, no el de la funcion ─────
+  -- Si alguien esquiva asignar_mesa() y escribe ordenes a mano —el staff
+  -- puede, la policy `ordenes escribir` se lo permite— el indice unico
+  -- parcial tiene que atrapar el empate igual. v_o3 tiene la M3; darle
+  -- ademas la M2, que ya es de v_o2, tiene que rebotar.
+  begin
+    update ordenes set mesa_asignada_id = v_m2 where id = v_o3;
+    raise exception 'TEST_FAIL: dos ordenes quedaron con la misma mesa_asignada_id';
+  exception when unique_violation then null;
+  end;
+  raise notice 'OK el indice unico impide dos ordenes con la misma mesa aunque se esquive la funcion';
+end $$;
+
 rollback;
