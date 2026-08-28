@@ -35,8 +35,11 @@ async function entrar(usuario, clave) {
 async function cargarPerfil() {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return false;
+  /* El slug viene acá y no se pide después: es lo que arma el ?r= del link
+     de venta, o sea lo primero que la pantalla del relacionador tiene que
+     poder decidir — si mostrar el link o explicar que le falta el código. */
   const { data, error } = await sb.from("perfiles")
-    .select("id,nombre,rol,organizador_id,activo").eq("id", user.id).maybeSingle();
+    .select("id,nombre,rol,organizador_id,activo,slug").eq("id", user.id).maybeSingle();
   if (error || !data || !data.activo) {
     await sb.auth.signOut();
     throw new Error("Tu cuenta no está habilitada.");
@@ -66,7 +69,8 @@ $("#btnSalir").addEventListener("click", async () => {
 
 /* El rol decide qué pestañas se ven. La base decide qué se puede hacer. */
 const PANTALLAS = [
-  { id: "eventos", txt: "Eventos", roles: ["admin", "staff"] },
+  { id: "eventos",   txt: "Eventos",    roles: ["admin", "staff"] },
+  { id: "misventas", txt: "Mis ventas", roles: ["rrpp"] },
 ];
 
 function arrancarApp() {
@@ -91,6 +95,7 @@ function mostrar(p) {
   document.querySelectorAll("#tabs button").forEach(b =>
     b.toggleAttribute("aria-current", b.dataset.p === p));
   if (p === "eventos") return pantallaEventos();
+  if (p === "misventas") return pantallaMisVentas();
   $("#main").innerHTML = "";
 }
 
@@ -162,14 +167,18 @@ async function abrirEvento(id) {
         <input id="fTope" type="number" min="1" max="50" value="${e.tope_entradas_orden}"></label>
       <div class="acciones">
         <button class="btn primario" id="btnGuardar">Guardar</button>
-        ${id ? `<button type="button" class="btn plano" id="btnEntradas">Entradas y precios →</button>` : ""}
+        ${id ? `<button type="button" class="btn plano" id="btnEntradas">Entradas y precios →</button>
+               <button type="button" class="btn plano" id="btnRrpp">Relacionadores →</button>` : ""}
       </div>
       <p class="error" id="fError"></p>
     </form>`;
 
   $("#btnVolver").onclick = () => mostrar("eventos");
   $("#fSlug").oninput = ev => $("#vistaSlug").textContent = ev.target.value || "…";
-  if (id) $("#btnEntradas").onclick = () => pantallaEntradas(id);
+  if (id) {
+    $("#btnEntradas").onclick = () => pantallaEntradas(id);
+    $("#btnRrpp").onclick = () => pantallaRelacionadores(id);
+  }
 
   $("#formEvento").onsubmit = async ev => {
     ev.preventDefault();
@@ -359,8 +368,8 @@ async function zonaPublicar(eventoId, estado, slug) {
         ${!publicado && !listo
           ? `<ul class="faltan">${faltan.map(f => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
         ${publicado ? `<p class="link-publico">
-          <code>${esc(url)}</code>
-          <button type="button" class="btn plano chico" id="btnCopiarLink">Copiar link</button>
+          <code id="linkPublico">${esc(url)}</code>
+          <button type="button" class="btn plano chico" data-copiar="linkPublico">Copiar link</button>
         </p>` : ""}
       </div>
       <button class="btn ${publicado ? "plano" : "primario"}" id="btnPublicar"
@@ -368,16 +377,7 @@ async function zonaPublicar(eventoId, estado, slug) {
         ${publicado ? "Quitar de la venta" : "Poner a la venta"}</button>
     </div>`;
 
-  if (publicado) {
-    $("#btnCopiarLink").onclick = async () => {
-      try {
-        await navigator.clipboard.writeText(url);
-        avisar("Link copiado.");
-      } catch (err) {
-        avisar("No se pudo copiar: " + err.message);
-      }
-    };
-  }
+  cablearCopiar();
 
   $("#btnPublicar").onclick = async () => {
     const { data, error } = await sb.rpc("publicar_evento",
@@ -389,6 +389,177 @@ async function zonaPublicar(eventoId, estado, slug) {
     avisar(data.estado === "publicado" ? "El evento está a la venta." : "Quitado de la venta.");
     pantallaEntradas(eventoId);
   };
+}
+
+/* ── copiar un link ──
+   navigator.clipboard no existe fuera de contexto seguro (http pelado, una
+   IP en la red del boliche) y puede fallar por permisos. Un botón "Copiar"
+   que no copia y no avisa es peor que no tener botón: el relacionador cree
+   que lo tiene, pega lo que hubiera en el portapapeles y esa venta no se le
+   atribuye a nadie. El plan B deja el link seleccionado para el Ctrl+C de
+   siempre, que funciona en todos lados. */
+function cablearCopiar() {
+  document.querySelectorAll("#main [data-copiar]").forEach(b =>
+    b.onclick = () => copiarNodo(document.getElementById(b.dataset.copiar)));
+}
+
+async function copiarNodo(nodo) {
+  if (!nodo) return;
+  try {
+    if (!navigator.clipboard) throw new Error("sin portapapeles");
+    await navigator.clipboard.writeText(nodo.textContent);
+    avisar("Link copiado.");
+  } catch {
+    const r = document.createRange();
+    r.selectNodeContents(nodo);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    avisar("No se pudo copiar solo. El link quedó seleccionado: copialo a mano.");
+  }
+}
+
+/* ══ el relacionador ══════════════════════════════════════════════
+   El orden de esta pantalla no es negociable: primero el link, después la
+   plata. El link lo copia todos los días y es a lo que entra; lo que ganó
+   lo mira una vez por semana. Al revés tendría que buscar lo urgente abajo
+   de lo interesante.
+
+   Nada de lo que se muestra acá lo elige el frontend: mis_ventas() filtra
+   por auth.uid() adentro y no acepta un id de persona, así que ni con la
+   consola abierta se puede pedir lo del compañero. */
+async function pantallaMisVentas() {
+  $("#main").innerHTML = `<p class="cargando">Cargando tus ventas…</p>`;
+
+  /* Los eventos se acotan del lado del servidor por dos motivos: un evento
+     en borrador no se puede comprar (crear_orden exige `publicado`), o sea
+     que su link nace roto; y filtrar acá y no en JS es lo que evita que el
+     corte mudo de 1000 filas de PostgREST se coma justo el de esta semana. */
+  const [rv, re] = await Promise.all([
+    sb.rpc("mis_ventas", {}),
+    sb.from("eventos").select("id,slug,nombre,fecha")
+      .eq("estado", "publicado").order("fecha", { ascending: true }),
+  ]);
+  if (rv.error) {
+    $("#main").innerHTML = `<p class="error">${esc(rv.error.message)}</p>`;
+    return;
+  }
+  const ventas = rv.data || [];
+  const entradas = ventas.reduce((a, v) => a + Number(v.entradas || 0), 0);
+  const total = ventas.reduce((a, v) => a + Number(v.comision || 0), 0);
+
+  $("#main").innerHTML = `
+    <div class="cab-seccion"><h2>Mis ventas</h2></div>
+
+    <section class="tarjeta">
+      <h3>Tu link de venta</h3>
+      <p class="ayuda">Todo lo que se compre entrando por acá queda a tu nombre.</p>
+      ${zonaLinks(re.data || [], re.error)}
+    </section>
+
+    <h3 class="titulo-bloque">Lo que vendiste</h3>
+    ${ventas.length ? `
+      <ul class="lista">${ventas.map(v => `
+        <li class="fila quieta venta">
+          <span class="fila-nombre">${esc(v.evento_nombre)}
+            <em>${fmtF(v.evento_fecha)}</em></span>
+          <span class="cifra">${v.entradas}<em>entradas</em></span>
+          <span class="cifra">${bs(v.recaudado)}<em>recaudado</em></span>
+          <span class="cifra destacada">${bs(v.comision)}
+            <em>${v.entradas} × ${bs(v.comision_unitaria)}</em></span>
+        </li>`).join("")}</ul>
+      <div class="total">
+        <div>
+          <h3>Tu comisión</h3>
+          <p>${entradas} ${entradas === 1 ? "entrada" : "entradas"} en
+             ${ventas.length} ${ventas.length === 1 ? "evento" : "eventos"}</p>
+        </div>
+        <span class="monto">${bs(total)}</span>
+      </div>`
+    : `<p class="vacio">Todavía no vendiste nada. En cuanto alguien compre
+         entrando por tu link y pague, acá aparecen las entradas y tu comisión.</p>`}`;
+
+  cablearCopiar();
+}
+
+/* Un link con el ?r= vacío no falla: se vende igual y la venta no es de
+   nadie. El relacionador reparte el link toda la noche creyendo que está
+   vendiendo a su nombre y el lunes su comisión da cero, sin nada que
+   explique por qué. Por eso sin slug no hay link — hay un cartel que dice
+   qué falta y quién lo destraba. */
+function zonaLinks(eventos, error) {
+  if (!S.yo.slug) return `<p class="nota">Todavía no tenés tu código de
+    relacionador, así que el link no se puede armar. Pedíselo a un
+    administrador: te lo carga en tu perfil y el link aparece acá solo.</p>`;
+  if (error) return `<p class="error">No se pudieron cargar los eventos: ${esc(error.message)}</p>`;
+  if (!eventos.length) return `<p class="nota">Todavía no hay ningún evento a la
+    venta. Cuando el organizador publique uno, tu link aparece acá.</p>`;
+
+  return eventos.map((e, i) => {
+    const url = `${location.origin}/${CFG.ORGANIZADOR}/${e.slug}` +
+                `?r=${encodeURIComponent(S.yo.slug)}`;
+    return `<div class="link-evento">
+      <span class="link-titulo">${esc(e.nombre)} · ${fmtF(e.fecha)}</span>
+      <p class="link-publico">
+        <code id="lkr${i}">${esc(url)}</code>
+        <button type="button" class="btn plano chico" data-copiar="lkr${i}">Copiar</button>
+      </p>
+    </div>`;
+  }).join("");
+}
+
+/* El desglose por persona vive DENTRO del evento y no en una pestaña
+   suelta: se abre cuando hay que pagar, y para pagar hay que saber de qué
+   noche se está hablando. ventas_por_rrpp() ya lo devuelve ordenado por
+   comisión descendente, que es el orden en el que se paga; no se reordena
+   acá para que el admin y el relacionador vean la misma cuenta.
+   La guardia es puede_editar() adentro de la función: a un rrpp que llegue
+   por consola le contesta "Sin permiso", no una lista vacía. */
+async function pantallaRelacionadores(eventoId) {
+  $("#main").innerHTML = `<p class="cargando">Cargando…</p>`;
+  const [ev, rr] = await Promise.all([
+    sb.from("eventos").select("id,nombre").eq("id", eventoId).single(),
+    sb.rpc("ventas_por_rrpp", { p_evento: eventoId }),   // sin default: se pasa siempre
+  ]);
+  if (ev.error || !ev.data) {
+    avisar("Ese evento ya no existe.");
+    mostrar("eventos");
+    return;
+  }
+
+  const filas = rr.data || [];
+  const entradas = filas.reduce((a, v) => a + Number(v.entradas || 0), 0);
+  const total = filas.reduce((a, v) => a + Number(v.comision || 0), 0);
+
+  $("#main").innerHTML = `
+    <div class="cab-seccion">
+      <button class="btn plano chico" id="btnVolver">← ${esc(ev.data.nombre)}</button>
+      <h2>Relacionadores</h2>
+    </div>
+    ${rr.error ? `<p class="error">${esc(rr.error.message)}</p>` : ""}
+    ${filas.length ? `
+      <ul class="lista">${filas.map(v => `
+        <li class="fila quieta venta">
+          <span class="fila-nombre">${esc(v.nombre)}
+            <em>${v.slug ? "?r=" + esc(v.slug) : "sin código"}</em></span>
+          <span class="cifra">${v.entradas}<em>entradas</em></span>
+          <span class="cifra">${bs(v.recaudado)}<em>recaudado</em></span>
+          <span class="cifra destacada">${bs(v.comision)}
+            <em>${v.entradas} × ${bs(v.comision_unitaria)}</em></span>
+        </li>`).join("")}</ul>
+      <div class="total">
+        <div>
+          <h3>Total a pagar</h3>
+          <p>${entradas} ${entradas === 1 ? "entrada" : "entradas"} de
+             ${filas.length} ${filas.length === 1 ? "relacionador" : "relacionadores"}</p>
+        </div>
+        <span class="monto">${bs(total)}</span>
+      </div>`
+    : rr.error ? "" : `<p class="vacio">Nadie vendió con su link en este evento
+        todavía. Aparecen acá en cuanto se pague la primera orden que entró
+        por un ?r=.</p>`}`;
+
+  $("#btnVolver").onclick = () => abrirEvento(eventoId);
 }
 
 /* ── arranque: si ya había sesión, entrar directo ── */

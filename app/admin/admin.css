@@ -223,8 +223,84 @@ input[type="date"],input[type="time"]{color-scheme:dark}
   font-family:var(--dato);font-size:12px;color:var(--txt-2);
   overflow:hidden;
 }
-.link-publico span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* El link se recorta con puntos suspensivos en vez de empujar el botón de
+   copiar fuera de la caja: con el ?r= del relacionador colgando al final,
+   en un teléfono no entra nunca. Se copia entero igual — el recorte es
+   visual. */
+.link-publico span,.link-publico code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .link-publico .btn{margin-left:auto;flex:0 0 auto}
+
+/* ─── el relacionador ───
+   Dos bloques y un orden: arriba el link, en su propia superficie porque es
+   lo único que se toca; abajo la cuenta, que se lee y no se opera. */
+.tarjeta{
+  background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
+  padding:19px 21px;margin-bottom:26px;
+}
+.tarjeta h3{font-size:21px}
+.tarjeta>.ayuda{display:block;margin:5px 0 14px}
+.titulo-bloque{font-size:21px;margin-bottom:12px}
+
+.link-evento+.link-evento{margin-top:12px}
+.link-titulo{
+  display:block;font-family:var(--dato);font-size:11px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--txt-3);
+}
+.link-evento .link-publico{margin-top:6px}
+/* Un clic selecciona el link entero: es el plan B cuando el portapapeles no
+   está disponible, y ahí lo que importa es que no haya que arrastrar. */
+.link-publico code{user-select:all}
+
+/* No es un error: no se rompió nada, falta un dato que él no puede cargarse
+   solo. En rojo leería como "algo falló" y llamaría a soporte. */
+.nota{
+  padding:13px 15px;border-radius:var(--r-chico);font-size:13.5px;
+  background:var(--aviso-bg);border:1px solid rgba(246,180,74,.3);color:var(--aviso);
+}
+
+/* Las filas de venta no se clickean: no hay nada atrás. Sin esto heredan el
+   cursor y el hover de la lista de eventos y prometen una pantalla que no
+   existe. */
+.fila.quieta{cursor:default}
+.fila.quieta:hover{background:var(--sup);border-color:var(--linea)}
+.fila.quieta:active{transform:none}
+
+.fila.venta{
+  display:grid;grid-template-columns:minmax(0,1fr) repeat(3,auto);
+  gap:6px 26px;align-items:center;
+}
+.venta .fila-nombre{min-width:0}
+.venta .fila-nombre em{
+  display:block;margin-top:3px;font-style:normal;font-weight:400;
+  font-family:var(--dato);font-size:11.5px;color:var(--txt-3);
+}
+/* La cifra arriba y qué es abajo: al revés hay que leer la etiqueta para
+   saber si el número que ya viste era plata o entradas. */
+.cifra{
+  font-family:var(--dato);font-size:14.5px;color:var(--txt-2);
+  text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.cifra em{
+  display:block;margin-top:3px;font-style:normal;font-size:10.5px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--txt-3);
+}
+/* La comisión en dorado: de las tres cifras de la fila es la única que es
+   plata suya. Debajo va la cuenta que la produce — entradas × tarifa — para
+   que no haya que preguntar de dónde salió. */
+.cifra.destacada{color:var(--dorado);font-size:17px}
+.cifra.destacada em{text-transform:none;letter-spacing:.02em}
+
+.total{
+  display:flex;align-items:center;gap:20px;margin-top:16px;padding:18px 21px;
+  background:linear-gradient(var(--sup),rgba(233,180,76,.06));
+  border:1px solid rgba(233,180,76,.3);border-radius:var(--r);
+}
+.total h3{font-size:21px}
+.total p{margin:5px 0 0;font-family:var(--dato);font-size:12px;color:var(--txt-3)}
+.total .monto{
+  margin-left:auto;flex:0 0 auto;white-space:nowrap;
+  font-family:var(--display);font-size:34px;color:var(--dorado);
+}
 
 /* ─── botones ───
    El primario lleva sombra de su propio color: eso es lo que le da peso y lo
@@ -266,6 +342,13 @@ input[type="date"],input[type="time"]{color-scheme:dark}
   .fila-nombre{width:100%}
   .publicar{flex-direction:column;align-items:flex-start}
   .publicar>.btn{margin-left:0;width:100%}
+  /* Tres cifras en columna no entran: el nombre se lleva la fila entera y
+     las cifras se reparten abajo, alineadas a la izquierda como se leen. */
+  .fila.venta{grid-template-columns:repeat(3,1fr);gap:12px 14px}
+  .venta .fila-nombre{grid-column:1/-1}
+  .cifra{text-align:left}
+  .total{flex-direction:column;align-items:flex-start;gap:10px}
+  .total .monto{margin-left:0}
 }
 @media (prefers-reduced-motion:reduce){
   *{transition-duration:.001ms !important}
