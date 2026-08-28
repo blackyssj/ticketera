@@ -25,8 +25,9 @@ create or replace function listo_para_publicar(p_evento uuid) returns jsonb
 declare v_faltan text[] := '{}'; v_org uuid; v_fase uuid;
 begin
   select organizador_id into v_org from eventos where id = p_evento;
-  if v_org is null then raise exception 'EVENTO_INEXISTENTE: %', p_evento; end if;
-  if v_org <> mi_organizador() then raise exception 'Sin acceso a este evento'; end if;
+  if v_org is null or v_org <> mi_organizador() then
+    raise exception 'No encontramos ese evento';
+  end if;
 
   if not exists (select 1 from tipo_entrada
                   where evento_id = p_evento and activo) then
@@ -36,8 +37,12 @@ begin
   v_fase := fase_vigente(p_evento);
   if v_fase is null then
     v_faltan := v_faltan || 'Ninguna fase está abierta en este momento'::text;
-  elsif not exists (select 1 from fase_precio where fase_id = v_fase) then
-    v_faltan := v_faltan || 'La fase abierta no tiene ningún precio cargado'::text;
+  elsif not exists (select 1 from fase_precio fp
+                      join tipo_entrada t on t.id = fp.tipo_id
+                     where fp.fase_id = v_fase
+                       and t.evento_id = p_evento
+                       and t.activo) then
+    v_faltan := v_faltan || 'Ningún tipo de entrada tiene precio en la fase abierta'::text;
   end if;
 
   return jsonb_build_object('ok', array_length(v_faltan, 1) is null,
@@ -53,8 +58,9 @@ declare v_org uuid; v_r jsonb;
 begin
   if not puede_editar() then raise exception 'Sin permiso'; end if;
   select organizador_id into v_org from eventos where id = p_evento;
-  if v_org is null then raise exception 'EVENTO_INEXISTENTE: %', p_evento; end if;
-  if v_org <> mi_organizador() then raise exception 'Sin acceso a este evento'; end if;
+  if v_org is null or v_org <> mi_organizador() then
+    raise exception 'No encontramos ese evento';
+  end if;
 
   if not p_publicar then
     update eventos set estado = 'borrador' where id = p_evento;

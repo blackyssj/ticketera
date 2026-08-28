@@ -48,6 +48,7 @@ end $$;
 do $$
 declare v_ev    uuid := 'eeeeeeee-0000-4000-8000-000000000001';
         v_tipo  uuid := 'ffffffff-0000-4000-8000-000000000001';
+        v_tipo2 uuid := 'ffffffff-0000-4000-8000-000000000002';
         v_staff uuid := 'dddddddd-0000-4000-8000-000000000002';
         v_fase  uuid; v_r jsonb;
 begin
@@ -100,6 +101,25 @@ begin
   perform publicar_evento(v_ev, false);
   if (select estado from eventos where id = v_ev) <> 'borrador' then
     raise exception 'TEST_FAIL: no volvio a borrador';
+  end if;
+
+  -- "listo falso": el precio le queda colgado al tipo que se desactivó
+  -- (nadie lo borra al desactivar un tipo_entrada) y el tipo que sigue
+  -- activo no tiene ningún precio en la fase vigente. listo_para_publicar
+  -- tiene que fijarse en QUÉ tipo tiene el precio, no solo en si existe
+  -- algún precio en la fase — si no, dice "listo" y el único tipo visible
+  -- no tiene con qué venderse.
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre) values
+    (v_tipo2, 'cccccccc-0000-4000-8000-000000000001', v_ev, 'VIP');
+  update tipo_entrada set activo = false where id = v_tipo;  -- el que tiene precio, se desactiva
+  -- v_tipo2 queda activo y sin fila en fase_precio
+
+  v_r := listo_para_publicar(v_ev);
+  if (v_r->>'ok')::boolean is not false then
+    raise exception 'TEST_FAIL: dijo que estaba listo con el precio colgado del tipo desactivado: %', v_r;
+  end if;
+  if not (v_r->'faltan' ? 'Ningún tipo de entrada tiene precio en la fase abierta') then
+    raise exception 'TEST_FAIL: no explico que ningun tipo activo tiene precio en la fase abierta: %', v_r;
   end if;
 
   reset role;
