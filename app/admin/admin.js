@@ -71,6 +71,7 @@ $("#btnSalir").addEventListener("click", async () => {
 const PANTALLAS = [
   { id: "eventos",   txt: "Eventos",    roles: ["admin", "staff"] },
   { id: "misventas", txt: "Mis ventas", roles: ["rrpp"] },
+  { id: "puerta",    txt: "Puerta",     roles: ["portero", "admin"] },
 ];
 
 function arrancarApp() {
@@ -96,6 +97,7 @@ function mostrar(p) {
     b.toggleAttribute("aria-current", b.dataset.p === p));
   if (p === "eventos") return pantallaEventos();
   if (p === "misventas") return pantallaMisVentas();
+  if (p === "puerta") return window.PUERTA.pantalla();   // vive en puerta.js
   $("#main").innerHTML = "";
 }
 
