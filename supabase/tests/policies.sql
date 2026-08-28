@@ -188,3 +188,172 @@ begin
   end if;
   raise notice 'OK las siete policies viejas de 0012 fueron reemplazadas, no duplicadas';
 end $$;
+
+-- ============================================================
+-- 0017 — la carrera del `orden`, un `cerrado` que no se reabre solo, y
+-- guardar_precios() atómico. Bloque propio con sus propias filas: no
+-- reusa las de 0012/0013 arriba porque esas ya quedan en un estado
+-- particular al final de sus propios bloques (con rollback, así que no
+-- hay colisión de ids — es solo para no depender de ese estado).
+-- ============================================================
+begin;
+
+insert into organizadores (id, slug, nombre) values
+  ('01700017-0017-4017-8017-000000000001', 'prueba-0017', 'Prueba 0017');
+insert into auth.users (id, email) values
+  ('01700017-0017-4017-8017-000000000002', 'staff-0017@ticketera.local'),
+  ('01700017-0017-4017-8017-000000000003', 'rrpp-0017@ticketera.local');
+insert into perfiles (id, organizador_id, nombre, rol) values
+  ('01700017-0017-4017-8017-000000000002', '01700017-0017-4017-8017-000000000001', 'Staff 0017', 'staff'),
+  ('01700017-0017-4017-8017-000000000003', '01700017-0017-4017-8017-000000000001', 'Rrpp 0017', 'rrpp');
+insert into eventos (id, organizador_id, slug, nombre, fecha) values
+  ('01700017-0017-4017-8017-000000000004', '01700017-0017-4017-8017-000000000001', 'evento-a-0017', 'Evento A', current_date + 10),
+  ('01700017-0017-4017-8017-000000000005', '01700017-0017-4017-8017-000000000001', 'evento-b-0017', 'Evento B', current_date + 10);
+insert into tipo_entrada (id, organizador_id, evento_id, nombre) values
+  ('01700017-0017-4017-8017-000000000006', '01700017-0017-4017-8017-000000000001', '01700017-0017-4017-8017-000000000004', 'General A'),
+  ('01700017-0017-4017-8017-00000000000b', '01700017-0017-4017-8017-000000000001', '01700017-0017-4017-8017-000000000004', 'VIP A'),
+  ('01700017-0017-4017-8017-000000000009', '01700017-0017-4017-8017-000000000001', '01700017-0017-4017-8017-000000000005', 'General B');
+insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta, orden) values
+  ('01700017-0017-4017-8017-000000000007', '01700017-0017-4017-8017-000000000001', '01700017-0017-4017-8017-000000000004',
+   'F1', now() - interval '1 hour', now() + interval '10 days', 0),
+  ('01700017-0017-4017-8017-00000000000a', '01700017-0017-4017-8017-000000000001', '01700017-0017-4017-8017-000000000005',
+   'F1-B', now() - interval '1 hour', now() + interval '10 days', 0);
+insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo) values
+  ('01700017-0017-4017-8017-000000000001', '01700017-0017-4017-8017-000000000007',
+   '01700017-0017-4017-8017-000000000006', 100, null),
+  ('01700017-0017-4017-8017-000000000001', '01700017-0017-4017-8017-000000000007',
+   '01700017-0017-4017-8017-00000000000b', 200, 30);
+
+-- ── 1) unique(evento_id, orden): la base rechaza el empate ──
+do $$
+begin
+  begin
+    insert into evento_fase (id, organizador_id, evento_id, nombre, orden)
+    values ('01700017-0017-4017-8017-000000000008', '01700017-0017-4017-8017-000000000001',
+            '01700017-0017-4017-8017-000000000004', 'F1 duplicada', 0);
+    raise exception 'TEST_FAIL: dejo insertar dos fases con el mismo orden en el mismo evento';
+  exception
+    when unique_violation then null;
+  end;
+  raise notice 'OK unique(evento_id, orden) rechaza el empate';
+end $$;
+
+-- ── 2) un evento cerrado no se reabre ni se despublica sin querer ──
+update eventos set estado = 'cerrado' where id = '01700017-0017-4017-8017-000000000004';
+
+do $$
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', '01700017-0017-4017-8017-000000000002', true);
+
+  begin
+    perform publicar_evento('01700017-0017-4017-8017-000000000004'::uuid, true);
+    raise exception 'TEST_FAIL: reabrio a publicado un evento cerrado';
+  exception when others then
+    if sqlerrm not like 'Este evento está cerrado%' then raise; end if;
+  end;
+
+  begin
+    perform publicar_evento('01700017-0017-4017-8017-000000000004'::uuid, false);
+    raise exception 'TEST_FAIL: paso a borrador un evento cerrado';
+  exception when others then
+    if sqlerrm not like 'Este evento está cerrado%' then raise; end if;
+  end;
+
+  reset role;
+  raise notice 'OK un evento cerrado no se publica ni se pasa a borrador desde publicar_evento()';
+end $$;
+
+do $$
+begin
+  if (select estado from eventos where id = '01700017-0017-4017-8017-000000000004') <> 'cerrado' then
+    raise exception 'TEST_FAIL: el estado cerrado no se mantuvo';
+  end if;
+end $$;
+
+update eventos set estado = 'borrador' where id = '01700017-0017-4017-8017-000000000004';
+
+-- ── 3) guardar_precios(): atómico, valida pertenencia, exige rol ──
+do $$
+declare v_r jsonb; v_n int;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', '01700017-0017-4017-8017-000000000002', true);
+
+  -- guarda y borra en la misma llamada: sube el precio de TIPO A1 y, como
+  -- TIPO A2 (VIP) no viene en la lista, su fila de precio desaparece.
+  v_r := guardar_precios('01700017-0017-4017-8017-000000000004'::uuid,
+    jsonb_build_array(jsonb_build_object(
+      'fase_id', '01700017-0017-4017-8017-000000000007',
+      'tipo_id', '01700017-0017-4017-8017-000000000006',
+      'precio', 150, 'cupo', 50)));
+
+  reset role;
+
+  select count(*) into v_n from fase_precio where fase_id = '01700017-0017-4017-8017-000000000007';
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: deberia quedar una sola fila de precio en la fase, quedaron % (resultado %)', v_n, v_r;
+  end if;
+  if not exists (select 1 from fase_precio
+                  where fase_id = '01700017-0017-4017-8017-000000000007'
+                    and tipo_id = '01700017-0017-4017-8017-000000000006'
+                    and precio = 150 and cupo = 50) then
+    raise exception 'TEST_FAIL: el precio guardado no quedo como se mando: %', v_r;
+  end if;
+  raise notice 'OK guardar_precios guarda y borra en la misma llamada';
+end $$;
+
+-- una fase/tipo de otro evento se rechaza sin escribir NADA, ni siquiera
+-- las filas válidas del mismo arreglo
+do $$
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', '01700017-0017-4017-8017-000000000002', true);
+
+  begin
+    perform guardar_precios('01700017-0017-4017-8017-000000000004'::uuid,
+      jsonb_build_array(
+        jsonb_build_object('fase_id', '01700017-0017-4017-8017-000000000007',
+                            'tipo_id', '01700017-0017-4017-8017-000000000006',
+                            'precio', 999, 'cupo', null),
+        jsonb_build_object('fase_id', '01700017-0017-4017-8017-00000000000a',
+                            'tipo_id', '01700017-0017-4017-8017-000000000009',
+                            'precio', 50, 'cupo', null)));
+    raise exception 'TEST_FAIL: acepto una fase/tipo de otro evento';
+  exception when others then
+    if sqlerrm <> 'No encontramos esa fase o ese tipo en este evento' then raise; end if;
+  end;
+
+  reset role;
+
+  if exists (select 1 from fase_precio
+              where fase_id = '01700017-0017-4017-8017-000000000007'
+                and tipo_id = '01700017-0017-4017-8017-000000000006'
+                and precio = 999) then
+    raise exception 'TEST_FAIL: escribio la fila valida del arreglo aunque la otra fuera de otro evento';
+  end if;
+  raise notice 'OK una fase/tipo de otro evento se rechaza sin escribir nada';
+end $$;
+
+-- un rrpp no puede llamarla
+do $$
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', '01700017-0017-4017-8017-000000000003', true);
+
+  begin
+    perform guardar_precios('01700017-0017-4017-8017-000000000004'::uuid,
+      jsonb_build_array(jsonb_build_object(
+        'fase_id', '01700017-0017-4017-8017-000000000007',
+        'tipo_id', '01700017-0017-4017-8017-000000000006',
+        'precio', 1, 'cupo', null)));
+    raise exception 'TEST_FAIL: un rrpp pudo llamar guardar_precios';
+  exception when others then
+    if sqlerrm <> 'Sin permiso' then raise; end if;
+  end;
+
+  reset role;
+  raise notice 'OK un rrpp no puede llamar guardar_precios';
+end $$;
+
+rollback;
