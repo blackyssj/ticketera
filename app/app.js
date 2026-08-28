@@ -65,6 +65,26 @@ const PASOS = [
   { id:"listo",    txt:"Tu entrada" }
 ];
 
+/* Si lo único a la venta son mesas, la página deja de hablar de "entradas".
+   No es cosmético: quien compra un combo no compra una entrada, reserva una
+   mesa que trae manillas, y llamar igual a las dos cosas es lo que hace que
+   después pregunte por WhatsApp cuántas personas entran. Se deriva de lo que
+   hay en venta y no de una constante: el día que el organizador vuelva a
+   activar entradas sueltas, el vocabulario vuelve solo. */
+let VOCAB = { plural: "entradas", singular: "entrada", elegi: "Elegí tus entradas" };
+
+function fijarVocabulario() {
+  const soloMesas = D.tipos.length > 0 && D.tipos.every(t => t.categoria === "mesa");
+  VOCAB = soloMesas
+    ? { plural: "reservas", singular: "reserva", elegi: "Elegí tu reserva" }
+    : { plural: "entradas", singular: "entrada", elegi: "Elegí tus entradas" };
+  PASOS[0].txt = soloMesas ? "Reservas"   : "Entradas";
+  PASOS[3].txt = soloMesas ? "Tu reserva" : "Tu entrada";
+  const h2 = $('[data-paso="entradas"] .panel-cab h2');
+  if (h2) h2.textContent = PASOS[0].txt;
+  $("#railResumen").textContent = VOCAB.elegi;
+}
+
 /* ── estado ────────────────────────────────────────────────────── */
 const S = {
   paso: "entradas",
@@ -193,7 +213,7 @@ function pintarHero() {
   $("#heroBajada").textContent = e.bajada;
   $("#heroDatos").innerHTML = e.datos
     .map(([k, v]) => `<span>${esc(k)} <b>${esc(v)}</b></span>`).join("");
-  document.title = `${e.marca_1} ${e.marca_2} — entradas y mesas`;
+  document.title = `${e.marca_1} ${e.marca_2} — ${VOCAB.plural}`;
   $("#faseChip").innerHTML = `<i></i>${esc(D.fase.nombre)} · ${esc(D.fase.hasta_txt)}`;
   $("#feeNota").textContent =
     `${Math.round(D.organizador.fee_pct * 100)}% + ${D.organizador.fee_fijo} Bs por compra, ` +
@@ -293,7 +313,7 @@ function pintarRail() {
   const sueltas = entradas - mesas;
   if (sueltas) partes.push(sueltas + (sueltas === 1 ? " entrada" : " entradas"));
   if (mesas) partes.push(mesas + (mesas === 1 ? " mesa" : " mesas"));
-  $("#railResumen").textContent = hay ? partes.join(" · ") : "Elegí tus entradas";
+  $("#railResumen").textContent = hay ? partes.join(" · ") : VOCAB.elegi;
 
   // el botón cambia de nombre y de habilitación según el paso
   const b = $("#btnSeguir"), atras = $("#btnAtras");
@@ -637,6 +657,7 @@ async function arrancar() {
     }
   }
   D.tipos.forEach(t => S.cant[t.id] = 0);
+  fijarVocabulario();
   pintarHero();
   pintarTipos();
   irA("entradas");
