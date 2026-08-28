@@ -171,13 +171,15 @@ async function abrirEvento(id) {
                <button type="button" class="btn plano" id="btnRrpp">Relacionadores →</button>` : ""}
       </div>
       <p class="error" id="fError"></p>
-    </form>`;
+    </form>
+    ${id && puedeEditar() ? `<section class="tarjeta arte" id="zonaArte"></section>` : ""}`;
 
   $("#btnVolver").onclick = () => mostrar("eventos");
   $("#fSlug").oninput = ev => $("#vistaSlug").textContent = ev.target.value || "…";
   if (id) {
     $("#btnEntradas").onclick = () => pantallaEntradas(id);
     $("#btnRrpp").onclick = () => pantallaRelacionadores(id);
+    cablearArte(e);   // solo con evento guardado: sin slug no hay carpeta donde subir
   }
 
   $("#formEvento").onsubmit = async ev => {
@@ -206,6 +208,217 @@ async function abrirEvento(id) {
     avisar("Evento guardado.");
     id ? mostrar("eventos") : abrirEvento(data.id);
   };
+}
+
+/* ══ el arte de la entrada ════════════════════════════════════════
+   El organizador sube UNA imagen y todas las entradas del evento se dibujan
+   encima, con el QR sobre el arte — igual que en Bowie y BurTown. Hasta acá
+   eso solo salía por `scripts/subir-arte.py`, o sea por una terminal que el
+   organizador no tiene: el arte de su propia fiesta dependía de que alguien
+   del equipo estuviera libre.
+
+   Sube el navegador directo al bucket. Las policies de 0014 ya atan cada
+   archivo a la carpeta de su organizador, así que no hace falta service_role
+   ni una Edge Function en el medio. Y el bucket es de lectura pública pero
+   NO listable: nadie enumera lo que subió otro. */
+
+const ARTE_EXT  = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+const ARTE_TOPE = 5 * 1024 * 1024;
+
+/* Comodidad de interfaz, no seguridad: la policy del bucket exige
+   puede_editar() igual, y un rrpp ni siquiera tiene la pestaña de eventos. */
+const puedeEditar = () => !!S.yo && (S.yo.rol === "admin" || S.yo.rol === "staff");
+
+/* El slug del organizador de la SESIÓN, que es el que la policy compara con
+   la primera carpeta de la ruta. CFG.ORGANIZADOR es el del sitio público y
+   podría no ser el de quien está logueado; con ese la subida rebotaría.
+   La RLS de `organizadores` ya deja ver una sola fila: la propia. */
+async function miOrganizadorSlug() {
+  if (S.orgSlug) return S.orgSlug;
+  const { data, error } = await sb.from("organizadores")
+    .select("slug").eq("id", S.yo.organizador_id).maybeSingle();
+  if (error || !data) throw new Error("No pude averiguar tu organizador, así que no sé dónde guardar la imagen.");
+  S.orgSlug = data.slug;
+  return data.slug;
+}
+
+/* El navegador cachea por URL. Cada subida estrena nombre, así que casi
+   siempre alcanzaría; pero el arte que dejó el script vive en una ruta fija
+   (evento.png) y ahí la URL SÍ se repite, y la vista previa se quedaría
+   mostrando la vieja mientras el organizador cree que no subió nada. El ?v=
+   es solo para mirar — a la base va la URL limpia, que es la que carga
+   ticket.js y la que el escáner nunca ve. */
+const conVersion = u => u + (u.includes("?") ? "&" : "?") + "v=" + Date.now();
+
+/* La ruta sale de la URL guardada y no se recalcula: el arte pudo haberlo
+   subido el script con otra extensión, y borrar una ruta adivinada es borrar
+   el archivo de otro o ninguno. */
+const rutaDeArte = u => {
+  const m = String(u || "").match(/\/storage\/v1\/object\/public\/arte\/(.+)$/);
+  return m ? decodeURIComponent(m[1].split("?")[0]) : null;
+};
+
+async function subirArte(archivo, ev, ext) {
+  const org = await miOrganizadorSlug();
+  /* El nombre del archivo lo armamos nosotros, con el slug GUARDADO del
+     evento: ni el del input (que puede estar editado sin guardar y mandaría
+     la imagen a una carpeta que no es la del evento) ni el del archivo del
+     usuario — un nombre ajeno metido en una ruta es cómo se escribe donde no
+     se debía. Los dos slugs son [a-z0-9-] por check de la base, así que la
+     ruta no necesita escaparse.
+
+     Y cada subida estrena archivo, con la hora en el nombre, en vez de pisar
+     siempre `evento.<ext>` como hace el script. No es preferencia: el bucket
+     no tiene policy de select a propósito — es lo que lo vuelve no listable —
+     y sin poder LEER la fila, el storage no deja reemplazar (`upsert` es un
+     `insert ... on conflict`, y para resolver el conflicto necesita ver la
+     fila que pisa) ni borrar. Probado contra la base: con `upsert: true` toda
+     subida vuelve "new row violates row-level security policy", incluso a una
+     ruta que no existe. Escribir uno nuevo es lo único que el navegador puede
+     hacer sin service_role, y no hay por qué aflojar el bucket para esto: la
+     entrada mira `eventos.arte_url`, no el nombre del archivo.
+     El anterior queda en el bucket sin que nada lo apunte. */
+  const t = new Date();
+  const dosDig = n => String(n).padStart(2, "0");
+  const marca = `${t.getFullYear()}${dosDig(t.getMonth() + 1)}${dosDig(t.getDate())}` +
+                `-${dosDig(t.getHours())}${dosDig(t.getMinutes())}${dosDig(t.getSeconds())}` +
+                `-${String(t.getMilliseconds()).padStart(3, "0")}`;
+  const ruta = `${org}/${ev.slug}/evento-${marca}.${ext}`;
+
+  const { error: eSubida } = await sb.storage.from("arte")
+    .upload(ruta, archivo, { contentType: archivo.type });
+  if (eSubida) throw new Error("No se pudo subir la imagen: " + eSubida.message);
+
+  const url = `${CFG.SUPABASE_URL}/storage/v1/object/public/arte/${ruta}`;
+  /* Se piden las filas de vuelta (.select) a propósito: un update que RLS
+     filtra no da error, contesta 204 y cero filas. Sin esto el caso más
+     silencioso — el que no puede editar — vería "listo" con la imagen ya
+     subida y el evento sin tocar. */
+  const { data: filas, error: eFila } = await sb.from("eventos")
+    .update({ arte_url: url }).eq("id", ev.id).select("id");
+  /* La imagen quedó arriba pero el evento no la apunta: hay un archivo
+     huérfano en el bucket y las entradas siguen saliendo como antes. Decirlo
+     es lo único que evita que el organizador se vaya tranquilo con un arte
+     que nadie va a ver. */
+  if (eFila || !filas || !filas.length) throw new Error(
+    "La imagen se subió pero NO quedó guardada en el evento" +
+    (eFila ? " (" + eFila.message + ")" : " (la base no lo permitió)") +
+    ". Las entradas siguen saliendo como antes: volvé a intentarlo.");
+  return url;
+}
+
+/* La vista previa manda sobre la URL: el organizador reconoce su imagen de un
+   vistazo y una dirección larga no le dice nada. Encima va marcada la caja
+   del QR, que es el dato que hace que el arte salga bien a la primera en vez
+   de con el código tapando el logo. */
+function cablearArte(ev) {
+  const caja = $("#zonaArte");
+  if (!caja) return;
+
+  const estado = (txt, cls) => {
+    const n = $("#arteEstado");
+    if (!n) return;
+    n.textContent = txt;
+    n.className = "arte-estado" + (cls ? " " + cls : "");
+  };
+
+  const pintar = () => {
+    caja.innerHTML = `
+      <h3>Arte de la entrada</h3>
+      <p class="ayuda">Una sola imagen y todas las entradas del evento se
+        dibujan encima. El recuadro marca dónde cae el QR: dejá esa zona
+        despejada o va a tapar lo que haya debajo.</p>
+      <div class="arte-cuerpo">
+        ${ev.arte_url ? `
+          <div class="arte-lienzo">
+            <img src="${esc(conVersion(ev.arte_url))}" alt="Arte actual de las entradas de ${esc(ev.nombre)}">
+            <span class="arte-qr" aria-hidden="true"><i>QR</i></span>
+          </div>`
+        : `<div class="arte-lienzo sin-arte">
+            <span class="arte-qr" aria-hidden="true"><i>QR</i></span>
+            <p>Sin arte propio. Las entradas salen con el diseño de la ticketera.</p>
+          </div>`}
+        <div class="arte-controles">
+          <label><span>${ev.arte_url ? "Reemplazar imagen" : "Subir imagen"}</span>
+            <input type="file" id="fArte" accept="image/png,image/jpeg,image/webp"></label>
+          <p class="ayuda">PNG, JPG o WEBP, hasta 5 MB. Se sube apenas la elegís.</p>
+          ${ev.arte_url ? `<button type="button" class="btn plano chico" id="btnQuitarArte">Quitar el arte</button>` : ""}
+          <p class="arte-estado" id="arteEstado" role="status" aria-live="polite"></p>
+        </div>
+      </div>`;
+    cablearControles();
+  };
+
+  const trabajando = si => {
+    ["#fArte", "#btnQuitarArte"].forEach(s => { const n = $(s); if (n) n.disabled = si; });
+  };
+
+  function cablearControles() {
+    $("#fArte").onchange = async e => {
+      const f = e.target.files && e.target.files[0];
+      e.target.value = "";   // elegir el mismo archivo dos veces tiene que volver a disparar
+      if (!f) return;
+
+      /* Tipo y tamaño se validan ACÁ, antes de mandar un solo byte: un
+         rechazo del servidor después de subir 5 MB por el 4G de un boliche
+         es una espera perdida y nada aprendido. Mismo criterio que el script. */
+      const ext = ARTE_EXT[f.type];
+      if (!ext) {
+        estado(`Ese archivo es ${f.type || "de un tipo que no reconozco"}. Tiene que ser PNG, JPG o WEBP.`, "mal");
+        return;
+      }
+      if (f.size > ARTE_TOPE) {
+        estado(`La imagen pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el tope son 5 MB. Achicala y volvé a intentar.`, "mal");
+        return;
+      }
+
+      trabajando(true);
+      estado("Subiendo la imagen…", "trabajando");
+      try {
+        ev.arte_url = await subirArte(f, ev, ext);
+        pintar();                      // se redibuja con ?v= nuevo: se ve la que acaba de subir
+        estado("Listo. Esto es lo que va a salir en las entradas.", "ok");
+        avisar("Arte actualizado.");
+      } catch (err) {
+        estado(err.message, "mal");
+      } finally {
+        trabajando(false);
+      }
+    };
+
+    const btnQuitar = $("#btnQuitarArte");
+    if (btnQuitar) btnQuitar.onclick = async () => {
+      if (!confirm("¿Quitar el arte? Las entradas vuelven al diseño propio de la ticketera.")) return;
+      trabajando(true);
+      estado("Quitando…", "trabajando");
+      /* Primero se desata del evento, que es lo que cambia las entradas, y
+         recién después se intenta borrar el archivo. Al revés quedaría el
+         evento apuntando a una URL muerta. */
+      const ruta = rutaDeArte(ev.arte_url);
+      const { data: filas, error } = await sb.from("eventos")
+        .update({ arte_url: null }).eq("id", ev.id).select("id");
+      if (error || !filas || !filas.length) {
+        estado("No se pudo quitar" + (error ? ": " + error.message : ": la base no lo permitió."), "mal");
+        trabajando(false);
+        return;
+      }
+      /* El borrado desde el navegador no borra nada y tampoco falla: es el
+         mismo motivo de arriba — sin policy de select, el storage no ve la
+         fila que tiene que borrar. Se intenta igual (por si algún día la hay)
+         pero no se promete lo que no pasó: la imagen queda en su dirección y
+         lo que cambia es que ninguna entrada la usa. */
+      const borrado = ruta ? await sb.storage.from("arte").remove([ruta]) : null;
+      const quedo = !borrado || borrado.error || !(borrado.data || []).length;
+      ev.arte_url = null;
+      pintar();
+      estado(quedo
+        ? "Las entradas vuelven al diseño de la ticketera. La imagen sigue guardada en su dirección, pero ya no la usa nadie."
+        : "Listo: el arte se quitó y el archivo se borró.", "ok");
+      avisar("Arte quitado.");
+    };
+  }
+
+  pintar();
 }
 
 /* La grilla es fases × tipos porque el precio vive en el cruce. Con dos
