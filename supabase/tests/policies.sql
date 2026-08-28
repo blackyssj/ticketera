@@ -693,4 +693,436 @@ begin
   raise notice 'OK cada relacionador ve solo lo suyo y la comision no sigue al precio';
 end $$;
 
+-- ============================================================
+-- 0033 — el tablero, la lista de compradores y el plano
+--
+-- Seis cosas que tienen que quedar probadas, no argumentadas:
+--
+-- 1) Un rrpp que llama resumen_evento() recibe 'Sin permiso'. NO una
+--    lista vacía: un vacío se lee como "no hay ventas" y quien lo vea va
+--    a pensar que el evento no vendió nada, en vez de que no le tocaba
+--    mirar.
+-- 2) Un rrpp que pide compradores_evento() ve SOLO sus órdenes. Se
+--    siembran dos relacionadores con ventas de los dos, y el test falla
+--    si aparece un nombre ajeno — no si "vienen menos filas".
+-- 3) Un rrpp ve TODAS las mesas con su estado (necesita saber qué queda
+--    libre para vender) pero sin el nombre de las que tiene otro.
+-- 4) Un p_evento de otro organizador no devuelve nada, con las tres.
+-- 5) Las cuentas cierran: un combo de 10 manillas vendido una vez es UNA
+--    unidad y DIEZ manillas. Es el error que ya mordió en el cupo (0018)
+--    y acá se mide en las dos direcciones a la vez.
+-- 6) Una orden en revision_manual y una vencida salen como cifras
+--    propias, sin sumarse a lo pagado.
+--
+-- El fee del organizador de prueba es 10% para que `recaudado` (3300) y
+-- `total` (3630) sean números DISTINTOS: si la función devolviera el
+-- total en vez del subtotal, el test lo tiene que notar. Con fee 0 los
+-- dos serían 3300 y el error pasaría de largo.
+--
+-- Como en el bloque de 0026, las ventas se siembran por el camino real
+-- (crear_orden + emitir_orden), no con inserts a mano: así se prueba que
+-- lo que escribe el checkout es lo que después lee el tablero.
+-- ============================================================
+do $$
+declare v_org   uuid := '00330033-0033-4033-8033-000000000001';
+        v_org2  uuid := '00330033-0033-4033-8033-000000000002';
+        v_staff uuid := '00330033-0033-4033-8033-000000000003';
+        v_a     uuid := '00330033-0033-4033-8033-000000000004';  -- relacionador A
+        v_b     uuid := '00330033-0033-4033-8033-000000000005';  -- relacionador B
+        v_ev    uuid := '00330033-0033-4033-8033-000000000006';
+        v_tipo  uuid := '00330033-0033-4033-8033-000000000007';  -- entrada suelta
+        v_combo uuid := '00330033-0033-4033-8033-000000000008';  -- combo de 10 manillas
+        v_fase  uuid := '00330033-0033-4033-8033-000000000009';
+        v_m1    uuid := '00330033-0033-4033-8033-00000000000a';
+        v_m2    uuid := '00330033-0033-4033-8033-00000000000b';
+        v_m3    uuid := '00330033-0033-4033-8033-00000000000c';
+        -- otro tenant, para el corte por mi_organizador()
+        v_staff2 uuid := '00330033-0033-4033-8033-00000000000d';
+        v_ev3    uuid := '00330033-0033-4033-8033-00000000000e';
+        v_tipo3  uuid := '00330033-0033-4033-8033-00000000000f';
+        v_fase3  uuid := '00330033-0033-4033-8033-000000000010';
+        v_o1 uuid; v_o2 uuid; v_o3 uuid; v_o4 uuid;
+        v_o5 uuid; v_o6 uuid; v_o7 uuid;
+        v_r jsonb; v_f jsonb; v_p jsonb; v_n int;
+begin
+  -- ── el escenario ────────────────────────────────────────
+  insert into organizadores (id, slug, nombre, fee_pct, fee_fijo_transaccion, fee_piso) values
+    (v_org,  'prueba-0033',  'Prueba 0033',       0.1000, 0, 0),
+    (v_org2, 'prueba-0033b', 'Prueba 0033 otro',  0.1000, 0, 0);
+  insert into auth.users (id, email) values
+    (v_staff,  'staff-0033@ticketera.local'),
+    (v_a,      'rrpp-a-0033@ticketera.local'),
+    (v_b,      'rrpp-b-0033@ticketera.local'),
+    (v_staff2, 'staff2-0033@ticketera.local');
+  insert into perfiles (id, organizador_id, nombre, rol, slug) values
+    (v_staff,  v_org,  'Staff 0033', 'staff', null),
+    (v_a,      v_org,  'Ana 0033',   'rrpp',  'ana-0033'),
+    (v_b,      v_org,  'Beto 0033',  'rrpp',  'beto-0033'),
+    (v_staff2, v_org2, 'Staff Otro', 'staff', null);
+
+  insert into eventos (id, organizador_id, slug, nombre, fecha, estado) values
+    (v_ev,  v_org,  'evento-0033',  'Evento 0033',       current_date + 10, 'publicado'),
+    (v_ev3, v_org2, 'evento-0033c', 'Evento 0033 otro',  current_date + 10, 'publicado');
+
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre, categoria, manillas, orden) values
+    (v_tipo,  v_org,  v_ev,  'General 0033', 'entrada',  1, 1),
+    (v_combo, v_org,  v_ev,  'Combo 10',     'mesa',    10, 2),
+    (v_tipo3, v_org2, v_ev3, 'General Otro', 'entrada',  1, 1);
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta) values
+    (v_fase,  v_org,  v_ev,  'F1', now() - interval '1 hour', now() + interval '10 days'),
+    (v_fase3, v_org2, v_ev3, 'F1', now() - interval '1 hour', now() + interval '10 days');
+  insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo) values
+    (v_org,  v_fase,  v_tipo,   100, 50),
+    (v_org,  v_fase,  v_combo, 1000,  5),   -- cupo en UNIDADES, no en manillas
+    (v_org2, v_fase3, v_tipo3,  100, 50);
+
+  insert into mesas (id, organizador_id, evento_id, planta, etiqueta, categoria, x, y, w, precio, manillas) values
+    (v_m1, v_org, v_ev, 'baja', 'T1', 'mesa',   10, 10, 8, 1000, 10),
+    (v_m2, v_org, v_ev, 'baja', 'T2', 'mesa',   20, 10, 8, 1000, 10),
+    (v_m3, v_org, v_ev, 'alta', 'T3', 'lounge', 30, 10, 8, 1200, 12);
+
+  -- ── las ventas, por el camino real ──────────────────────
+  -- A: un combo (1 unidad, 10 manillas, 1000)
+  v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_combo, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Cliente A1', 'telefono', '70000001'),
+                       null::uuid, null::text, v_a)->>'orden')::uuid;
+  perform emitir_orden(v_o1);
+  -- A: dos generales (2 unidades, 2 manillas, 200)
+  v_o2 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 2)),
+                       jsonb_build_object('nombre', 'Cliente A2', 'telefono', '70000002'),
+                       null::uuid, null::text, v_a)->>'orden')::uuid;
+  perform emitir_orden(v_o2);
+  -- B: un combo (1 unidad, 10 manillas, 1000)
+  v_o3 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_combo, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Cliente B1', 'telefono', '70000003'),
+                       null::uuid, null::text, v_b)->>'orden')::uuid;
+  perform emitir_orden(v_o3);
+  -- venta pública, sin relacionador (1 unidad, 1 manilla, 100)
+  v_o4 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Cliente Publico', 'telefono', '70000004'),
+                       null::uuid, null::text, null::uuid)->>'orden')::uuid;
+  perform emitir_orden(v_o4);
+  -- A: otro combo que queda PAGADO y SIN MESA ASIGNADA (el número que
+  -- hay que llevar a cero antes de que abra la puerta)
+  v_o7 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_combo, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Cliente A3', 'telefono', '70000007'),
+                       null::uuid, null::text, v_a)->>'orden')::uuid;
+  perform emitir_orden(v_o7);
+
+  -- la pasarela cobró un monto distinto al esperado: revision_manual
+  v_o5 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Cliente Revision', 'telefono', '70000005'),
+                       null::uuid, null::text, v_a)->>'orden')::uuid;
+  perform emitir_orden(v_o5, 1::numeric, 'ref-monto-raro');
+
+  -- retuvo cupo y nunca pagó: vencida
+  v_o6 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Cliente Vencido', 'telefono', '70000006'),
+                       null::uuid, null::text, v_b)->>'orden')::uuid;
+  update ordenes set expira_at = now() - interval '1 minute' where id = v_o6;
+  perform emitir_orden(v_o6);
+
+  -- tres manillas del combo de A ya entraron, y una general de A se anuló
+  update entradas set estado = 'usada', used_at = now()
+   where id in (select id from entradas where orden_id = v_o1 order by id limit 3);
+  update entradas set estado = 'anulada'
+   where id = (select id from entradas where orden_id = v_o2 order by id limit 1);
+
+  -- Las mesas se asignan por las DOS puntas a propósito: T1 por
+  -- ordenes.mesa_asignada_id (lo que escribe el administrador al repartir
+  -- combos) y T2 por mesas.orden_id (lo que escribe crear_orden cuando se
+  -- compra una chapa concreta). Si el plano mirara una sola, una de las
+  -- dos aparecería libre teniendo dueño.
+  update ordenes set mesa_asignada_id = v_m1 where id = v_o1;
+  update mesas set orden_id = v_o3, estado = 'pagada' where id = v_m2;
+
+  -- ── 1) el rrpp no entra al tablero ──────────────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_a::text, true);
+  begin
+    perform resumen_evento(v_ev);
+    raise exception 'TEST_FAIL: un rrpp pudo llamar resumen_evento';
+  exception when others then
+    -- Tiene que ser 'Sin permiso' y no un vacío disfrazado de respuesta.
+    if sqlerrm <> 'Sin permiso' then raise; end if;
+  end;
+
+  -- ── 5) y 6) las cuentas del tablero, con el staff ───────
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  v_r := resumen_evento(v_ev);
+  if v_r = '{}'::jsonb then
+    raise exception 'TEST_FAIL: el staff no vio nada de su propio evento';
+  end if;
+
+  -- lo vendido: 5 órdenes pagadas, 33 filas en entradas (1 anulada),
+  -- 6 unidades y 3300 de subtotal
+  v_f := v_r->'vendido';
+  if (v_f->>'ordenes')::int <> 5 then
+    raise exception 'TEST_FAIL: 5 ordenes pagadas, dio %: %', v_f->>'ordenes', v_f;
+  end if;
+  if (v_f->>'manillas')::int <> 32 then
+    raise exception 'TEST_FAIL: 32 manillas vivas (33 emitidas menos 1 anulada), dio %: %', v_f->>'manillas', v_f;
+  end if;
+  if (v_f->>'manillas_usadas')::int <> 3 then
+    raise exception 'TEST_FAIL: 3 manillas usadas, dio %: %', v_f->>'manillas_usadas', v_f;
+  end if;
+  if (v_f->>'manillas_anuladas')::int <> 1 then
+    raise exception 'TEST_FAIL: las anuladas van aparte y es 1, dio %: %', v_f->>'manillas_anuladas', v_f;
+  end if;
+  if (v_f->>'unidades')::int <> 6 then
+    raise exception 'TEST_FAIL: 6 unidades vendidas (3 combos + 3 generales), dio %: %', v_f->>'unidades', v_f;
+  end if;
+  -- Lo recaudado es el SUBTOTAL. Si devolviera el total daría 3630, y si
+  -- sumara entradas.precio daría 30.300 por los combos solos.
+  if (v_f->>'recaudado')::numeric <> 3300 then
+    raise exception 'TEST_FAIL: recaudado es sum(ordenes.subtotal) = 3300, dio %: %', v_f->>'recaudado', v_f;
+  end if;
+  if (v_f->>'fee')::numeric <> 330 or (v_f->>'total')::numeric <> 3630 then
+    raise exception 'TEST_FAIL: el fee (330) y el total (3630) van aparte del recaudado: %', v_f;
+  end if;
+
+  -- ── 5) el combo: UNA unidad por venta, DIEZ manillas ────
+  select p into v_p from jsonb_array_elements(v_r->'productos') p
+   where (p->>'tipo_id')::uuid = v_combo;
+  if v_p is null then
+    raise exception 'TEST_FAIL: el combo no aparece en productos: %', v_r->'productos';
+  end if;
+  if (v_p->>'unidades')::int <> 3 then
+    raise exception 'TEST_FAIL: se vendieron 3 combos (3 unidades), dio %: %', v_p->>'unidades', v_p;
+  end if;
+  if (v_p->>'manillas')::int <> 30 then
+    raise exception 'TEST_FAIL: 3 combos de 10 son 30 manillas, dio %: %', v_p->>'manillas', v_p;
+  end if;
+  if (v_p->>'manillas_por_unidad')::int <> 10 then
+    raise exception 'TEST_FAIL: el combo emite 10 manillas por unidad: %', v_p;
+  end if;
+  -- El cupo se mide en unidades (0018): 5 menos 3 vendidas son 2. Si se
+  -- midiera en manillas daría 0 o negativo, que es el bug de Branca Lounge.
+  if (v_p->>'cupo')::int <> 5 or (v_p->>'quedan')::int <> 2 then
+    raise exception 'TEST_FAIL: cupo 5 en unidades, quedan 2: dio cupo % quedan %', v_p->>'cupo', v_p->>'quedan';
+  end if;
+  if (v_p->>'recaudado')::numeric <> 3000 then
+    raise exception 'TEST_FAIL: 3 combos a 1000 son 3000, dio %', v_p->>'recaudado';
+  end if;
+  if (v_p->>'manillas_usadas')::int <> 3 then
+    raise exception 'TEST_FAIL: 3 manillas del combo ya entraron, dio %', v_p->>'manillas_usadas';
+  end if;
+
+  -- la entrada suelta, para que el combo no sea el único caso mirado
+  select p into v_p from jsonb_array_elements(v_r->'productos') p
+   where (p->>'tipo_id')::uuid = v_tipo;
+  if (v_p->>'unidades')::int <> 3 or (v_p->>'manillas')::int <> 2
+     or (v_p->>'manillas_anuladas')::int <> 1 then
+    raise exception 'TEST_FAIL: la general vendio 3 unidades, quedan 2 manillas vivas y 1 anulada: %', v_p;
+  end if;
+
+  -- ── por canal ───────────────────────────────────────────
+  select c into v_f from jsonb_array_elements(v_r->'canales') c where c->>'canal' = 'rrpp';
+  if (v_f->>'manillas')::int <> 31 then
+    raise exception 'TEST_FAIL: por rrpp entraron 31 manillas vivas, dio %: %', v_f->>'manillas', v_f;
+  end if;
+  select c into v_f from jsonb_array_elements(v_r->'canales') c where c->>'canal' = 'publico';
+  if (v_f->>'manillas')::int <> 1 then
+    raise exception 'TEST_FAIL: por publico entro 1 manilla, dio %: %', v_f->>'manillas', v_f;
+  end if;
+  -- los cuatro canales salen siempre, aunque no hayan vendido nada
+  if jsonb_array_length(v_r->'canales') <> 4 then
+    raise exception 'TEST_FAIL: los cuatro canales salen siempre: %', v_r->'canales';
+  end if;
+
+  -- ── la puerta ───────────────────────────────────────────
+  v_f := v_r->'puerta';
+  if (v_f->>'emitidas')::int <> 32 or (v_f->>'usadas')::int <> 3
+     or (v_f->>'faltan')::int <> 29 then
+    raise exception 'TEST_FAIL: la puerta lleva 3 de 32 y faltan 29: %', v_f;
+  end if;
+
+  -- ── las mesas ───────────────────────────────────────────
+  -- T1 asignada por ordenes.mesa_asignada_id, T2 por mesas.orden_id,
+  -- T3 libre. Las dos puntas cuentan.
+  v_f := v_r->'mesas';
+  if (v_f->>'total')::int <> 3 or (v_f->>'asignadas')::int <> 2
+     or (v_f->>'libres')::int <> 1 then
+    raise exception 'TEST_FAIL: 3 mesas, 2 asignadas (una por cada punta) y 1 libre: %', v_f;
+  end if;
+
+  -- ── 6) revision_manual y vencida, como cifras propias ───
+  v_f := v_r->'alertas';
+  if (v_f->'revision_manual'->>'ordenes')::int <> 1 then
+    raise exception 'TEST_FAIL: hay 1 orden en revision manual: %', v_f;
+  end if;
+  if (v_f->'revision_manual'->>'monto')::numeric <> 110 then
+    raise exception 'TEST_FAIL: la orden en revision manual vale 110: %', v_f;
+  end if;
+  if (v_f->'vencidas'->>'ordenes')::int <> 1 or (v_f->'vencidas'->>'monto')::numeric <> 110 then
+    raise exception 'TEST_FAIL: hay 1 orden vencida por 110: %', v_f;
+  end if;
+  -- y ninguna de las dos se coló en lo pagado
+  if (v_r->'vendido'->>'recaudado')::numeric <> 3300 then
+    raise exception 'TEST_FAIL: revision_manual o vencida se sumaron a lo recaudado: %', v_r->'vendido';
+  end if;
+  -- el combo pagado que nadie ubicó todavía
+  if (v_f->'mesas_sin_asignar'->>'ordenes')::int <> 1
+     or (v_f->'mesas_sin_asignar'->>'manillas')::int <> 10 then
+    raise exception 'TEST_FAIL: falta ubicar 1 compra de mesa de 10 manillas: %', v_f;
+  end if;
+  -- en una base sana nadie entra con una manilla que nadie pagó
+  if (v_f->>'manillas_sin_orden_pagada')::int <> 0 then
+    raise exception 'TEST_FAIL: hay manillas vivas sin orden pagada: %', v_f;
+  end if;
+
+  -- los cinco estados salen siempre, con su plata
+  select s into v_f from jsonb_array_elements(v_r->'estados') s where s->>'estado' = 'pagada';
+  if (v_f->>'ordenes')::int <> 5 or (v_f->>'subtotal')::numeric <> 3300 then
+    raise exception 'TEST_FAIL: 5 ordenes pagadas por 3300 de subtotal: %', v_f;
+  end if;
+  select s into v_f from jsonb_array_elements(v_r->'estados') s where s->>'estado' = 'revision_manual';
+  if (v_f->>'ordenes')::int <> 1 then
+    raise exception 'TEST_FAIL: revision_manual tiene que tener su propia fila: %', v_r->'estados';
+  end if;
+  if jsonb_array_length(v_r->'estados') <> 5 then
+    raise exception 'TEST_FAIL: los cinco estados salen siempre: %', v_r->'estados';
+  end if;
+
+  -- ── 2) el rrpp ve SOLO sus compradores ──────────────────
+  perform set_config('request.jwt.claim.sub', v_a::text, true);
+  v_r := compradores_evento(v_ev, false);
+  if jsonb_array_length(v_r) <> 3 then
+    raise exception 'TEST_FAIL: A vendio 3 ordenes pagadas, vinieron %: %', jsonb_array_length(v_r), v_r;
+  end if;
+  -- Lo que importa no es que vengan 3 filas sino que no venga NINGÚN
+  -- nombre ajeno: si mañana la función devolviera de más, esto grita.
+  if v_r::text like '%Cliente B1%' or v_r::text like '%Cliente Publico%'
+     or v_r::text like '%Beto 0033%' then
+    raise exception 'TEST_FAIL: compradores_evento le mostro a A un cliente ajeno: %', v_r;
+  end if;
+  -- p_solo_mios = false no puede ampliar lo que ve un relacionador
+  if compradores_evento(v_ev, false) <> compradores_evento(v_ev, true) then
+    raise exception 'TEST_FAIL: p_solo_mios cambio lo que ve un rrpp';
+  end if;
+
+  -- 5) la misma cuenta, por orden: el combo de A es UNA unidad y DIEZ manillas
+  select o into v_f from jsonb_array_elements(v_r) o where (o->>'orden_id')::uuid = v_o1;
+  if (v_f->>'unidades')::int <> 1 or (v_f->>'manillas')::int <> 10 then
+    raise exception 'TEST_FAIL: un combo de 10 es 1 unidad y 10 manillas, dio % y %: %',
+      v_f->>'unidades', v_f->>'manillas', v_f;
+  end if;
+  if (v_f->>'pagado')::numeric <> 1000 then
+    raise exception 'TEST_FAIL: el combo se pago 1000 (subtotal), dio %: %', v_f->>'pagado', v_f;
+  end if;
+  if (v_f->>'mesa_etiqueta') <> 'T1' then
+    raise exception 'TEST_FAIL: la orden de A tiene la mesa T1 asignada: %', v_f;
+  end if;
+  if (v_f->>'comprador') <> 'Cliente A1' or (v_f->>'telefono') <> '70000001' then
+    raise exception 'TEST_FAIL: faltan nombre o telefono del comprador: %', v_f;
+  end if;
+
+  -- B ve lo suyo, y tampoco ve lo de A
+  perform set_config('request.jwt.claim.sub', v_b::text, true);
+  v_r := compradores_evento(v_ev, false);
+  if jsonb_array_length(v_r) <> 1 then
+    raise exception 'TEST_FAIL: B tiene 1 orden pagada (la vencida no cuenta), vinieron %: %',
+      jsonb_array_length(v_r), v_r;
+  end if;
+  if v_r::text like '%Cliente A%' then
+    raise exception 'TEST_FAIL: B esta viendo clientes de A: %', v_r;
+  end if;
+
+  -- el staff ve las cinco, y p_solo_mios le sirve para recortar
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  if jsonb_array_length(compradores_evento(v_ev, false)) <> 5 then
+    raise exception 'TEST_FAIL: el staff deberia ver las 5 ordenes pagadas: %',
+      compradores_evento(v_ev, false);
+  end if;
+  if compradores_evento(v_ev, true) <> '[]'::jsonb then
+    raise exception 'TEST_FAIL: el staff no vendio nada, con p_solo_mios deberia ver []: %',
+      compradores_evento(v_ev, true);
+  end if;
+
+  -- ── 3) el plano: todas las mesas, los nombres no ────────
+  perform set_config('request.jwt.claim.sub', v_a::text, true);
+  v_r := mesas_evento(v_ev);
+  if jsonb_array_length(v_r) <> 3 then
+    raise exception 'TEST_FAIL: el rrpp tiene que ver las 3 mesas, vio %: %', jsonb_array_length(v_r), v_r;
+  end if;
+
+  -- T1 la vendió A: ve el nombre
+  select m into v_f from jsonb_array_elements(v_r) m where m->>'etiqueta' = 'T1';
+  if (v_f->>'ocupada')::boolean is not true then
+    raise exception 'TEST_FAIL: T1 esta asignada a la orden de A: %', v_f;
+  end if;
+  if (v_f->>'comprador') <> 'Cliente A1' then
+    raise exception 'TEST_FAIL: A vendio T1, tiene que ver el nombre: %', v_f;
+  end if;
+  if (v_f->>'mia')::boolean is not true then
+    raise exception 'TEST_FAIL: T1 es de A: %', v_f;
+  end if;
+
+  -- T2 la vendió B: ocupada, pero sin nombre
+  select m into v_f from jsonb_array_elements(v_r) m where m->>'etiqueta' = 'T2';
+  if (v_f->>'ocupada')::boolean is not true then
+    raise exception 'TEST_FAIL: T2 esta tomada por la orden de B: %', v_f;
+  end if;
+  if v_f->>'comprador' is not null then
+    raise exception 'TEST_FAIL: A no tiene por que ver quien tiene la mesa de B: %', v_f;
+  end if;
+  if v_f->>'orden_id' is not null or v_f->>'rrpp_nombre' is not null then
+    raise exception 'TEST_FAIL: se filtro la orden o el relacionador ajeno: %', v_f;
+  end if;
+  if (v_f->>'mia')::boolean is not false then
+    raise exception 'TEST_FAIL: T2 no es de A: %', v_f;
+  end if;
+  -- pero sí necesita ver los datos del plano para vender
+  if v_f->>'x' is null or v_f->>'y' is null or v_f->>'w' is null
+     or v_f->>'precio' is null or v_f->>'manillas' is null then
+    raise exception 'TEST_FAIL: al rrpp le falta el plano de la mesa: %', v_f;
+  end if;
+
+  -- T3 libre, y ningun nombre ajeno en toda la respuesta
+  select m into v_f from jsonb_array_elements(v_r) m where m->>'etiqueta' = 'T3';
+  if (v_f->>'ocupada')::boolean is not false then
+    raise exception 'TEST_FAIL: T3 esta libre: %', v_f;
+  end if;
+  if v_r::text like '%Cliente B1%' or v_r::text like '%Beto 0033%' then
+    raise exception 'TEST_FAIL: el plano le filtro a A un nombre ajeno: %', v_r;
+  end if;
+
+  -- el staff sí ve los dos nombres
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  v_r := mesas_evento(v_ev);
+  if v_r::text not like '%Cliente A1%' or v_r::text not like '%Cliente B1%' then
+    raise exception 'TEST_FAIL: el staff tiene que ver los dos compradores: %', v_r;
+  end if;
+
+  -- ── 4) el evento de otro organizador no existe acá ──────
+  -- Con el staff (que sí puede editar lo suyo) y con el rrpp: en los dos
+  -- casos, nada. Que sea el MISMO vacío que "no existe" es a propósito:
+  -- si el ajeno diera un error distinto, serviría para adivinar qué uuids
+  -- existen en la base del vecino.
+  if resumen_evento(v_ev3)      <> '{}'::jsonb then
+    raise exception 'TEST_FAIL: el staff vio el tablero de OTRO organizador: %', resumen_evento(v_ev3);
+  end if;
+  if compradores_evento(v_ev3)  <> '[]'::jsonb then
+    raise exception 'TEST_FAIL: el staff vio los compradores de OTRO organizador: %', compradores_evento(v_ev3);
+  end if;
+  if mesas_evento(v_ev3)        <> '[]'::jsonb then
+    raise exception 'TEST_FAIL: el staff vio el plano de OTRO organizador: %', mesas_evento(v_ev3);
+  end if;
+
+  perform set_config('request.jwt.claim.sub', v_a::text, true);
+  if compradores_evento(v_ev3) <> '[]'::jsonb or mesas_evento(v_ev3) <> '[]'::jsonb then
+    raise exception 'TEST_FAIL: un rrpp vio algo de OTRO organizador';
+  end if;
+
+  -- y al revés: el staff del otro tenant tampoco entra a este evento
+  perform set_config('request.jwt.claim.sub', v_staff2::text, true);
+  if resumen_evento(v_ev) <> '{}'::jsonb or compradores_evento(v_ev) <> '[]'::jsonb
+     or mesas_evento(v_ev) <> '[]'::jsonb then
+    raise exception 'TEST_FAIL: el staff del otro tenant vio este evento';
+  end if;
+
+  reset role;
+  raise notice 'OK el tablero cuenta unidades y manillas por separado, y cada rol ve lo suyo';
+end $$;
+
 rollback;
