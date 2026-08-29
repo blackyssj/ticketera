@@ -78,6 +78,7 @@ const PANTALLAS = [
   { id: "eventos",   txt: "Eventos",    roles: ["admin", "staff"] },
   { id: "misventas", txt: "Mis ventas", roles: ["rrpp"] },
   { id: "puerta",    txt: "Puerta",     roles: ["portero", "admin"] },
+  { id: "equipo",    txt: "Equipo",     roles: ["admin"] },
 ];
 
 function arrancarApp() {
@@ -104,6 +105,7 @@ function mostrar(p) {
   if (p === "eventos") return pantallaEventos();
   if (p === "misventas") return pantallaMisVentas();
   if (p === "puerta") return window.PUERTA.pantalla();   // vive en puerta.js
+  if (p === "equipo") return pantallaEquipo();
   $("#main").innerHTML = "";
 }
 
@@ -623,22 +625,25 @@ async function zonaPublicar(eventoId, estado, slug) {
    siempre, que funciona en todos lados. */
 function cablearCopiar() {
   document.querySelectorAll("#main [data-copiar]").forEach(b =>
-    b.onclick = () => copiarNodo(document.getElementById(b.dataset.copiar)));
+    b.onclick = () => copiarNodo(document.getElementById(b.dataset.copiar), b.dataset.que));
 }
 
-async function copiarNodo(nodo) {
+/* `que` nombra lo que se está copiando porque no siempre es un link: la
+   pantalla de Equipo copia una clave que se ve una sola vez, y un aviso
+   que dice "el link" justo ahí hace dudar de si copió lo que se quería. */
+async function copiarNodo(nodo, que = "El link") {
   if (!nodo) return;
   try {
     if (!navigator.clipboard) throw new Error("sin portapapeles");
     await navigator.clipboard.writeText(nodo.textContent);
-    avisar("Link copiado.");
+    avisar(que + " se copió.");
   } catch {
     const r = document.createRange();
     r.selectNodeContents(nodo);
     const sel = getSelection();
     sel.removeAllRanges();
     sel.addRange(r);
-    avisar("No se pudo copiar solo. El link quedó seleccionado: copialo a mano.");
+    avisar("No se pudo copiar solo. Quedó seleccionado en pantalla: copialo a mano.");
   }
 }
 
@@ -1449,6 +1454,422 @@ async function liberarMesa(ordenId) {
   avisar(data.motivo);
   SALON.asignando = null;
   await refrescarSalon();
+}
+
+/* ══ el equipo ════════════════════════════════════════════════════
+   Hasta hoy dar de alta a alguien era `python3 scripts/crear-usuario.py`,
+   o sea una terminal, y el organizador de un boliche no tiene una. Peor:
+   la pantalla del relacionador le dice al que no tiene código "pedíselo a
+   un administrador, te lo carga en tu perfil" — y el administrador no
+   tenía dónde cargarlo. El circuito terminaba en una instrucción que no
+   se podía seguir. Los slugs de nico y dani se los puso alguien con SQL
+   a mano; esta pantalla es para que eso no vuelva a pasar.
+
+   Dos caminos, y la diferencia no es de comodidad:
+
+   · Crear una cuenta, resetear una clave, activar/desactivar y cambiar el
+     rol pasan por la Edge Function `equipo`. Escribir en auth.users pide
+     service_role, que no puede vivir en el navegador; y las guardias que
+     importan —quién llama, de qué organizador, y que nadie se desactive a
+     sí mismo— tienen que decidirse del lado del servidor.
+   · El slug y la comisión de alguien que ya existe son un update sobre
+     `perfiles`, y la policy de 0002 ya deja que el admin toque las filas
+     de SU organizador. Van directo por PostgREST: meter una función en el
+     medio no agregaría ninguna garantía, solo un salto más que se puede
+     desincronizar.
+
+   Nada de los `if` de rol de acá es seguridad: el que llegue por consola
+   se choca con la función o con la RLS, que son las que deciden. */
+
+const EQ = { gente: [], editando: null, alta: false, clave: null };
+
+const ROLES_TXT = { admin: "Administrador", staff: "Staff",
+                    rrpp: "Relacionador", portero: "Portero" };
+
+/* Se llama con `fetch` y no con sb.functions.invoke a propósito: invoke
+   convierte cualquier respuesta que no sea 2xx en un error genérico y
+   tira el cuerpo, o sea justo el `motivo` que esta pantalla necesita
+   mostrar ("ese usuario ya está tomado", "ya hay alguien con ese
+   código"). Sin el cuerpo, el administrador leería "Edge Function
+   returned a non-2xx status code" y no sabría qué corregir.
+
+   El token sale de la sesión viva —getSession() lo renueva solo si
+   venció— y viaja en el Authorization. La función no cree nada de lo que
+   le mandemos: se lo pregunta a /auth/v1/user. */
+async function llamarEquipo(cuerpo) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error("Se cerró tu sesión. Entrá de nuevo.");
+  const r = await fetch(`${CFG.SUPABASE_URL}/functions/v1/equipo`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json",
+               apikey: CFG.SUPABASE_ANON_KEY,
+               Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify(cuerpo),
+  });
+  const txt = await r.text();
+  let j = null;
+  try { j = txt ? JSON.parse(txt) : null; } catch { /* la reja del gateway no contesta JSON */ }
+  if (!j) throw new Error(r.status === 401
+    ? "Se cerró tu sesión. Entrá de nuevo."
+    : `No se pudo completar (${r.status}).`);
+  if (!j.ok) throw new Error(j.motivo || "La operación fue rechazada.");
+  return j;
+}
+
+/* `mantenerClave` lo pasan los refrescos de adentro de la pantalla: la
+   clave recién generada no puede desaparecer porque se desactivó a otro,
+   pero sí tiene que irse al salir de Equipo y volver. Una clave que
+   reaparece sola contradice el "se ve una sola vez" que dice el cartel. */
+async function pantallaEquipo(opts) {
+  $("#main").innerHTML = `<p class="cargando">Cargando el equipo…</p>`;
+  EQ.editando = null;
+  EQ.alta = false;
+  if (!(opts && opts.mantenerClave)) EQ.clave = null;
+  /* El filtro por organizador va del lado del servidor aunque la RLS ya
+     lo haga: es la misma regla de siempre —PostgREST corta en 1000 filas
+     sin avisar y lo que se filtra en JS no ahorra ese corte— y además
+     deja escrito acá qué lista se está pidiendo. */
+  const { data, error } = await sb.from("perfiles")
+    .select("id,nombre,rol,activo,slug,comision_entrada")
+    .eq("organizador_id", S.yo.organizador_id)
+    .order("activo", { ascending: false })
+    .order("nombre");
+  if (error) { $("#main").innerHTML = `<p class="error">${esc(error.message)}</p>`; return; }
+  EQ.gente = data || [];
+  pintarEquipo();
+}
+
+function pintarEquipo() {
+  $("#main").innerHTML = `
+    <div class="cab-seccion">
+      <h2>Equipo</h2>
+      <button class="btn primario" id="btnAlta">Dar de alta</button>
+    </div>
+    <p class="ayuda equipo-intro">Cada persona entra al panel con su usuario y su
+      clave. No hay correo ni recuperación: la clave se muestra una sola vez, y si
+      se pierde se resetea desde acá.</p>
+    <div id="zonaClave">${bloqueClave()}</div>
+    <div id="zonaAlta">${EQ.alta ? formAlta() : ""}</div>
+    ${EQ.gente.length ? `<ul class="lista" id="listaEquipo">${
+      EQ.gente.map(filaPersona).join("")}</ul>`
+      /* La lista siempre te incluye a vos, así que vacía significa que la
+         sesión dejó de resolver un perfil: no es un estado normal. */
+      : `<p class="vacio">No aparece nadie, ni siquiera vos. Salí y volvé a entrar.</p>`}`;
+
+  $("#btnAlta").onclick = () => { EQ.alta = !EQ.alta; EQ.editando = null; pintarEquipo(); };
+  cablearCopiar();
+  const okClave = $("#btnClaveOk");
+  if (okClave) okClave.onclick = () => { EQ.clave = null; pintarEquipo(); };
+  if (EQ.alta) cablearAlta();
+  if (EQ.editando) cablearEdicion();
+  const lista = $("#listaEquipo");
+  if (lista) lista.onclick = clicEnEquipo;
+}
+
+/* ── la clave recién generada ──
+   Va arriba de todo y no se va sola: es el único momento en que existe.
+   No se guarda, no se loguea y no se manda por ningún lado — si esta caja
+   se cierra sin que nadie la copie, lo único que queda es resetearla. */
+function bloqueClave() {
+  if (!EQ.clave) return "";
+  const c = EQ.clave;
+  return `<section class="tarjeta clave-nueva">
+    <h3>${esc(c.titulo)}</h3>
+    <p class="ayuda">Anotala o copiala ahora. Esta es la única vez que se ve:
+      no se guarda en ningún lado y no hay correo de recuperación. Si se
+      pierde, lo único que se puede hacer es resetearla y generar otra.</p>
+    <p class="link-publico"><span class="clave-rotulo">Usuario</span>
+      <code id="claveUsuario">${esc(c.usuario)}</code>
+      <button type="button" class="btn plano chico" data-copiar="claveUsuario"
+        data-que="El usuario">Copiar</button></p>
+    <p class="link-publico"><span class="clave-rotulo">Clave</span>
+      <code id="claveClave" class="clave-valor">${esc(c.clave)}</code>
+      <button type="button" class="btn plano chico" data-copiar="claveClave"
+        data-que="La clave">Copiar</button></p>
+    <div class="acciones"><button type="button" class="btn plano chico" id="btnClaveOk">Ya la anoté</button></div>
+  </section>`;
+}
+
+function filaPersona(p) {
+  const yo = p.id === S.yo.id;
+  const editando = EQ.editando === p.id;
+  return `<li class="fila quieta persona${p.activo ? "" : " inactiva"}" data-id="${esc(p.id)}">
+    <span class="fila-nombre">${esc(p.nombre)}
+      <em>${esc(ROLES_TXT[p.rol] || p.rol)}${p.rol === "rrpp"
+        ? p.slug ? ` · <b>?r=${esc(p.slug)}</b>` : ` · <b class="falta-slug">sin código</b>`
+        : ""}</em></span>
+    <span class="pastilla ${p.activo ? "verde" : "gris"}">${p.activo ? "Activa" : "Inactiva"}</span>
+    <span class="cifra">${p.rol !== "rrpp" ? ""
+      : p.comision_entrada == null ? `—<em>comisión del evento</em>`
+      : `${bs(p.comision_entrada)}<em>por entrada</em>`}</span>
+    <span class="persona-acciones">
+      <button type="button" class="btn plano chico" data-editar="${esc(p.id)}"
+        >${editando ? "Cerrar" : "Editar"}</button>
+      <button type="button" class="btn plano chico" data-clave="${esc(p.id)}">Resetear clave</button>
+      ${yo
+        /* El botón de desactivarse no se dibuja: la función lo rechaza igual, y
+           un botón que siempre rebota enseña a desconfiar de los botones. */
+        ? `<span class="nota-yo" title="A vos mismo no: es cómo un organizador se queda sin ningún administrador y sin forma de recuperar la cuenta.">sos vos</span>`
+        : `<button type="button" class="btn plano chico" data-activo="${esc(p.id)}"
+             >${p.activo ? "Desactivar" : "Reactivar"}</button>`}
+    </span>
+    ${editando ? formEdicion(p, yo) : ""}
+  </li>`;
+}
+
+/* ── editar: el código y la comisión ──
+   Los dos campos que hacían falta y no existían en ninguna pantalla. */
+function formEdicion(p, yo) {
+  return `<form class="form-persona" id="formEdicion">
+    <label><span>Rol</span>
+      <select id="edRol"${yo ? " disabled" : ""}>
+        ${Object.keys(ROLES_TXT).map(r =>
+          `<option value="${r}"${r === p.rol ? " selected" : ""}>${ROLES_TXT[r]}</option>`).join("")}
+      </select>
+      ${yo ? `<em class="ayuda">A vos mismo no: así es como un organizador se
+        queda sin ningún administrador.</em>` : ""}</label>
+    <label><span>Código de relacionador</span>
+      <input id="edSlug" value="${esc(p.slug || "")}" placeholder="sin código"
+             pattern="[a-z0-9\\-]{2,30}" autocapitalize="none" autocomplete="off">
+      <em class="ayuda">Es lo que va en el <b>?r=</b> de su link de venta. Minúsculas,
+        números y guiones. Sin código, su link no se puede armar.</em></label>
+    <label><span>Comisión por entrada</span>
+      <input id="edComision" type="number" min="0" step="0.5"
+             value="${p.comision_entrada == null ? "" : Number(p.comision_entrada)}"
+             placeholder="la del evento">
+      <em class="ayuda">Un <b>monto fijo en Bs</b> por entrada vendida, nunca un
+        porcentaje: si mañana sube el precio de la entrada, esto no se mueve.
+        Vacío = usa la comisión que tenga cargada el evento.</em></label>
+    <div class="acciones">
+      <button class="btn primario chico" id="btnGuardarPersona">Guardar</button>
+      <button type="button" class="btn plano chico" data-cerrar-edicion="1">Cancelar</button>
+    </div>
+    <p class="error" id="edError"></p>
+  </form>`;
+}
+
+function cablearEdicion() {
+  const f = $("#formEdicion");
+  if (!f) return;
+  f.onsubmit = async e => {
+    e.preventDefault();
+    const p = EQ.gente.find(x => x.id === EQ.editando);
+    if (!p) return;
+    const err = $("#edError");
+    err.textContent = "";
+    const slug = $("#edSlug").value.trim().toLowerCase();
+    const com  = $("#edComision").value.trim();
+    const rol  = $("#edRol").value;
+
+    if (slug && !/^[a-z0-9-]{2,30}$/.test(slug)) {
+      err.textContent = "El código va en minúsculas, entre 2 y 30 caracteres, y solo admite letras, números y guiones.";
+      return;
+    }
+    if (com !== "" && !(Number(com) >= 0)) {
+      err.textContent = "La comisión es un monto en Bs: un número de 0 para arriba, o vacío.";
+      return;
+    }
+    $("#btnGuardarPersona").disabled = true;
+    try {
+      /* .select() no es decoración: un update que la RLS filtra no da
+         error, contesta 204 y cero filas. Sin pedir las filas de vuelta,
+         el caso más silencioso —el que no tenía permiso— vería "listo"
+         con la base intacta. Ya nos pasó con el arte. */
+      const { data: filas, error } = await sb.from("perfiles")
+        .update({ slug: slug || null,
+                  comision_entrada: com === "" ? null : Number(com) })
+        .eq("id", p.id).select("id,nombre,rol,activo,slug,comision_entrada");
+      if (error) throw new Error(errorDePerfil(error));
+      if (!filas || !filas.length) throw new Error(
+        "La base no dejó guardar el cambio: no se modificó nada.");
+
+      /* El rol va por la función porque la guardia que importa —que nadie
+         se baje el rol a sí mismo— tiene que decidirse del lado del
+         servidor. Se manda solo si cambió: una llamada de más a la
+         función que crea cuentas no es gratis. */
+      if (rol !== p.rol) await llamarEquipo({ accion: "rol", id: p.id, rol });
+
+      avisar("Guardado.");
+      EQ.editando = null;
+      await pantallaEquipo({ mantenerClave: true });
+    } catch (ex) {
+      err.textContent = ex.message;
+      const b = $("#btnGuardarPersona");
+      if (b) b.disabled = false;
+    }
+  };
+}
+
+/* Los códigos de Postgres traducidos donde el organizador los va a leer.
+   El mensaje crudo dice «duplicate key value violates unique constraint
+   "perfiles_slug_uk"», que no le explica a nadie qué tiene que cambiar. */
+function errorDePerfil(error) {
+  if (error.code === "23505") return "Ya hay alguien con ese código en tu equipo. Elegí otro.";
+  if (error.code === "23514") return "El código va en minúsculas, entre 2 y 30 caracteres, y solo admite letras, números y guiones.";
+  return error.message;
+}
+
+/* ── el alta ──
+   El código del relacionador se pide ACÁ, en el mismo formulario: que
+   haya que volver después a completarlo es exactamente el bache que esta
+   pantalla vino a tapar. */
+function formAlta() {
+  return `<section class="tarjeta">
+    <h3>Dar de alta</h3>
+    <form class="form-persona" id="formAlta">
+      <label><span>Usuario</span>
+        <input id="alUsuario" required autocapitalize="none" autocomplete="off"
+               pattern="[a-z0-9.\\-]{3,30}" placeholder="nico">
+        <em class="ayuda">Con esto entra al panel. Minúsculas, números, punto y
+          guión; entre 3 y 30. No se puede cambiar después.</em></label>
+      <label><span>Nombre</span>
+        <input id="alNombre" required maxlength="80" placeholder="Nicolás Vargas">
+        <em class="ayuda">Como lo vas a reconocer en las listas de ventas.</em></label>
+      <label><span>Rol</span>
+        <select id="alRol">
+          ${Object.keys(ROLES_TXT).map(r =>
+            `<option value="${r}"${r === "rrpp" ? " selected" : ""}>${ROLES_TXT[r]}</option>`).join("")}
+        </select>
+        <em class="ayuda" id="alRolAyuda"></em></label>
+      <div id="alZonaRrpp" class="alta-rrpp">
+        <label><span>Código de relacionador</span>
+          <input id="alSlug" autocapitalize="none" autocomplete="off"
+                 pattern="[a-z0-9\\-]{2,30}" placeholder="nico">
+          <em class="ayuda">Lo que va en el <b>?r=</b> de su link. Sin esto, el link
+            no se puede armar y su primera noche no se le atribuye a nadie.</em></label>
+        <label><span>Comisión por entrada</span>
+          <input id="alComision" type="number" min="0" step="0.5" placeholder="la del evento">
+          <em class="ayuda">Un <b>monto fijo en Bs</b> por entrada, nunca un porcentaje.
+            Vacío = usa la del evento.</em></label>
+      </div>
+      <div class="acciones">
+        <button class="btn primario" id="btnCrear">Crear la cuenta</button>
+        <button type="button" class="btn plano" id="btnCancelarAlta">Cancelar</button>
+      </div>
+      <p class="error" id="alError"></p>
+    </form>
+  </section>`;
+}
+
+const AYUDA_ROL = {
+  admin:   "Todo, incluida esta pantalla. Que haya más de uno es lo que evita quedarse afuera.",
+  staff:   "Eventos, precios y el salón. No da de alta a nadie.",
+  rrpp:    "Solo lo suyo: su link, sus ventas y su comisión.",
+  portero: "Solo la pantalla de Puerta, para escanear en el ingreso.",
+};
+
+function cablearAlta() {
+  const rol = $("#alRol");
+  const verSegunRol = () => {
+    $("#alZonaRrpp").hidden = rol.value !== "rrpp";
+    $("#alRolAyuda").textContent = AYUDA_ROL[rol.value] || "";
+  };
+  rol.onchange = verSegunRol;
+  verSegunRol();
+  /* El código se propone solo a partir del usuario, que es lo que el
+     administrador ya escribió, y deja de proponerse en cuanto lo toca a
+     mano: adivinarle encima lo que escribió es peor que no adivinar. */
+  const slug = $("#alSlug");
+  slug.oninput = () => { slug.dataset.tocado = "1"; };
+  $("#alUsuario").oninput = e => {
+    if (slug.dataset.tocado) return;
+    slug.value = e.target.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
+  };
+  $("#btnCancelarAlta").onclick = () => { EQ.alta = false; pintarEquipo(); };
+
+  $("#formAlta").onsubmit = async e => {
+    e.preventDefault();
+    const err = $("#alError");
+    err.textContent = "";
+    const usuario = $("#alUsuario").value.trim().toLowerCase();
+    const nombre  = $("#alNombre").value.trim();
+    const r       = rol.value;
+    const esRrpp  = r === "rrpp";
+    const sSlug   = esRrpp ? $("#alSlug").value.trim().toLowerCase() : "";
+    const sCom    = esRrpp ? $("#alComision").value.trim() : "";
+
+    if (!/^[a-z0-9.-]{3,30}$/.test(usuario)) {
+      err.textContent = "El usuario va en minúsculas, entre 3 y 30 caracteres, y solo admite letras, números, punto y guión.";
+      return;
+    }
+    if (sSlug && !/^[a-z0-9-]{2,30}$/.test(sSlug)) {
+      err.textContent = "El código va en minúsculas, entre 2 y 30 caracteres, y solo admite letras, números y guiones.";
+      return;
+    }
+    /* Un relacionador sin código es el bache de siempre; no se prohíbe
+       —puede que el código se decida mañana— pero no sale en silencio. */
+    if (esRrpp && !sSlug && !confirm(
+        "Sin código, este relacionador no va a tener link de venta y no vas a " +
+        "poder atribuirle ninguna entrada.\n\n¿Lo creo igual?")) return;
+
+    $("#btnCrear").disabled = true;
+    try {
+      const res = await llamarEquipo({
+        accion: "crear", usuario, nombre, rol: r,
+        slug: sSlug || null, comision_entrada: sCom === "" ? null : Number(sCom),
+      });
+      EQ.clave = { titulo: `La clave de ${nombre}`, usuario: res.usuario, clave: res.clave };
+      EQ.alta = false;
+      avisar("Cuenta creada.");
+      await pantallaEquipo({ mantenerClave: true });
+    } catch (ex) {
+      err.textContent = ex.message;
+      const b = $("#btnCrear");
+      if (b) b.disabled = false;
+    }
+  };
+}
+
+function clicEnEquipo(e) {
+  const b = e.target.closest("button[data-editar],button[data-clave],button[data-activo],button[data-cerrar-edicion]");
+  if (!b) return;
+  const d = b.dataset;
+  if (d.cerrarEdicion) { EQ.editando = null; pintarEquipo(); return; }
+  if (d.editar) {
+    EQ.editando = EQ.editando === d.editar ? null : d.editar;
+    EQ.alta = false;
+    pintarEquipo();
+    return;
+  }
+  if (d.clave)  return resetearClave(d.clave);
+  if (d.activo) return cambiarActivo(d.activo);
+}
+
+async function resetearClave(id) {
+  const p = EQ.gente.find(x => x.id === id);
+  if (!p) return;
+  if (!confirm(`¿Generar una clave nueva para ${p.nombre}?\n\n` +
+    `La de ahora deja de servir en el acto, y la nueva se ve una sola vez.`)) return;
+  try {
+    const res = await llamarEquipo({ accion: "resetear", id });
+    EQ.clave = { titulo: `La clave nueva de ${p.nombre}`, usuario: res.usuario, clave: res.clave };
+    avisar("Clave reseteada.");
+    pintarEquipo();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (ex) {
+    avisar(ex.message);
+  }
+}
+
+/* Desactivar, nunca borrar: alguien con ventas hechas no se puede borrar
+   sin llevarse puesto el historial de comisiones, y a la primera
+   discusión con un relacionador te quedaste sin la prueba de cuánto
+   vendió. Desactivado no entra al panel y su token deja de abrir nada
+   —mi_rol() y mi_organizador() filtran por `activo`— pero sus ventas
+   siguen contando. */
+async function cambiarActivo(id) {
+  const p = EQ.gente.find(x => x.id === id);
+  if (!p) return;
+  if (p.activo && !confirm(`¿Desactivar a ${p.nombre}?\n\n` +
+    `No va a poder entrar más al panel. Sus ventas y sus comisiones quedan ` +
+    `intactas: esto no borra a nadie, y se puede reactivar cuando quieras.`)) return;
+  try {
+    await llamarEquipo({ accion: "activo", id, activo: !p.activo });
+    avisar(p.activo ? `${p.nombre} quedó desactivado.` : `${p.nombre} vuelve a entrar.`);
+    await pantallaEquipo({ mantenerClave: true });
+  } catch (ex) {
+    avisar(ex.message);
+  }
 }
 
 /* ── arranque: si ya había sesión, entrar directo ── */

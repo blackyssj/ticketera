@@ -654,6 +654,89 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 }
 
 
+/* ═══ el equipo ═══════════════════════════════════════════════════
+   La lista se lee de arriba abajo buscando a UNA persona, así que la
+   fila la manda el nombre y todo lo demás va a la derecha en columnas
+   fijas: el ojo baja por una sola columna en vez de zigzaguear.
+   El formulario se abre DENTRO de la fila, no en otra pantalla: lo que
+   se está editando tiene que seguir a la vista mientras se edita. */
+.equipo-intro{display:block;max-width:70ch;margin:-10px 0 20px}
+
+/* Las columnas de estado y comisión van con ancho FIJO y no `auto`: cada
+   fila es su propia grilla, así que con auto la pastilla de cada persona
+   caía en una x distinta según lo largo que fuera su nombre, y una lista
+   que se recorre de un vistazo se leía en zigzag. */
+.fila.persona{
+  display:grid;grid-template-columns:minmax(0,1fr) 92px 156px 292px;
+  gap:6px 22px;align-items:center;
+}
+.persona .pastilla{justify-self:start}
+.persona .cifra{justify-self:end}
+.persona .fila-nombre{min-width:0}
+.persona .fila-nombre em{
+  display:block;margin-top:3px;font-style:normal;font-weight:400;
+  font-family:var(--dato);font-size:11.5px;color:var(--txt-3);
+}
+/* Sin código no hay link, y sin link su noche no se le atribuye a nadie:
+   es lo único de la fila que pide una acción. */
+.persona .falta-slug{font-weight:400;color:var(--aviso)}
+/* El código no se parte nunca: "?r=" en un renglón y el resto en el otro
+   es ilegible justo en el dato que se copia. */
+.persona .fila-nombre em b{white-space:nowrap}
+/* Desactivado no es un error ni un peligro: es alguien que está pero no
+   entra. Apagado alcanza; en rojo parecería que algo se rompió. */
+.persona.inactiva{background:transparent;border-style:dashed}
+.persona.inactiva .fila-nombre{color:var(--txt-2);font-weight:500}
+.soy-yo{
+  font-style:normal;font-family:var(--dato);font-size:10px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--txt-3);
+}
+.persona-acciones{display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.nota-yo{font-family:var(--dato);font-size:11px;color:var(--txt-3);white-space:nowrap}
+
+.form-persona{
+  grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:16px;
+  margin-top:16px;padding-top:16px;border-top:1px solid var(--linea);
+}
+.form-persona .ayuda{margin-top:-2px}
+.form-persona .acciones,.form-persona .error{grid-column:1/-1;margin-top:0}
+.alta-rrpp{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.tarjeta .form-persona{margin-top:14px;padding-top:0;border-top:0}
+
+/* ─── la clave, la única vez que se ve ───
+   En dorado y arriba de todo: si esta caja se cierra sin que nadie la
+   copie, la clave no existe más en ningún lado. El valor va en el
+   cuerpo de datos y grande — se lee en voz alta o se copia, y una l
+   mayúscula confundida con un 1 es un llamado al día siguiente. */
+.clave-nueva{border-color:rgba(233,180,76,.35);background:linear-gradient(var(--sup),rgba(233,180,76,.06))}
+.clave-nueva h3{color:var(--dorado)}
+.clave-nueva .link-publico+.link-publico{margin-top:8px}
+.clave-rotulo{
+  flex:0 0 74px;font-family:var(--dato);font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--txt-3);
+}
+.clave-nueva code{user-select:all;font-family:var(--dato)}
+.clave-valor{font-size:17px;letter-spacing:.06em;color:var(--dorado)}
+.clave-nueva .acciones{margin-top:14px}
+
+/* El corte de la fila llega ANTES que el del resto del panel: con cuatro
+   columnas fijas, abajo de ~1000px el nombre se queda sin lugar y parte
+   el "?r=" al medio — justo el dato que se va a copiar. */
+@media (max-width:1000px){
+  /* Sin lugar para cuatro columnas, el nombre se lleva el primer renglón
+     entero y el resto se acomoda abajo en el orden en que se lee: en qué
+     estado está, cuánto cobra, y qué se puede hacer con él. */
+  .fila.persona{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+  .persona .fila-nombre{flex:1 1 100%}
+  .persona .cifra{text-align:left}
+  .persona-acciones{margin-left:auto}
+  .form-persona{flex:1 1 100%}
+}
+@media (max-width:760px){
+  .form-persona,.alta-rrpp{grid-template-columns:1fr}
+  .clave-rotulo{flex-basis:auto}
+}
+
 /* ═══ la puerta ═══════════════════════════════════════════════════
    La única pantalla que no se lee: se mira de reojo, de noche, con la
    fila encima. Todo lo de acá está dimensionado para eso — el cartel
