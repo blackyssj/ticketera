@@ -32,15 +32,52 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   try {
     const u = new URL(req.url);
-    let id = u.searchParams.get("id");
-    if (req.method === "POST") id = (await req.json().catch(() => ({}))).orden ?? id;
-    if (!id || !/^[0-9a-f-]{36}$/i.test(id))
-      return json({ ok: false, motivo: "Falta la orden." }, 400);
+    const cuerpo = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+    let id = cuerpo.orden ?? u.searchParams.get("id");
+    const ref = cuerpo.pago_ref ?? u.searchParams.get("pago_ref");
 
-    const o = await uno(`ordenes?id=eq.${id}&select=id,estado,total,subtotal,fee,pago_ref,comprador_nombre,comprador_email,created_at,evento_id,organizador_id`);
+    const CAMPOS = "id,estado,total,subtotal,fee,pago_ref,comprador_nombre," +
+                   "comprador_email,created_at,evento_id,organizador_id";
+    const esUuid = (v: unknown) => typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v);
+
+    let o = null;
+    if (esUuid(id)) {
+      o = await uno(`ordenes?id=eq.${id}&select=${CAMPOS}`);
+    } else if (ref) {
+      /* La vuelta de la pasarela.
+         Al redirigir, v2pro pega `?id=<id_transaccion>` a urlRespuesta: ese
+         id es SUYO, no el uuid de la orden, así que la búsqueda por id no
+         encuentra nada y hay que caer en pago_ref.
+
+         Pero el uuid de la orden es la credencial de esta página —
+         impredecible, solo lo tiene quien compró— y un id de transacción de
+         una pasarela no promete nada de eso: puede ser corto o correlativo.
+         Como acá se devuelven el nombre del comprador y los códigos de QR,
+         una búsqueda libre por pago_ref sería una puerta para leer compras
+         ajenas probando números.
+
+         Por eso este camino se acota a lo que necesita: una compra reciente.
+         La vuelta del pago pasa en minutos; 12 horas cubre hasta un banco
+         lento y deja afuera todo el histórico. Lo que se puede tantear pasa
+         de "todas las compras que existieron" a "las de hoy", y el que llega
+         por acá es reenviado enseguida al link con el uuid, que es el que le
+         queda guardado. */
+      const desde = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+      if (String(ref).length < 6)
+        return json({ ok: false, motivo: "No encontramos esa compra." }, 404);
+      o = await uno(`ordenes?pago_ref=eq.${encodeURIComponent(String(ref))}` +
+                    `&created_at=gte.${desde}&select=${CAMPOS}`);
+    }
+
+    if (!id && !ref) return json({ ok: false, motivo: "Falta la orden." }, 400);
     if (!o) return json({ ok: false, motivo: "No encontramos esa compra." }, 404);
+    id = o.id;
     if (o.estado !== "pagada")
-      return json({ ok: true, estado: o.estado, motivo: "Esta compra todavía no está pagada." });
+      /* Devuelve el uuid: quien llegó por el pago_ref de la pasarela lo
+         necesita para poder preguntar por estado-orden mientras el cobro se
+         confirma, y para quedarse con el link bueno. */
+      return json({ ok: true, estado: o.estado, orden: o.id,
+                    motivo: "Esta compra todavía no está pagada." });
 
     const e = await uno(`eventos?id=eq.${o.evento_id}&select=id,nombre,lugar,fecha,hora_inicio,arte_url`);
     const ent = await rest(`entradas?orden_id=eq.${id}&select=code,precio,estado,used_at,fase_id,tipo_entrada(nombre),mesas(etiqueta,categoria)&order=created_at`);
