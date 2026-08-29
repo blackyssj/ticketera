@@ -11,15 +11,26 @@
 --
 -- comercio_id 1518 = BeePlay Stage, el de pruebas de la pasarela.
 
-insert into organizadores (id, slug, nombre, comercio_id) values
-  ('a0000000-0000-4000-8000-000000000001', 'amstel', 'Amstel', 1518)
-on conflict (slug) do update set nombre = excluded.nombre,
-                                 comercio_id = excluded.comercio_id;
+-- El fee es el negocio: 8% del subtotal, sin componente fijo y sin piso.
+-- Ojo con eso último, porque no es un olvido y tiene consecuencias: la
+-- pasarela cobra POR TRANSACCIÓN, no por entrada. En una orden de Bs 40 el
+-- 8% son Bs 3,20 y ahí el margen se lo come el costo de cobrar. La orden
+-- chica pierde plata; la mediana la compensa. Si eso deja de cerrar, la
+-- palanca es fee_fijo_transaccion, que existe justo para esto.
+insert into organizadores (id, slug, nombre, comercio_id,
+                           fee_pct, fee_fijo_transaccion, fee_piso) values
+  ('a0000000-0000-4000-8000-000000000001', 'amstel', 'Amstel', 1518,
+   0.0800, 0, 0)
+on conflict (slug) do update set nombre      = excluded.nombre,
+                                 comercio_id = excluded.comercio_id,
+                                 fee_pct     = excluded.fee_pct,
+                                 fee_fijo_transaccion = excluded.fee_fijo_transaccion,
+                                 fee_piso    = excluded.fee_piso;
 
 insert into eventos (id, organizador_id, slug, nombre, descripcion, lugar, fecha, hora_inicio, estado)
 values ('e0000000-0000-4000-8000-000000000001','a0000000-0000-4000-8000-000000000001',
         'red-circle','RED CIRCLE',
-        'Reservá tu mesa para las noches de Amstel en la Fexpo. Elegí el combo, pagá con QR y las manillas te llegan al correo.',
+        'La noche de Amstel en la Fexpo. Elegí tu entrada, pagá con QR y te la llevás al toque.',
         'Fexpo ''26 · Santa Cruz de la Sierra',
         '2026-09-12','21:00','publicado')
 on conflict (id) do update set slug        = excluded.slug,
@@ -51,29 +62,37 @@ on conflict (id) do update set nombre = excluded.nombre,
                                desde  = excluded.desde,
                                hasta  = excluded.hasta;
 
--- ── los cinco combos del flyer ───────────────────────────────────────────
+-- ── los cinco combos del flyer, FUERA DE VENTA ───────────────────────────
+-- Quedan cargados pero apagados. El negocio de la ticketera es vender
+-- entradas y cobrar el fee; las reservas de mesa las sigue vendiendo el
+-- local por su cuenta. No se borran por dos motivos: son los datos que
+-- mandó el cliente y volver a tipearlos es cómo se cuelan errores, y el
+-- día que un local quiera venderlas por acá se prenden con un click.
+-- La maquinaria (plano, asignación de mesas, manillas por producto) queda
+-- entera y dormida: no cuesta nada y sacarla es una puerta de una sola
+-- dirección.
 insert into tipo_entrada (id, organizador_id, evento_id, nombre, descripcion, incluye,
                           categoria, manillas, orden, activo) values
  ('11000000-0000-4000-8000-000000000011','a0000000-0000-4000-8000-000000000001',
   'e0000000-0000-4000-8000-000000000001','Combo Sábados + Serenata',
   'Tu mesa para los sábados y la noche de serenata.',
-  'Bs 6.000 en consumo + 10 manillas, válidas los 3 días.','mesa',10,1,true),
+  'Bs 6.000 en consumo + 10 manillas, válidas los 3 días.','mesa',10,101,false),
  ('11000000-0000-4000-8000-000000000012','a0000000-0000-4000-8000-000000000001',
   'e0000000-0000-4000-8000-000000000001','Combo Sábados',
   'Tu mesa para los sábados de la Fexpo.',
-  'Bs 4.000 en consumo + 10 manillas, válidas los 2 días.','mesa',10,2,true),
+  'Bs 4.000 en consumo + 10 manillas, válidas los 2 días.','mesa',10,102,false),
  ('11000000-0000-4000-8000-000000000013','a0000000-0000-4000-8000-000000000001',
   'e0000000-0000-4000-8000-000000000001','Jueves de Frater · 20 manillas',
   'Tu mesa para el jueves de frater, para el grupo grande.',
-  'Bs 3.000 en consumo + 20 manillas + 2 baldes Amstel.','mesa',20,3,true),
+  'Bs 3.000 en consumo + 20 manillas + 2 baldes Amstel.','mesa',20,103,false),
  ('11000000-0000-4000-8000-000000000014','a0000000-0000-4000-8000-000000000001',
   'e0000000-0000-4000-8000-000000000001','Jueves de Frater · 10 manillas',
   'Tu mesa para el jueves de frater.',
-  'Bs 2.000 en consumo + 10 manillas + 2 baldes Amstel.','mesa',10,4,true),
+  'Bs 2.000 en consumo + 10 manillas + 2 baldes Amstel.','mesa',10,104,false),
  ('11000000-0000-4000-8000-000000000015','a0000000-0000-4000-8000-000000000001',
   'e0000000-0000-4000-8000-000000000001','Combo Viernes',
   'Tu mesa para el viernes.',
-  'Bs 1.500 en consumo + 5 manillas por 1 día.','mesa',5,5,true)
+  'Bs 1.500 en consumo + 5 manillas por 1 día.','mesa',5,105,false)
 on conflict (id) do update set nombre      = excluded.nombre,
                                descripcion = excluded.descripcion,
                                incluye     = excluded.incluye,
@@ -82,20 +101,18 @@ on conflict (id) do update set nombre      = excluded.nombre,
                                orden       = excluded.orden,
                                activo      = excluded.activo;
 
--- ── las entradas sueltas ─────────────────────────────────────────────────
--- El flyer que mandó el cliente es solo de reservas, así que estos dos
--- precios son PROVISORIOS hasta que confirme los suyos. Van igual porque no
--- todo el que va a la Fexpo reserva mesa, y una página que solo vende mesas
--- deja afuera a la mayoría.
+-- ── las entradas: lo único que se vende ──────────────────────────────────
+-- El flyer del cliente es solo de reservas, así que estos dos precios son
+-- PROVISORIOS hasta que confirme los suyos.
 insert into tipo_entrada (id, organizador_id, evento_id, nombre, descripcion, incluye,
                           categoria, manillas, orden, activo) values
  ('11000000-0000-4000-8000-000000000001','a0000000-0000-4000-8000-000000000001',
   'e0000000-0000-4000-8000-000000000001','General',
-  'Acceso al predio durante la noche.', null,'entrada',1,10,true),
+  'Acceso al predio durante la noche.', null,'entrada',1,1,true),
  ('11000000-0000-4000-8000-000000000002','a0000000-0000-4000-8000-000000000001',
   'e0000000-0000-4000-8000-000000000001','VIP',
   'Sector elevado, con barra propia.',
-  'Dos Amstel de bienvenida.','entrada',1,11,true)
+  'Dos Amstel de bienvenida.','entrada',1,2,true)
 on conflict (id) do update set nombre      = excluded.nombre,
                                descripcion = excluded.descripcion,
                                incluye     = excluded.incluye,
@@ -117,8 +134,9 @@ update tipo_entrada set activo = false
                   '11000000-0000-4000-8000-000000000002');
 
 -- ── precio y cupo ────────────────────────────────────────────────────────
--- El cupo es cuántas reservas de cada combo hay para vender. El flyer no lo
--- dice: estos números son PROVISORIOS hasta que el cliente los confirme.
+-- Los precios de los combos quedan cargados aunque el producto esté
+-- apagado: prenderlo no tiene que obligar a re-cargar el precio.
+-- Los cupos de General y VIP son PROVISORIOS hasta que el cliente confirme.
 insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo) values
  ('a0000000-0000-4000-8000-000000000001','22000000-0000-4000-8000-000000000010','11000000-0000-4000-8000-000000000011',8000,10),
  ('a0000000-0000-4000-8000-000000000001','22000000-0000-4000-8000-000000000010','11000000-0000-4000-8000-000000000012',5500,14),

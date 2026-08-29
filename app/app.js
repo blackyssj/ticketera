@@ -220,9 +220,15 @@ function pintarHero() {
     .map(([k, v]) => `<span>${esc(k)} <b>${esc(v)}</b></span>`).join("");
   document.title = `${e.marca_1} ${e.marca_2} — ${VOCAB.titulo}`;
   $("#faseChip").innerHTML = `<i></i>${esc(D.fase.nombre)} · ${esc(D.fase.hasta_txt)}`;
+  /* La nota se arma con las partes que el organizador realmente cobra. Con
+     el fijo y el piso en cero, "8% + 0 Bs por compra, mínimo 0 Bs" es la
+     misma frase de siempre diciendo nada dos veces, y una letra chica que
+     enumera ceros es la que el comprador deja de leer. */
+  const o = D.organizador, notaFee = [`${Math.round(o.fee_pct * 100)}% de servicio`];
+  if (o.fee_fijo > 0) notaFee.push(`+ ${o.fee_fijo} Bs por compra`);
+  if (o.fee_piso > 0) notaFee.push(`mínimo ${o.fee_piso} Bs`);
   $("#feeNota").textContent =
-    `${Math.round(D.organizador.fee_pct * 100)}% + ${D.organizador.fee_fijo} Bs por compra, ` +
-    `mínimo ${D.organizador.fee_piso} Bs. Ya incluye el procesamiento del pago.`;
+    notaFee.join(", ") + ". Ya incluye el procesamiento del pago.";
 }
 
 function pintarPasos() {
