@@ -15,7 +15,7 @@ from _api import REF, pat, request
 
 BASE = pathlib.Path(__file__).resolve().parent.parent / "supabase" / "functions"
 TODAS = ["eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
-         "orden", "enviar-entradas"]
+         "orden", "enviar-entradas", "equipo"]
 
 # Por defecto False: eventos, evento, crear-orden, iniciar-pago, estado-orden y
 # orden las llama el público con la anon key, sin sesión. enviar-entradas es la
@@ -23,7 +23,12 @@ TODAS = ["eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
 # cabeceras de service_role — así que va con JWT exigido. Antes mandaba
 # False para las seis por igual; eso la dejaba pública sin que nadie lo
 # hubiera decidido.
-VERIFY_JWT = {"enviar-entradas": True}
+# `equipo` va con JWT exigido igual que enviar-entradas, pero por otro
+# motivo: no la llama el público, la llama un admin logueado. La función
+# valida la sesión por su cuenta contra /auth/v1/user —esa es la guardia de
+# verdad— y esto es una reja más adelante: sin un JWT firmado por el
+# proyecto, el pedido ni siquiera llega al código que crea cuentas.
+VERIFY_JWT = {"enviar-entradas": True, "equipo": True}
 
 def main() -> int:
     token = pat()
