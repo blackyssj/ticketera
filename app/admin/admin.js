@@ -179,6 +179,7 @@ async function abrirEvento(id) {
         <button class="btn primario" id="btnGuardar">Guardar</button>
         ${id ? `<button type="button" class="btn plano" id="btnTablero">Tablero →</button>
                <button type="button" class="btn plano" id="btnEntradas">Entradas y precios →</button>
+               <button type="button" class="btn plano" id="btnCortesias">Cortesías →</button>
                <button type="button" class="btn plano" id="btnRrpp">Relacionadores →</button>` : ""}
       </div>
       <p class="error" id="fError"></p>
@@ -190,6 +191,7 @@ async function abrirEvento(id) {
   if (id) {
     $("#btnTablero").onclick = () => pantallaTablero(id);
     $("#btnEntradas").onclick = () => pantallaEntradas(id);
+    $("#btnCortesias").onclick = () => pantallaCortesias(id);
     $("#btnRrpp").onclick = () => pantallaRelacionadores(id);
     cablearArte(e);   // solo con evento guardado: sin slug no hay carpeta donde subir
   }
@@ -871,7 +873,8 @@ async function pantallaTablero(eventoId) {
     </div>
     <div id="zonaResumen"><p class="cargando">Cargando…</p></div>
     <section id="zonaCompradores"></section>
-    <section id="zonaPlano"></section>`;
+    <section id="zonaPlano"></section>
+    <section id="zonaRegistro"></section>`;
 
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
 
@@ -881,8 +884,14 @@ async function pantallaTablero(eventoId) {
      primera enseña a no creerle. */
   await Promise.all([
     refrescarResumen(eventoId),
+    /* Anular una compra baja las cifras de arriba Y agrega una fila al
+       registro de abajo: el mismo `alCambiar` refresca los dos, porque un
+       tablero que sigue diciendo lo de antes de la anulación enseña a no
+       creerle. */
     montarSalon(eventoId, { editar: puedeEditar(),
-                            alCambiar: () => refrescarResumen(eventoId) }),
+                            alCambiar: () => Promise.all([refrescarResumen(eventoId),
+                                                          refrescarRegistro(eventoId)]) }),
+    refrescarRegistro(eventoId),
   ]);
 }
 
@@ -904,6 +913,12 @@ async function refrescarResumen(eventoId) {
     const p = $("#zonaPlano");
     if (p) p.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+  /* La alerta de revisión manual contaba las órdenes desde 0033 y no
+     ofrecía nada: el que la leía se enteraba de que había plata cobrada
+     sin entrada del otro lado y ahí se terminaba. Este botón es el
+     camino que faltaba. */
+  const rev = $("#irARevision");
+  if (rev) rev.onclick = () => pantallaRevision(eventoId);
 }
 
 /* Tres números y ninguno es el mismo dato: lo que se vendió, lo que entró
@@ -945,13 +960,13 @@ function bloqueAlertas(a) {
       pie: `${num(a.mesas_sin_asignar.manillas)} manillas · ${bs(a.mesas_sin_asignar.monto)} ya cobrados`,
       viva: "Compras de mesa pagadas a las que todavía nadie les dijo dónde se sientan. Este es el número que va a cero antes de que abra la puerta.",
       hecha: "Toda compra de mesa tiene su lugar.",
-      nivel: "peligro", plano: true },
+      nivel: "peligro", boton: { id: "irAlPlano", txt: "Ver el plano" } },
     { cifra: a.revision_manual.ordenes,
       titulo: "En revisión manual",
       pie: `${bs(a.revision_manual.monto)} cobrados`,
       viva: "La pasarela cobró un monto distinto al esperado. Hay que mirarlas de a una: es plata que entró y no tiene entrada del otro lado.",
       hecha: "Nadie pagó de más ni de menos.",
-      nivel: "aviso" },
+      nivel: "aviso", boton: { id: "irARevision", txt: "Resolverlas" } },
     { cifra: a.pendientes_vencidas.ordenes,
       titulo: "Pendientes vencidas",
       pie: `${bs(a.pendientes_vencidas.monto)} que no entraron`,
@@ -978,8 +993,8 @@ function bloqueAlertas(a) {
         <p>${esc(f.cifra ? f.viva : f.hecha)}</p>
         ${f.cifra ? `<span class="alerta-pie">${esc(f.pie)}</span>` : ""}
       </div>
-      ${f.cifra && f.plano
-        ? `<button type="button" class="btn plano chico" id="irAlPlano">Ver el plano</button>` : ""}
+      ${f.cifra && f.boton
+        ? `<button type="button" class="btn plano chico" id="${f.boton.id}">${esc(f.boton.txt)}</button>` : ""}
     </div>`).join("")}</div>`;
 }
 
@@ -1079,18 +1094,25 @@ function bloqueDesgloses(r) {
    la base le va a rebotar es enseñarle a desconfiar de los botones; la
    guardia de verdad es puede_editar() adentro de asignar_mesa(). */
 const SALON = { evento: null, editar: false, compras: [], mesas: [],
-                busca: "", sel: null, asignando: null, alCambiar: null };
+                busca: "", sel: null, asignando: null, alCambiar: null,
+                anulando: null, abierta: null, manillas: {}, anulandoEntrada: null };
 
 async function montarSalon(eventoId, opts) {
   Object.assign(SALON, {
     evento: eventoId, editar: !!(opts && opts.editar),
     compras: [], mesas: [], busca: "", sel: null, asignando: null,
+    anulando: null, abierta: null, manillas: {}, anulandoEntrada: null,
     alCambiar: (opts && opts.alCambiar) || null,
   });
   const c = $("#zonaCompradores"), p = $("#zonaPlano");
   if (c) {
     c.innerHTML = `<p class="cargando">Cargando compradores…</p>`;
     c.onclick = clicEnCompradores;
+    /* Los formularios de anulación piden un motivo escrito, así que van en
+       un <form> de verdad: Enter envía, el `required` del navegador frena
+       el vacío antes de molestar a la base, y el foco no se pierde. Se
+       escuchan acá arriba porque las filas se repintan enteras. */
+    c.onsubmit = enviarEnCompradores;
   }
   if (p) {
     p.innerHTML = `<p class="cargando">Cargando el plano…</p>`;
@@ -1207,6 +1229,10 @@ function pintarFilasCompradores() {
 
 function filaCompra(c) {
   const m = mesaDeCompra(c);
+  return filaCompraFila(c, m) + filaCompraDetalle(c);
+}
+
+function filaCompraFila(c, m) {
   return `<tr data-orden="${esc(c.orden_id)}">
     <td><span class="prod-nombre">${esc(c.comprador || "Sin nombre")}</span>
       <em>${esc(fmtFH(c.fecha))}</em></td>
@@ -1227,10 +1253,111 @@ function filaCompra(c) {
 
 function accionesCompra(c, m) {
   if (SALON.asignando === c.orden_id) return selectorDeMesas(c, m);
-  return m
+  const mesa = m
     ? `<button type="button" class="btn plano chico" data-abrir="${esc(c.orden_id)}">Cambiar</button>
        <button type="button" class="btn plano chico" data-liberar="${esc(c.orden_id)}">Liberar</button>`
     : `<button type="button" class="btn plano chico" data-abrir="${esc(c.orden_id)}">Asignar mesa</button>`;
+  /* "Manillas" antes que "Anular": la manilla suelta —la perdida, la
+     duplicada— es lo que se hace seguido, y anular la compra entera es lo
+     que no se deshace. El orden de los botones es el orden de la
+     frecuencia, no el del código. */
+  return `${mesa}
+    <button type="button" class="btn plano chico" data-manillas="${esc(c.orden_id)}"
+      >${SALON.abierta === c.orden_id ? "Ocultar" : "Manillas"}</button>
+    <button type="button" class="btn plano chico peligrosa" data-anular="${esc(c.orden_id)}">Anular</button>`;
+}
+
+/* ── anular ──
+   La fila que se despliega abajo de la compra: el formulario de anulación
+   y, si se pidió, la lista de manillas con su propio botón por fila. Van
+   en la MISMA fila desplegada para que no se pueda tener abierta la
+   anulación de una compra y la lista de otra al mismo tiempo. */
+function filaCompraDetalle(c) {
+  const cols = SALON.editar ? 8 : 7;
+  const abre = SALON.anulando === c.orden_id || SALON.abierta === c.orden_id;
+  if (!abre) return "";
+  return `<tr class="fila-detalle"><td colspan="${cols}">
+    ${SALON.anulando === c.orden_id ? formAnularCompra(c) : ""}
+    ${SALON.abierta === c.orden_id ? listaManillas(c) : ""}
+  </td></tr>`;
+}
+
+/* La confirmación dice QUÉ se va a anular —cuántas manillas y cuánta
+   plata— y no "¿estás seguro?". Nadie está seguro de un id: se está
+   seguro de "las tres de Marcela, 300 Bs". Y dice lo que NO va a pasar:
+   la plata no vuelve sola. Prometer un reintegro que esta ticketera no
+   hace sería la peor forma de enterarse. */
+function formAnularCompra(c) {
+  const usadas = Number(c.manillas_usadas) || 0;
+  return `<form class="form-anular" data-anular-compra="${esc(c.orden_id)}">
+    <p class="anular-que">Se anulan <b>${manillasTxt(c.manillas)}</b> de
+      ${esc(c.comprador || "sin nombre")} y su cupo vuelve a la venta.
+      Los <b>${bs(c.pagado)}</b> cobrados no se devuelven solos: el reintegro se hace
+      en la pasarela. <b>Esto no se deshace.</b></p>
+    ${usadas ? `<label class="anular-usadas">
+      <input type="checkbox" name="usadas">
+      <span>${usadas === 1 ? "Una manilla de esta compra ya entró" : `${num(usadas)} manillas de esta compra ya entraron`}
+        al evento. Anularlas igual —un contracargo— no las saca de adentro y hace bajar
+        el conteo de la puerta.</span></label>` : ""}
+    <label class="anular-motivo"><span>Motivo</span>
+      <input name="motivo" required maxlength="200" autocomplete="off"
+             placeholder="pago doble, contracargo, se arrepintió…"></label>
+    <div class="acciones">
+      <button type="submit" class="btn primario chico">Anular la compra</button>
+      <button type="button" class="btn plano chico" data-cerrar="1">Cancelar</button>
+    </div>
+  </form>`;
+}
+
+const ESTADO_MANILLA = { valida: { txt: "Válida", cls: "verde" },
+                         usada:  { txt: "Ya entró", cls: "dorada" },
+                         anulada:{ txt: "Anulada", cls: "roja" } };
+
+function listaManillas(c) {
+  const filas = SALON.manillas[c.orden_id];
+  if (!filas) return `<p class="cargando">Cargando las manillas…</p>`;
+  if (!filas.length) return `<p class="vacio">Esta compra no tiene manillas emitidas.</p>`;
+  return `<table class="tabla tabla-manillas">
+    <thead><tr><th>Código</th><th>Producto</th><th>A nombre de</th>
+      <th>Estado</th><th class="col-accion"></th></tr></thead>
+    <tbody>${filas.map(en => {
+      const e = ESTADO_MANILLA[en.estado] || { txt: en.estado, cls: "gris" };
+      return `<tr>
+        <td class="dato"><code>${esc(en.code)}</code></td>
+        <td>${esc((en.tipo_entrada && en.tipo_entrada.nombre) || "—")}</td>
+        <td class="dato">${esc(en.cliente || "—")}</td>
+        <td><span class="pastilla ${e.cls}">${e.txt}</span>${
+          en.used_at ? `<em>${esc(fmtFH(en.used_at))}</em>` : ""}</td>
+        <td class="col-accion">${en.estado === "anulada" ? ""
+          : `<button type="button" class="btn plano chico peligrosa"
+               data-anular-manilla="${esc(en.id)}">Anular</button>`}</td>
+      </tr>${SALON.anulandoEntrada === en.id ? `
+      <tr><td colspan="5">${formAnularManilla(en, false)}</td></tr>` : ""}`;
+    }).join("")}</tbody>
+  </table>`;
+}
+
+/* El mismo formulario para la manilla de una compra y para una cortesía,
+   porque atrás es la misma función. Lo que cambia es la consecuencia y hay
+   que decirla: la de una compra no devuelve cupo —la unidad se vendió y se
+   cobró—, la cortesía sí, porque no tiene compra que la sostenga. */
+function formAnularManilla(en, esCortesia) {
+  return `<form class="form-anular" data-anular-entrada="${esc(en.id)}">
+    <p class="anular-que">Se anula la manilla <b>${esc(en.code)}</b>. ${esCortesia
+      ? "Su lugar vuelve al cupo: una cortesía no tiene compra detrás que lo retenga."
+      : "La compra queda en pie —ya se cobró— y el resto de sus manillas siguen entrando."}
+      ${en.estado === "usada"
+        ? `<b>Esta ya entró al evento:</b> anularla no la saca de adentro.` : ""}</p>
+    ${en.estado === "usada" ? `<label class="anular-usadas">
+      <input type="checkbox" name="usadas"> <span>Anularla igual.</span></label>` : ""}
+    <label class="anular-motivo"><span>Motivo</span>
+      <input name="motivo" required maxlength="200" autocomplete="off"
+             placeholder="manilla perdida, QR duplicado…"></label>
+    <div class="acciones">
+      <button type="submit" class="btn primario chico">Anular la manilla</button>
+      <button type="button" class="btn plano chico" data-cerrar="1">Cancelar</button>
+    </div>
+  </form>`;
 }
 
 /* Las libres salen del mismo jsonb que pinta el plano, así que esta lista
@@ -1253,16 +1380,97 @@ function selectorDeMesas(c, actual) {
 }
 
 function clicEnCompradores(e) {
-  const b = e.target.closest("button[data-abrir],button[data-liberar],button[data-confirmar],button[data-cerrar]");
+  const b = e.target.closest("button[data-abrir],button[data-liberar],button[data-confirmar]," +
+                             "button[data-cerrar],button[data-anular],button[data-manillas]," +
+                             "button[data-anular-manilla]");
   if (!b) return;
   const d = b.dataset;
-  if (d.cerrar) { SALON.asignando = null; pintarFilasCompradores(); return; }
+  if (d.cerrar) {
+    SALON.asignando = null; SALON.anulando = null; SALON.anulandoEntrada = null;
+    pintarFilasCompradores(); return;
+  }
   if (d.abrir)  { SALON.asignando = d.abrir; pintarFilasCompradores(); return; }
   if (d.liberar) return liberarMesa(d.liberar);
   if (d.confirmar) {
     const sel = $("#selMesa");
     if (sel && sel.value) return asignarMesa(d.confirmar, sel.value);
   }
+  if (d.anular) {
+    SALON.anulando = SALON.anulando === d.anular ? null : d.anular;
+    SALON.anulandoEntrada = null;
+    pintarFilasCompradores(); return;
+  }
+  if (d.manillas) {
+    if (SALON.abierta === d.manillas) { SALON.abierta = null; pintarFilasCompradores(); return; }
+    return abrirManillas(d.manillas);
+  }
+  if (d.anularManilla) {
+    SALON.anulandoEntrada = SALON.anulandoEntrada === d.anularManilla ? null : d.anularManilla;
+    pintarFilasCompradores(); return;
+  }
+}
+
+function enviarEnCompradores(e) {
+  const f = e.target.closest("form[data-anular-compra],form[data-anular-entrada]");
+  if (!f) return;
+  e.preventDefault();
+  const motivo = (f.elements.motivo && f.elements.motivo.value) || "";
+  const usadas = !!(f.elements.usadas && f.elements.usadas.checked);
+  if (f.dataset.anularCompra) return anularCompra(f.dataset.anularCompra, motivo, usadas);
+  return anularManilla(f.dataset.anularEntrada, motivo, usadas);
+}
+
+/* Las manillas de una compra se piden recién cuando alguien las quiere
+   ver, y con el filtro por orden del lado del servidor: son cuatro filas
+   por compra y traerlas todas de entrada serían miles en un evento
+   grande, justo el corte silencioso de PostgREST a las 1000. */
+async function abrirManillas(ordenId) {
+  SALON.abierta = ordenId;
+  SALON.anulandoEntrada = null;
+  pintarFilasCompradores();
+  const { data, error } = await sb.from("entradas")
+    .select("id,code,estado,cliente,canal,used_at,tipo_entrada(nombre)")
+    .eq("orden_id", ordenId)
+    .order("created_at");
+  if (error) { avisar(error.message); SALON.abierta = null; pintarFilasCompradores(); return; }
+  SALON.manillas[ordenId] = data || [];
+  pintarFilasCompradores();
+}
+
+/* Los códigos de Postgres viajan pegados adelante del mensaje para que la
+   máquina los pueda mirar (MOTIVO_REQUERIDO, HAY_USADAS, SIN_CUPO). El
+   que está mirando la pantalla no los necesita: la frase que sigue ya
+   está escrita para él. Se le devuelve la mayúscula que le sacó el
+   prefijo — una frase que arranca en minúscula se lee como un pedazo de
+   otra cosa, justo cuando hay que confiar en lo que dice. */
+const sinCodigo = m => {
+  const t = String(m || "").replace(/^[A-Z_]+:\s*/, "");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
+
+async function anularCompra(ordenId, motivo, incluirUsadas) {
+  const { data, error } = await sb.rpc("anular_orden",
+    { p_orden: ordenId, p_motivo: motivo, p_incluir_usadas: !!incluirUsadas });
+  if (error) { avisar(sinCodigo(error.message)); return; }
+  avisar(data.motivo);
+  SALON.anulando = null;
+  SALON.abierta = null;
+  delete SALON.manillas[ordenId];
+  await refrescarSalon();
+}
+
+async function anularManilla(entradaId, motivo, incluirUsadas) {
+  const { data, error } = await sb.rpc("anular_entrada",
+    { p_entrada: entradaId, p_motivo: motivo, p_incluir_usadas: !!incluirUsadas });
+  if (error) { avisar(sinCodigo(error.message)); return; }
+  avisar(data.motivo);
+  SALON.anulandoEntrada = null;
+  /* La lista abierta se vuelve a pedir: la fila anulada tiene que quedar
+     marcada ahí mismo, no en el próximo refresco. */
+  if (SALON.abierta) delete SALON.manillas[SALON.abierta];
+  const abierta = SALON.abierta;
+  await refrescarSalon();
+  if (abierta) await abrirManillas(abierta);
 }
 
 /* ── el plano ──
@@ -1454,6 +1662,506 @@ async function liberarMesa(ordenId) {
   avisar(data.motivo);
   SALON.asignando = null;
   await refrescarSalon();
+}
+
+/* ══ el registro de decisiones ════════════════════════════════════
+   Abajo de todo en el tablero, y no arriba: no es una alerta, es lo que
+   se mira cuando algo ya pasó y hay que explicarlo. Cada fila dice qué se
+   hizo, por qué y quién — y el motivo va entero, sin recortar: es la
+   única parte que nadie puede reconstruir después.
+
+   La base no deja editarlo ni borrarlo (admin_bitacora es append-only),
+   así que acá no hay un solo botón: es una pantalla de lectura. */
+const ACCION_TXT = {
+  orden_anulada:       "Compra anulada",
+  entrada_anulada:     "Manilla anulada",
+  cortesias_emitidas:  "Cortesías emitidas",
+  revision_confirmada: "Revisión confirmada",
+};
+
+async function refrescarRegistro(eventoId) {
+  const z = $("#zonaRegistro");
+  if (!z) return;
+  const { data, error } = await sb.rpc("bitacora_admin", { p_evento: eventoId });
+  if (error) { z.innerHTML = `<p class="error">${esc(error.message)}</p>`; return; }
+  const filas = (data && data.filas) || [];
+  z.innerHTML = `
+    <h3 class="titulo-bloque">Decisiones</h3>
+    <p class="ayuda bajo-titulo">Anulaciones, cortesías y revisiones resueltas.
+      Se escribe solo y no se puede editar ni borrar.${
+      data && data.cortada ? ` Se muestran las últimas ${num(data.tope)} de ${num(data.total)}.` : ""}</p>
+    ${filas.length ? `
+      <div class="grilla-envoltorio">
+        <table class="tabla tabla-registro">
+          <thead><tr><th>Cuándo</th><th>Qué</th><th>Motivo</th><th>Quién</th></tr></thead>
+          <tbody>${filas.map(f => `
+            <tr>
+              <td class="dato">${esc(fmtFH(f.ocurrio_at))}</td>
+              <td><span class="prod-nombre">${esc(ACCION_TXT[f.accion] || f.accion)}</span>
+                <em>${esc(detalleRegistro(f))}</em></td>
+              <td class="detalle">${esc(f.motivo)}</td>
+              <td class="dato">${esc(f.actor || "—")}</td>
+            </tr>`).join("")}</tbody>
+        </table>
+      </div>`
+      : `<p class="vacio">Todavía no se anuló ni se regaló nada en este evento.</p>`}`;
+}
+
+/* La línea chica de cada fila: lo que la decisión tocó, en el vocabulario
+   de cada acción. Un "3" suelto no dice nada; "3 manillas · 1 ya había
+   entrado" es lo que hace falta para entender una anulación vieja. */
+function detalleRegistro(f) {
+  const d = f.detalle || {};
+  if (f.accion === "orden_anulada") {
+    const usadas = Number(d.usadas_incluidas) || 0;
+    return [
+      d.comprador || "sin nombre",
+      manillasTxt(d.entradas_anuladas || 0),
+      usadas ? `${num(usadas)} ya ${usadas === 1 ? "había" : "habían"} entrado` : "",
+      d.mesa_liberada ? "mesa liberada" : "",
+      d.estado_previo === "revision_manual" ? "venía de una revisión" : "",
+    ].filter(Boolean).join(" · ");
+  }
+  if (f.accion === "entrada_anulada") {
+    return [d.code, d.cliente, d.estado_previo === "usada" ? "ya había entrado" : "",
+            d.devuelve_cupo ? "devolvió su lugar" : ""].filter(Boolean).join(" · ");
+  }
+  if (f.accion === "cortesias_emitidas") {
+    return [`${num(d.cantidad)} × ${d.tipo || ""}`, `para ${d.para || "—"}`].join(" · ");
+  }
+  if (f.accion === "revision_confirmada") {
+    return [d.comprador || "sin nombre", manillasTxt(d.entradas || 0),
+            d.monto_cobrado != null ? `cobrado ${bs(d.monto_cobrado)} de ${bs(d.total)}` : "",
+            d.pago_ref ? `ref ${d.pago_ref}` : ""].filter(Boolean).join(" · ");
+  }
+  return "";
+}
+
+/* ══ cortesías ════════════════════════════════════════════════════
+   El formulario más corto posible —qué, cuántas, para quién, por qué— y
+   después los códigos, que es a lo que se vino. Sale de acá con algo que
+   se pueda mandar: los códigos copiables de una, y las entradas dibujadas
+   sobre el arte del evento con el mismo ticket.js de la venta. Una
+   cortesía que se ve distinta a una entrada comprada es una cortesía que
+   en la puerta se discute.
+
+   `quedan` de cada producto se muestra al lado del nombre porque una
+   cortesía consume cupo: el que regala cincuenta tiene que ver, en el
+   momento de elegir, que le quedan cincuenta menos para vender. */
+const CORT = { evento: null, ev: null, fase: null, productos: [], ultimas: null,
+               dibujando: false, lista: [], total: 0, anulando: null };
+const MES_TXT = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
+const DIA_TXT = ["DOM","LUN","MAR","MIÉ","JUE","VIE","SÁB"];
+
+/* La misma forma que arma la Edge Function `orden` para la página del
+   comprador: ticket.js espera marca_1 / marca_2 / fecha_txt y no el
+   registro crudo de la base. Se rearma acá en vez de tocar ticket.js
+   porque el que manda es el dibujo, que ya está andando en dos páginas. */
+function eventoParaTicket(e) {
+  const f = new Date(e.fecha + "T00:00:00-04:00");
+  const partes = String(e.nombre || "").split(" ");
+  return {
+    id: e.id,
+    marca_1: partes[0] || "",
+    marca_2: partes.slice(1).join(" "),
+    lugar: e.lugar || "",
+    fecha_txt: `${DIA_TXT[f.getDay()]} ${f.getDate()} ${MES_TXT[f.getMonth()]} · ${String(e.hora_inicio || "21:00").slice(0, 5)}`,
+    arte_url: e.arte_url || null,
+  };
+}
+
+async function pantallaCortesias(eventoId) {
+  $("#main").innerHTML = `<p class="cargando">Cargando…</p>`;
+  const [ev, res] = await Promise.all([
+    sb.from("eventos").select("id,nombre,slug,lugar,fecha,hora_inicio,arte_url")
+      .eq("id", eventoId).single(),
+    sb.rpc("resumen_evento", { p_evento: eventoId }),
+  ]);
+  if (ev.error || !ev.data) { avisar("Ese evento ya no existe."); mostrar("eventos"); return; }
+  if (res.error) { $("#main").innerHTML = `<p class="error">${esc(res.error.message)}</p>`; return; }
+
+  const r = res.data || {};
+  const faseId = r.evento && r.evento.fase_id;
+  /* El arte de la fase gana sobre el del evento, como en ticket.js: una
+     preventa se distingue a simple vista. */
+  const fase = faseId
+    ? (await sb.from("evento_fase").select("id,nombre,arte_url").eq("id", faseId).single()).data
+    : null;
+
+  Object.assign(CORT, { evento: eventoId, ev: ev.data, fase, ultimas: null,
+                        lista: [], total: 0, anulando: null,
+                        productos: (r.productos || []).filter(p => p.en_venta || p.quedan != null) });
+
+  $("#main").innerHTML = `
+    <div class="cab-seccion">
+      <button class="btn plano chico" id="btnVolver">← ${esc(ev.data.nombre)}</button>
+      <h2>Cortesías</h2>
+    </div>
+    ${faseId ? "" : `<p class="vacio">Este evento no tiene ninguna fase abierta hoy, así que
+      no hay contra qué descontar el cupo. Abrí una fase en «Entradas y precios» y volvé.</p>`}
+    <section class="tarjeta cortesias">
+      <h3>Regalar entradas</h3>
+      <p class="ayuda">Salen sin precio y sin compra, a nombre de quien digas, y
+        <b>consumen cupo</b>: una cortesía ocupa un lugar igual que una entrada vendida.
+        Hasta 50 por vez.</p>
+      <form class="form-cortesias" id="formCortesias">
+        <label><span>Producto</span>
+          <select id="cTipo" required>
+            ${CORT.productos.map(p => opcionDeProducto(p, false)).join("")}
+          </select></label>
+        <label><span>Cuántas</span>
+          <input id="cCantidad" type="number" min="1" max="50" value="2" required></label>
+        <label><span>A nombre de</span>
+          <input id="cPara" required maxlength="80" autocomplete="off"
+                 placeholder="Radio Line, el DJ, la marca…"></label>
+        <label class="ancha"><span>Motivo</span>
+          <input id="cMotivo" required maxlength="200" autocomplete="off"
+                 placeholder="canje por la transmisión, invitados del DJ…"></label>
+        <div class="acciones">
+          <button class="btn primario" id="btnEmitir"${faseId ? "" : " disabled"}>Emitir</button>
+        </div>
+        <p class="error" id="cError"></p>
+      </form>
+    </section>
+    <section id="zonaEmitidas"></section>
+    <section id="zonaCortesias"><p class="cargando">Cargando las cortesías del evento…</p></section>`;
+
+  $("#btnVolver").onclick = () => abrirEvento(eventoId);
+  $("#formCortesias").onsubmit = ev2 => { ev2.preventDefault(); emitirCortesias(); };
+  const zc = $("#zonaCortesias");
+  zc.onclick = clicEnCortesias;
+  zc.onsubmit = enviarEnCortesias;
+  if (!CORT.productos.length) {
+    $("#cError").textContent = "Este evento todavía no tiene ningún producto con precio en la fase de hoy.";
+    $("#btnEmitir").disabled = true;
+  }
+  await cargarCortesias();
+}
+
+/* ── las que ya se regalaron ──
+   Una cortesía no tiene orden, así que no aparece en la lista de
+   compradores del tablero: sin esta lista, la manilla que se regaló por
+   error no se puede anular desde ninguna pantalla y el organizador queda
+   otra vez dependiendo de que alguien entre a la base. Es el mismo
+   anular_entrada() de allá, con el mismo formulario. */
+async function cargarCortesias() {
+  const tope = 200;
+  const { data, error, count } = await sb.from("entradas")
+    .select("id,code,estado,cliente,created_at,tipo_entrada(nombre)", { count: "exact" })
+    .eq("evento_id", CORT.evento)
+    .eq("canal", "cortesia")
+    .order("created_at", { ascending: false })
+    .limit(tope);
+  if (error) {
+    $("#zonaCortesias").innerHTML = `<p class="error">${esc(error.message)}</p>`;
+    return;
+  }
+  CORT.lista = data || [];
+  CORT.total = count == null ? CORT.lista.length : count;
+  pintarCortesias(tope);
+}
+
+function pintarCortesias(tope) {
+  const z = $("#zonaCortesias");
+  if (!z) return;
+  const vivas = CORT.lista.filter(e => e.estado !== "anulada").length;
+  z.innerHTML = `
+    <h3 class="titulo-bloque">Cortesías de este evento</h3>
+    <p class="ayuda bajo-titulo">${num(vivas)} ${vivas === 1 ? "vive" : "viven"} y
+      ${vivas === 1 ? "ocupa" : "ocupan"} su lugar en el cupo.${
+      CORT.total > tope ? ` Se muestran las últimas ${num(tope)} de ${num(CORT.total)}.` : ""}</p>
+    ${CORT.lista.length ? `
+      <div class="grilla-envoltorio">
+        <table class="tabla tabla-manillas">
+          <thead><tr><th>Código</th><th>Producto</th><th>A nombre de</th>
+            <th>Cuándo</th><th>Estado</th><th class="col-accion"></th></tr></thead>
+          <tbody>${CORT.lista.map(en => {
+            const e = ESTADO_MANILLA[en.estado] || { txt: en.estado, cls: "gris" };
+            return `<tr>
+              <td class="dato"><code>${esc(en.code)}</code></td>
+              <td>${esc((en.tipo_entrada && en.tipo_entrada.nombre) || "—")}</td>
+              <td class="dato">${esc(en.cliente || "—")}</td>
+              <td class="dato">${esc(fmtFH(en.created_at))}</td>
+              <td><span class="pastilla ${e.cls}">${e.txt}</span></td>
+              <td class="col-accion">${en.estado === "anulada" ? ""
+                : `<button type="button" class="btn plano chico peligrosa"
+                     data-anular-cortesia="${esc(en.id)}">Anular</button>`}</td>
+            </tr>${CORT.anulando === en.id ? `
+            <tr><td colspan="6">${formAnularManilla(en, true)}</td></tr>` : ""}`;
+          }).join("")}</tbody>
+        </table>
+      </div>`
+      : `<p class="vacio">Todavía no se regaló ninguna entrada de este evento.</p>`}`;
+}
+
+function clicEnCortesias(e) {
+  const b = e.target.closest("button[data-anular-cortesia],button[data-cerrar]");
+  if (!b) return;
+  const id = b.dataset.anularCortesia;
+  CORT.anulando = (b.dataset.cerrar || CORT.anulando === id) ? null : id;
+  pintarCortesias(200);
+}
+
+function enviarEnCortesias(e) {
+  const f = e.target.closest("form[data-anular-entrada]");
+  if (!f) return;
+  e.preventDefault();
+  anularCortesia(f.dataset.anularEntrada,
+                 f.elements.motivo.value,
+                 !!(f.elements.usadas && f.elements.usadas.checked));
+}
+
+async function anularCortesia(entradaId, motivo, incluirUsadas) {
+  const { data, error } = await sb.rpc("anular_entrada",
+    { p_entrada: entradaId, p_motivo: motivo, p_incluir_usadas: !!incluirUsadas });
+  if (error) { avisar(sinCodigo(error.message)); return; }
+  avisar(data.motivo);
+  CORT.anulando = null;
+  await cargarCortesias();
+  /* El lugar que devolvió tiene que verse en el selector de arriba: si
+     `quedan` sigue diciendo lo de antes, la próxima tanda se elige con un
+     número que ya no existe. */
+  const res = await sb.rpc("resumen_evento", { p_evento: CORT.evento });
+  if (res.data && res.data.productos) refrescarSelectorCortesias(res.data.productos);
+}
+
+async function emitirCortesias() {
+  const b = $("#btnEmitir");
+  $("#cError").textContent = "";
+  b.disabled = true;
+  const { data, error } = await sb.rpc("emitir_cortesias", {
+    p_evento:   CORT.evento,
+    p_tipo:     $("#cTipo").value,
+    p_cantidad: Number($("#cCantidad").value),
+    p_para:     $("#cPara").value,
+    p_motivo:   $("#cMotivo").value,
+  });
+  b.disabled = false;
+  if (error) { $("#cError").textContent = sinCodigo(error.message); return; }
+  avisar(data.motivo);
+  CORT.ultimas = data;
+  $("#cPara").value = "";
+  $("#cMotivo").value = "";
+  pintarEmitidas();
+  await cargarCortesias();
+  /* El `quedan` del selector queda viejo apenas se emite: se vuelve a
+     pedir el tablero para que la próxima tanda se elija con el número de
+     ahora y no con el de hace un minuto. */
+  const res = await sb.rpc("resumen_evento", { p_evento: CORT.evento });
+  if (res.data && res.data.productos) refrescarSelectorCortesias(res.data.productos);
+}
+
+function refrescarSelectorCortesias(productos) {
+  CORT.productos = productos.filter(p => p.en_venta || p.quedan != null);
+  const sel = $("#cTipo");
+  if (!sel) return;
+  const elegido = sel.value;
+  sel.innerHTML = CORT.productos.map(p => opcionDeProducto(p, p.tipo_id === elegido)).join("");
+}
+
+const opcionDeProducto = (p, elegido) => `<option value="${esc(p.tipo_id)}"${
+  elegido ? " selected" : ""}>${esc(p.nombre)}${
+  p.quedan == null ? " · sin tope" : ` · quedan ${num(p.quedan)}`}${
+  p.manillas_por_unidad > 1 ? ` · ${num(p.manillas_por_unidad)} manillas por unidad` : ""}</option>`;
+
+function pintarEmitidas() {
+  const z = $("#zonaEmitidas");
+  const d = CORT.ultimas;
+  if (!z || !d) return;
+  const codes = d.codes || [];
+  z.innerHTML = `
+    <section class="tarjeta emitidas">
+      <h3>${num(codes.length)} ${codes.length === 1 ? "cortesía emitida" : "cortesías emitidas"}</h3>
+      <p class="ayuda">${esc(d.tipo)} a nombre de <b>${esc(d.para)}</b>.${
+        d.quedan == null ? "" : ` Quedan ${num(d.quedan)} para vender.`}</p>
+      <div class="codigos" id="codigosCortesias">${codes.map(c =>
+        `<code>${esc(c)}</code>`).join(" ")}</div>
+      <div class="acciones">
+        <button type="button" class="btn plano chico" data-copiar="codigosCortesias"
+                data-que="Los códigos">Copiar los códigos</button>
+        <button type="button" class="btn plano chico" id="btnDibujar">Dibujar las entradas</button>
+      </div>
+      <div id="zonaTickets"></div>
+    </section>`;
+  cablearCopiar();
+  const bd = $("#btnDibujar");
+  /* Sin la librería del QR no se dibuja nada, y decirlo es mejor que un
+     botón que no hace nada: los códigos de arriba alcanzan para mandarlos
+     por WhatsApp y que la puerta los cargue a mano. */
+  if (typeof qrcode !== "function" || !window.dibujarTicket) {
+    bd.disabled = true;
+    bd.title = "No cargó la librería del QR. Los códigos de arriba sirven igual.";
+    return;
+  }
+  bd.onclick = () => dibujarCortesias();
+}
+
+async function dibujarCortesias() {
+  const d = CORT.ultimas, z = $("#zonaTickets");
+  if (!d || !z || CORT.dibujando) return;
+  CORT.dibujando = true;
+  z.innerHTML = `<p class="cargando">Dibujando…</p>`;
+  if (document.fonts && document.fonts.ready) await document.fonts.ready;
+  const evento = eventoParaTicket(CORT.ev);
+  const pngs = [];
+  try {
+    for (const code of d.codes) {
+      pngs.push(await window.dibujarTicket(
+        { code, cliente: d.para, etiqueta: d.tipo }, evento, CORT.fase));
+    }
+  } catch (e) {
+    CORT.dibujando = false;
+    z.innerHTML = `<p class="error">No se pudieron dibujar: ${esc(e.message)}</p>`;
+    return;
+  }
+  CORT.dibujando = false;
+  z.innerHTML = `
+    <div class="tickets-rail">${pngs.map((p, i) =>
+      `<img src="${p}" alt="Cortesía ${esc(d.codes[i])}" loading="lazy">`).join("")}</div>
+    <div class="acciones">
+      <button type="button" class="btn primario chico" id="btnBajar">Descargar las ${num(pngs.length)}</button>
+    </div>`;
+  $("#btnBajar").onclick = () => {
+    pngs.forEach((p, i) => {
+      const a = document.createElement("a");
+      a.href = p;
+      a.download = `cortesia-${i + 1}-${d.codes[i]}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+    });
+    avisar(`${pngs.length} ${pngs.length === 1 ? "entrada descargada" : "entradas descargadas"}.`);
+  };
+}
+
+/* ══ la revisión manual ═══════════════════════════════════════════
+   El caso más delicado del sistema: plata cobrada de un lado y ninguna
+   entrada emitida del otro, con una persona esperando. La pantalla pone
+   las dos cifras una al lado de la otra —lo esperado y lo que la pasarela
+   dijo haber cobrado— con la diferencia ya restada, y el `pago_ref`
+   copiable para ir a buscar el cobro en el panel de la pasarela. Sin eso,
+   las dos decisiones se toman a ciegas.
+
+   Confirmar emite las entradas. Anular cierra la compra. Las dos piden un
+   motivo escrito, y no es burocracia: es la decisión que alguien va a
+   tener que justificar. */
+const REV = { evento: null, filas: [], abierta: null, decision: null };
+
+async function pantallaRevision(eventoId) {
+  $("#main").innerHTML = `<p class="cargando">Cargando…</p>`;
+  const ev = await sb.from("eventos").select("id,nombre").eq("id", eventoId).single();
+  if (ev.error || !ev.data) { avisar("Ese evento ya no existe."); mostrar("eventos"); return; }
+
+  Object.assign(REV, { evento: eventoId, filas: [], abierta: null, decision: null });
+  $("#main").innerHTML = `
+    <div class="cab-seccion">
+      <button class="btn plano chico" id="btnVolver">← Tablero</button>
+      <h2>Revisión manual</h2>
+    </div>
+    <p class="ayuda bajo-titulo">La pasarela cobró un monto distinto al esperado, así que
+      estas compras quedaron sin entradas emitidas. Miralas de a una con el
+      código de la pasarela y decidí: emitir igual, o anular.</p>
+    <section id="zonaRevision"><p class="cargando">Cargando…</p></section>`;
+  $("#btnVolver").onclick = () => pantallaTablero(eventoId);
+  const z = $("#zonaRevision");
+  z.onclick = clicEnRevision;
+  z.onsubmit = enviarEnRevision;
+  await cargarRevision();
+}
+
+async function cargarRevision() {
+  const { data, error } = await sb.rpc("ordenes_en_revision", { p_evento: REV.evento });
+  if (error) { $("#zonaRevision").innerHTML = `<p class="error">${esc(error.message)}</p>`; return; }
+  REV.filas = data || [];
+  pintarRevision();
+}
+
+function pintarRevision() {
+  const z = $("#zonaRevision");
+  if (!z) return;
+  z.innerHTML = REV.filas.length
+    ? REV.filas.map(tarjetaRevision).join("")
+    : `<p class="vacio">No quedó ninguna compra en revisión. Nadie pagó de más ni de menos.</p>`;
+  cablearCopiar();
+}
+
+function tarjetaRevision(o) {
+  const dif = o.diferencia == null ? null : Number(o.diferencia);
+  return `<article class="rev-tarjeta" data-orden="${esc(o.orden_id)}">
+    <div class="rev-cab">
+      <div>
+        <h4>${esc(o.comprador || "Sin nombre")}</h4>
+        <p>${esc(o.telefono || "sin teléfono")}${o.email ? ` · ${esc(o.email)}` : ""}
+          · ${esc(fmtFH(o.fecha))}</p>
+      </div>
+      <span class="pastilla aviso">Sin entradas emitidas</span>
+    </div>
+    <p class="rev-detalle">${esc(o.detalle || "—")}</p>
+    <div class="rev-plata">
+      <span><em>Esperado</em><b>${bs(o.total)}</b></span>
+      <span><em>Cobrado</em><b>${o.monto_cobrado == null
+        ? `<i class="tenue">no quedó anotado</i>` : bs(o.monto_cobrado)}</b></span>
+      <span class="rev-dif ${dif == null ? "" : dif < 0 ? "menos" : "mas"}"><em>Diferencia</em><b>${
+        dif == null ? "—" : (dif > 0 ? "+" : "") + bs(dif)}</b></span>
+    </div>
+    ${o.pago_ref ? `<div class="link-publico">
+      <span class="clave-rotulo">Pasarela</span>
+      <code id="ref-${esc(o.orden_id)}">${esc(o.pago_ref)}</code>
+      <button type="button" class="btn plano chico" data-copiar="ref-${esc(o.orden_id)}"
+              data-que="El código de la pasarela">Copiar</button>
+    </div>` : `<p class="ayuda">Esta compra no tiene código de pasarela anotado.</p>`}
+    ${REV.abierta === o.orden_id ? formRevision(o) : `
+    <div class="acciones">
+      <button type="button" class="btn primario chico" data-decidir="confirmar"
+              data-orden="${esc(o.orden_id)}">Confirmar y emitir</button>
+      <button type="button" class="btn plano chico peligrosa" data-decidir="anular"
+              data-orden="${esc(o.orden_id)}">Anular la compra</button>
+    </div>`}
+  </article>`;
+}
+
+function formRevision(o) {
+  const conf = REV.decision === "confirmar";
+  return `<form class="form-anular" data-resolver="${esc(o.orden_id)}">
+    <p class="anular-que">${conf
+      ? `Se emiten las <b>${num(o.unidades)} ${o.unidades === 1 ? "unidad" : "unidades"}</b>
+         de esta compra y queda como pagada, aunque la pasarela haya cobrado
+         ${o.monto_cobrado == null ? "otro monto" : bs(o.monto_cobrado)} en vez de ${bs(o.total)}.`
+      : `Se anula la compra entera. No se emite ninguna entrada y
+         ${o.monto_cobrado == null ? "lo cobrado" : bs(o.monto_cobrado)} <b>no se devuelve solo</b>:
+         el reintegro se hace en la pasarela.`} <b>Esto no se deshace.</b></p>
+    <label class="anular-motivo"><span>Motivo</span>
+      <input name="motivo" required maxlength="200" autocomplete="off"
+             placeholder="${conf ? "pagó 1 Bs de menos por redondeo, se acepta" : "no aparece el cobro en la pasarela"}"></label>
+    <div class="acciones">
+      <button type="submit" class="btn primario chico">${conf ? "Confirmar y emitir" : "Anular la compra"}</button>
+      <button type="button" class="btn plano chico" data-cerrar="1">Cancelar</button>
+    </div>
+  </form>`;
+}
+
+function clicEnRevision(e) {
+  const b = e.target.closest("button[data-decidir],button[data-cerrar]");
+  if (!b) return;
+  if (b.dataset.cerrar) { REV.abierta = null; REV.decision = null; pintarRevision(); return; }
+  REV.abierta = b.dataset.orden;
+  REV.decision = b.dataset.decidir;
+  pintarRevision();
+}
+
+function enviarEnRevision(e) {
+  const f = e.target.closest("form[data-resolver]");
+  if (!f) return;
+  e.preventDefault();
+  resolverRevision(f.dataset.resolver, REV.decision, f.elements.motivo.value);
+}
+
+async function resolverRevision(ordenId, decision, motivo) {
+  const { data, error } = await sb.rpc("resolver_revision",
+    { p_orden: ordenId, p_decision: decision, p_motivo: motivo });
+  if (error) { avisar(sinCodigo(error.message)); return; }
+  avisar(data.motivo);
+  REV.abierta = null;
+  REV.decision = null;
+  await cargarRevision();
 }
 
 /* ══ el equipo ════════════════════════════════════════════════════

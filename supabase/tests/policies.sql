@@ -2560,9 +2560,15 @@ begin
     raise exception 'TEST_FAIL: el registro no dice cuantas ya habian entrado: %', v_b.detalle;
   end if;
 
-  -- las cortesías dicen quién, para quién y con qué códigos
+  -- las cortesías dicen quién, para quién y con qué códigos.
+  -- Acotado al evento de esta prueba: las otras aserciones filtran por
+  -- orden_id, que es único, pero una cortesía no tiene orden. Sin este
+  -- filtro la consulta agarraba la primera fila que coincidiera en toda la
+  -- tabla —incluida una de otro evento— y el test fallaba por datos ajenos
+  -- en vez de por el código.
   select * into v_b from admin_bitacora
-   where accion = 'cortesias_emitidas' and detalle->>'para' = 'Radio Line';
+   where evento_id = v_ev
+     and accion = 'cortesias_emitidas' and detalle->>'para' = 'Radio Line';
   if not found then raise exception 'TEST_FAIL: la emision de cortesias no dejo registro'; end if;
   if v_b.actor_id <> v_admin or jsonb_array_length(v_b.detalle->'codes') <> 4 then
     raise exception 'TEST_FAIL: el registro de las cortesias esta incompleto: %', to_jsonb(v_b);
