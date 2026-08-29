@@ -40,12 +40,23 @@ const V2PRO    = Deno.env.get("V2PRO_URL") ?? "https://pay.scrum-technology.com/
    se deshace, porque la persona ya entró al evento. */
 async function consultar(pago_ref: string): Promise<{ pagado: boolean; monto: number | null }> {
   if (PASARELA !== "v2pro") return { pagado: true, monto: null };
+  /* El mismo Basic que exige solicitud_pago.php. Acá no está confirmado que
+     haga falta —la consulta ya manda usuario y pass en el cuerpo— pero si
+     hiciera falta, el fallo sería del peor tipo posible: la pasarela cobra,
+     la consulta vuelve vacía, y el comprador pagó y nunca recibe la entrada.
+     Un header de más no rompe un pedido que ya funciona. */
+  const usuario = Deno.env.get("V2PRO_USUARIO") ?? "";
+  const pass    = Deno.env.get("V2PRO_PASS") ?? "";
   const r = await fetch(`${V2PRO}/consulta_transaccion_v2.php`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(usuario && pass ? { "Authorization": "Basic " + btoa(`${usuario}:${pass}`) } : {}),
+    },
     body: JSON.stringify({
       id_comercio: Deno.env.get("V2PRO_LLAVE"),
-      usuario: Deno.env.get("V2PRO_USUARIO"),
-      pass: Deno.env.get("V2PRO_PASS"),
+      usuario,
+      pass,
       codigo: pago_ref,
     }),
   });
