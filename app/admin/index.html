@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="admin.css?v=15">
+<link rel="stylesheet" href="admin.css?v=16">
 </head>
 <body>
 
@@ -41,8 +41,14 @@
 <!-- El lector de QR de la puerta, por CDN como qrcode-generator en la landing.
      Si no carga, puerta.js lo dice y el ingreso a mano sigue funcionando. -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<!-- Para dibujar las cortesías recién emitidas sobre el arte del evento, con
+     el mismo ticket.js que usan la venta y /orden/<uuid>: una cortesía que se
+     ve distinta a una entrada comprada es una cortesía que en la puerta se
+     discute. Si el CDN no carga, la pantalla igual muestra los códigos. -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script src="../config.js"></script>
-<script src="admin.js?v=15"></script>
-<script src="puerta.js?v=15"></script>
+<script src="../ticket.js?v=16"></script>
+<script src="admin.js?v=16"></script>
+<script src="puerta.js?v=16"></script>
 </body>
 </html>

@@ -123,6 +123,12 @@ main{max-width:var(--carril);margin:0 auto;padding:28px 20px 90px}
 }
 .pastilla.verde{background:var(--ok-bg);color:var(--ok);box-shadow:inset 0 0 0 1px rgba(61,214,140,.3)}
 .pastilla.gris{background:var(--sup-3);color:var(--txt-3)}
+/* Una manilla que ya entró no está mal ni bien: está gastada. Va en dorado
+   y no en verde para que "válida" —la que todavía tiene que pasar— sea la
+   única que se lee de un vistazo en una lista de veinte. */
+.pastilla.dorada{background:var(--aviso-bg);color:var(--dorado);box-shadow:inset 0 0 0 1px rgba(233,180,76,.3)}
+.pastilla.aviso{background:var(--aviso-bg);color:var(--aviso);box-shadow:inset 0 0 0 1px rgba(246,180,74,.3)}
+.pastilla.roja{background:var(--peligro-bg);color:var(--peligro);box-shadow:inset 0 0 0 1px rgba(251,113,133,.3)}
 
 /* ─── estados que dicen qué hacer ─── */
 .vacio,.cargando{
@@ -589,8 +595,107 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
   background:var(--aviso-bg);border:1px solid rgba(246,180,74,.3);color:var(--aviso);
 }
 
+/* ─── anular ───
+   La confirmación no es un cartel del navegador: es una fila que se abre
+   abajo de la compra, con lo que se va a anular escrito y el campo del
+   motivo enfocable. Un `confirm()` no puede pedir un motivo, y pedirlo en
+   un `prompt()` aparte parte la decisión en dos pantallas donde la
+   segunda ya no dice qué se estaba anulando. */
+.fila-detalle>td{background:var(--hundido) !important;padding:0 !important}
+.form-anular{
+  display:flex;flex-direction:column;gap:12px;padding:16px 18px;
+  border-left:3px solid var(--peligro);background:var(--peligro-bg);
+}
+.anular-que{font-size:13.5px;line-height:1.5;color:var(--txt-2);max-width:78ch}
+.anular-que b{color:var(--txt);font-weight:600}
+/* La casilla de "ya entraron" NO viene marcada y no puede venir marcada:
+   es el único camino por el que el conteo de la puerta baja, y tiene que
+   costar una decisión propia. */
+.anular-usadas{
+  display:flex;gap:10px;align-items:flex-start;max-width:78ch;
+  padding:11px 13px;border-radius:var(--r-chico);
+  background:var(--aviso-bg);border:1px solid rgba(246,180,74,.3);
+}
+.anular-usadas input{margin:2px 0 0;flex:0 0 auto;accent-color:var(--aviso)}
+/* El `label>span` general va en versalitas de rótulo, que acá haría gritar
+   una frase entera. Este span no es un rótulo: es lo que hay que leer. */
+.anular-usadas>span{
+  font-family:var(--texto);font-size:13px;line-height:1.45;
+  letter-spacing:0;text-transform:none;color:var(--aviso);
+}
+.anular-motivo{max-width:520px}
+.form-anular .acciones{margin-top:0}
+
+.tabla-manillas{margin:0;background:transparent}
+.tabla-manillas thead th{background:var(--sup)}
+.tabla-manillas code{font-family:var(--dato);font-size:12.5px;letter-spacing:.08em;user-select:all}
+
+/* ─── cortesías ───
+   Formulario corto arriba, códigos abajo: el que entra acá ya sabe qué
+   quiere regalar y a lo que viene es a llevarse los códigos. */
+.cortesias,.emitidas{max-width:760px}
+.emitidas{margin-top:18px;border-color:rgba(233,180,76,.3)}
+.emitidas h3{color:var(--dorado)}
+.form-cortesias{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px}
+.form-cortesias label{min-width:0}
+.form-cortesias label.ancha{grid-column:1/-1}
+/* El único que no hereda del bloque de formularios: no hay regla general
+   de `select` porque hasta ahora solo lo usaban el plano y la puerta, con
+   sus propias medidas. */
+.form-cortesias select{
+  width:100%;padding:12px 13px;border-radius:var(--r-chico);
+  background:var(--hundido);border:1px solid var(--linea-2);color:var(--txt);
+  font:inherit;
+}
+.form-cortesias .acciones,.form-cortesias .error{grid-column:1/-1;margin-top:0}
+
+/* Los códigos son lo que se copia y lo que se dicta por teléfono: mono,
+   espaciados y seleccionables de a uno con un clic. */
+.codigos{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.codigos code{
+  font-family:var(--dato);font-size:13.5px;letter-spacing:.1em;user-select:all;
+  padding:7px 11px;border-radius:var(--r-chico);
+  background:var(--hundido);border:1px solid var(--linea-2);color:var(--dorado);
+}
+.tickets-rail{
+  display:flex;gap:12px;overflow-x:auto;padding:16px 0 6px;
+  scroll-snap-type:x proximity;
+}
+.tickets-rail img{
+  flex:0 0 auto;width:150px;height:auto;border-radius:var(--r-chico);
+  border:1px solid var(--linea-2);scroll-snap-align:start;
+}
+
+/* ─── la revisión manual ───
+   Una tarjeta por compra y las dos cifras enfrentadas. La diferencia es la
+   que decide, así que va con su signo y su color: cobró de menos no es lo
+   mismo que cobró de más, y un número pelado no lo dice. */
+.rev-tarjeta{
+  padding:18px 20px;margin-bottom:14px;border-radius:var(--r);
+  background:var(--sup);border:1px solid rgba(246,180,74,.28);
+}
+.rev-cab{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
+.rev-cab>div{min-width:0;flex:1 1 auto}
+.rev-cab h4{margin:0;font-family:var(--display);font-size:21px;text-transform:uppercase}
+.rev-cab p{margin:3px 0 0;font-family:var(--dato);font-size:12px;color:var(--txt-2)}
+.rev-detalle{margin:12px 0 0;font-size:13.5px;color:var(--txt-2)}
+.rev-plata{display:flex;gap:26px;flex-wrap:wrap;margin:14px 0}
+.rev-plata>span{display:flex;flex-direction:column;gap:3px}
+.rev-plata em{
+  font-family:var(--dato);font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--txt-3);font-style:normal;
+}
+.rev-plata b{font-family:var(--dato);font-size:17px;font-variant-numeric:tabular-nums}
+.rev-dif.menos b{color:var(--peligro)}
+.rev-dif.mas b{color:var(--dorado)}
+.rev-tarjeta .link-publico{margin:0}
+.rev-tarjeta .form-anular{margin-top:14px;border-radius:var(--r-chico)}
+
+.tabla-registro .detalle{max-width:46ch}
+
 @media (max-width:860px){
   .dos-tablas{grid-template-columns:1fr}
+  .form-cortesias{grid-template-columns:1fr}
 }
 @media (max-width:760px){
   .cifra-grande .valor{font-size:36px}
@@ -618,6 +723,13 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 .btn.plano{border:1px solid var(--linea-2);color:var(--txt-2)}
 .btn.plano:hover{border-color:var(--txt-3);color:var(--txt);background:var(--sup-2)}
 .btn.plano:active{transform:scale(.985)}
+/* Lo que no se deshace se ve distinto ANTES de apretarlo. No es rojo lleno
+   —eso sería el botón más pesado de la pantalla, al lado de "Cambiar"— es
+   el mismo botón plano con el texto en el color del peligro: se distingue
+   sin gritar, que es lo que hace falta en una fila con cuatro botones. */
+.btn.plano.peligrosa{color:var(--peligro);border-color:rgba(251,113,133,.28)}
+.btn.plano.peligrosa:hover{color:var(--peligro);border-color:var(--peligro);background:var(--peligro-bg)}
+.btn.primario:disabled,.btn.plano:disabled{opacity:.5;cursor:not-allowed}
 
 /* ─── aviso ─── */
 .toast{

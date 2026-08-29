@@ -2075,4 +2075,562 @@ begin
   raise notice 'OK deshacer deja huella: la bitacora guarda used_at y portero previos, distingue reingreso, y no se edita ni se borra';
 end $$;
 
+-- ============================================================
+-- 0038 — anular, cortesías y resolver una revisión manual
+--
+-- Lo que este bloque cuida es que tres operaciones que mueven plata y
+-- gente que entra no se puedan hacer a medias ni en silencio. Diez cosas
+-- quedan probadas, no argumentadas:
+--
+-- 1) Anular una orden anula sus entradas y le DEVUELVE EL CUPO al tipo.
+--    Se compara el número de disponibilidad_tipo() antes y después, no
+--    que la fila cambió: el cupo es una resta con cuatro términos (0038)
+--    y "la orden dice anulada" no prueba que la resta haya cambiado.
+-- 2) Anular sin motivo rebota. Vacío Y solo espacios: el segundo es el
+--    que pasa cuando alguien apura la pantalla con la barra espaciadora.
+-- 3) Una orden con una manilla ya 'usada' NO se anula por el camino
+--    normal, y el error dice cuántas entraron. Después sí, con el
+--    parámetro explícito, y ahí queda anotado cuántas se incluyeron.
+-- 4) Anular libera la mesa asignada y la deja disponible de verdad.
+-- 5) Una cortesía sale con canal cortesia, precio 0, sin orden, a nombre
+--    de quien se dijo — y BAJA EL CUPO. Se prueban los dos casos de la
+--    conversión a unidades: la entrada suelta (1 manilla = 1 unidad) y el
+--    combo de 10 (3 manillas regaladas = 1 unidad, porque esa mesa ya no
+--    se vende).
+-- 6) Pasarse del tope rebota y el error dice cuál es el tope.
+-- 7) Una revisión manual confirmada emite sus entradas; otra anulada
+--    queda sin ninguna. La confirmada TOMA cupo (pasa a pagada) y la
+--    anulada no lo toca: una orden en revisión nunca lo estuvo
+--    reteniendo, así que "devolver el cupo" acá es no quedárselo.
+-- 8) Un rrpp recibe 'Sin permiso' en las cinco funciones nuevas (y en la
+--    lectura de la bitácora). Un admin DE OTRO ORGANIZADOR, también: es
+--    el que pasa puede_editar() y por eso el corte que importa es el de
+--    mi_organizador() adentro de cada función.
+-- 9) El registro conserva el motivo y quién lo hizo, y no se puede
+--    editar ni borrar desde una sesión autenticada.
+--
+-- Las filas se leen con el rol reseteado cuando lo que se verifica es el
+-- contenido: leídas desde la sesión que las escribió, la RLS ya filtró y
+-- un test que cuenta sobre lo filtrado se aprueba solo.
+-- ============================================================
+do $$
+declare v_org    uuid := '00380038-0038-4038-8038-000000000001';
+        v_org2   uuid := '00380038-0038-4038-8038-000000000002';
+        v_admin  uuid := '00380038-0038-4038-8038-000000000003';
+        v_rrpp   uuid := '00380038-0038-4038-8038-000000000004';
+        v_admin2 uuid := '00380038-0038-4038-8038-000000000005';
+        v_ev     uuid := '00380038-0038-4038-8038-000000000006';
+        v_ev2    uuid := '00380038-0038-4038-8038-000000000007';
+        v_gen    uuid := '00380038-0038-4038-8038-000000000008';
+        v_combo  uuid := '00380038-0038-4038-8038-000000000009';
+        v_fase   uuid := '00380038-0038-4038-8038-00000000000a';
+        v_m1     uuid := '00380038-0038-4038-8038-00000000000b';
+        v_gen2   uuid := '00380038-0038-4038-8038-00000000000c';
+        v_fase2  uuid := '00380038-0038-4038-8038-00000000000d';
+        v_o1 uuid; v_o2 uuid; v_o3 uuid; v_o4 uuid;
+        v_o5 uuid; v_o6 uuid; v_o7 uuid; v_o8 uuid;
+        v_e_perm uuid; v_e_suelta uuid; v_e_cort uuid;
+        v_antes int; v_desp int; v_n int; v_r jsonb; v_b admin_bitacora;
+        v_actor uuid; v_sql text; v_paso boolean;
+begin
+  -- ── el escenario ────────────────────────────────────────
+  insert into organizadores (id, slug, nombre, fee_pct, fee_fijo_transaccion, fee_piso) values
+    (v_org,  'prueba-0038',  'Prueba 0038',      0.1000, 0, 0),
+    (v_org2, 'prueba-0038b', 'Prueba 0038 otro', 0.1000, 0, 0);
+  insert into auth.users (id, email) values
+    (v_admin,  'admin-0038@ticketera.local'),
+    (v_rrpp,   'rrpp-0038@ticketera.local'),
+    (v_admin2, 'admin2-0038@ticketera.local');
+  insert into perfiles (id, organizador_id, nombre, rol, slug) values
+    (v_admin,  v_org,  'Admin 0038',   'admin', null),
+    (v_rrpp,   v_org,  'Rrpp 0038',    'rrpp',  'rrpp-0038'),
+    (v_admin2, v_org2, 'Admin de otro','admin', null);
+
+  insert into eventos (id, organizador_id, slug, nombre, fecha, estado) values
+    (v_ev,  v_org,  'evento-0038',  'Evento 0038',      current_date + 10, 'publicado'),
+    (v_ev2, v_org2, 'evento-0038b', 'Evento 0038 otro', current_date + 10, 'publicado');
+
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre, categoria, manillas, orden) values
+    (v_gen,   v_org,  v_ev,  'General 0038', 'entrada',  1, 1),
+    (v_combo, v_org,  v_ev,  'Combo 10',     'mesa',    10, 2),
+    (v_gen2,  v_org2, v_ev2, 'General Otro', 'entrada',  1, 1);
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta) values
+    (v_fase,  v_org,  v_ev,  'F1', now() - interval '1 hour', now() + interval '10 days'),
+    (v_fase2, v_org2, v_ev2, 'F1', now() - interval '1 hour', now() + interval '10 days');
+  insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo) values
+    (v_org,  v_fase,  v_gen,    100, 20),
+    (v_org,  v_fase,  v_combo, 1000,  5),
+    (v_org2, v_fase2, v_gen2,   100, 20);
+
+  insert into mesas (id, organizador_id, evento_id, planta, etiqueta, categoria, x, y, w, precio, manillas) values
+    (v_m1, v_org, v_ev, 'baja', 'T1', 'mesa', 10, 10, 8, 1000, 10);
+
+  -- Las ventas por el camino real (crear_orden + emitir_orden), como en
+  -- 0033: así se prueba que lo que escribe el checkout es lo que después
+  -- anula esta migración. Va con el rol de la conexión —emitir_orden no
+  -- tiene grant a authenticated, la llaman las Edge Functions.
+  v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 3)),
+                       jsonb_build_object('nombre', 'Cliente Uno', 'telefono', '70000001'),
+                       null::uuid, null::text, null::uuid)->>'orden')::uuid;
+  perform emitir_orden(v_o1);
+  v_o2 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 2)),
+                       jsonb_build_object('nombre', 'Cliente Dos', 'telefono', '70000002'),
+                       null::uuid, null::text, null::uuid)->>'orden')::uuid;
+  perform emitir_orden(v_o2);
+  v_o3 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_combo, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Cliente Mesa', 'telefono', '70000003'),
+                       null::uuid, null::text, null::uuid)->>'orden')::uuid;
+  perform emitir_orden(v_o3);
+  v_o6 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 2)),
+                       jsonb_build_object('nombre', 'Cliente Seis', 'telefono', '70000006'),
+                       null::uuid, null::text, null::uuid)->>'orden')::uuid;
+  perform emitir_orden(v_o6);
+  v_o8 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Cliente Ocho', 'telefono', '70000008'),
+                       null::uuid, null::text, null::uuid)->>'orden')::uuid;
+  perform emitir_orden(v_o8);
+
+  -- Tres que la pasarela cobró por un monto distinto: quedan en revisión
+  -- manual y SIN una sola entrada emitida, que es lo que hace que este
+  -- caso sea el más delicado del sistema.
+  v_o4 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Cliente Revision', 'telefono', '70000004'),
+                       null::uuid, null::text, null::uuid)->>'orden')::uuid;
+  perform emitir_orden(v_o4, 1::numeric, 'ref-cobro-raro-4');
+  v_o5 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Cliente Revision Dos', 'telefono', '70000005'),
+                       null::uuid, null::text, null::uuid)->>'orden')::uuid;
+  perform emitir_orden(v_o5, 1::numeric, 'ref-cobro-raro-5');
+  v_o7 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Cliente Revision Tres', 'telefono', '70000007'),
+                       null::uuid, null::text, null::uuid)->>'orden')::uuid;
+  perform emitir_orden(v_o7, 1::numeric, 'ref-cobro-raro-7');
+
+  if (select estado from ordenes where id = v_o4) <> 'revision_manual' then
+    raise exception 'TEST_FAIL: la orden cobrada por otro monto no quedo en revision_manual';
+  end if;
+  if (select monto_cobrado from ordenes where id = v_o4) <> 1 then
+    raise exception 'TEST_FAIL: no se guardo lo que la pasarela dijo haber cobrado';
+  end if;
+
+  -- una manilla de la orden dos ya entró al evento
+  update entradas set estado = 'usada', used_at = now(), portero_id = v_admin
+   where id = (select id from entradas where orden_id = v_o2 order by id limit 1);
+
+  select id into v_e_perm from entradas where orden_id = v_o8 order by id limit 1;
+
+  -- ── la sesión del administrador ─────────────────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+
+  -- la mesa se reparte por el camino real
+  v_r := asignar_mesa(v_o3, v_m1);
+  if (v_r->>'ok')::boolean is not true then
+    raise exception 'TEST_FAIL: no se pudo sembrar la mesa asignada: %', v_r;
+  end if;
+
+  -- ── 2) sin motivo no se anula ───────────────────────────
+  -- Los dos casos: el vacío y el que trae solo espacios. El segundo es el
+  -- que llega de una pantalla apurada, y `not null` no lo atrapa.
+  v_paso := true;
+  begin
+    perform anular_orden(v_o1, '');
+  exception when others then
+    v_paso := false;
+    if sqlerrm not like 'MOTIVO_REQUERIDO:%' then
+      raise exception 'TEST_FAIL: motivo vacio dijo "%" en vez de MOTIVO_REQUERIDO', sqlerrm;
+    end if;
+  end;
+  if v_paso then raise exception 'TEST_FAIL: se anulo una orden sin motivo'; end if;
+
+  v_paso := true;
+  begin
+    perform anular_orden(v_o1, '     ');
+  exception when others then
+    v_paso := false;
+    if sqlerrm not like 'MOTIVO_REQUERIDO:%' then
+      raise exception 'TEST_FAIL: motivo en blanco dijo "%" en vez de MOTIVO_REQUERIDO', sqlerrm;
+    end if;
+  end;
+  if v_paso then raise exception 'TEST_FAIL: se anulo una orden con un motivo de puros espacios'; end if;
+
+  v_paso := true;
+  begin
+    perform anular_entrada(v_e_perm, '   ');
+  exception when others then
+    v_paso := false;
+    if sqlerrm not like 'MOTIVO_REQUERIDO:%' then
+      raise exception 'TEST_FAIL: anular_entrada sin motivo dijo "%"', sqlerrm;
+    end if;
+  end;
+  if v_paso then raise exception 'TEST_FAIL: se anulo una manilla sin motivo'; end if;
+
+  -- ── 1) anular devuelve el cupo ──────────────────────────
+  v_antes := disponibilidad_tipo(v_fase, v_gen);
+  v_r := anular_orden(v_o1, 'pago doble: se le cobro dos veces la misma compra');
+  v_desp := disponibilidad_tipo(v_fase, v_gen);
+  if (v_r->>'ok')::boolean is not true or (v_r->>'entradas_anuladas')::int <> 3 then
+    raise exception 'TEST_FAIL: anular la orden de 3 manillas devolvio %', v_r;
+  end if;
+  if v_desp <> v_antes + 3 then
+    raise exception 'TEST_FAIL: el cupo tenia que pasar de % a %, quedo en %', v_antes, v_antes + 3, v_desp;
+  end if;
+  if (select estado from ordenes where id = v_o1) <> 'anulada' then
+    raise exception 'TEST_FAIL: la orden no quedo anulada';
+  end if;
+  select count(*) into v_n from entradas where orden_id = v_o1 and estado <> 'anulada';
+  if v_n <> 0 then
+    raise exception 'TEST_FAIL: quedaron % manillas vivas de una orden anulada', v_n;
+  end if;
+
+  -- Anularla de nuevo no vuelve a devolver cupo ni escribe otra fila: el
+  -- cupo se libera por el estado de la orden, no por una resta propia, y
+  -- una segunda pasada no puede duplicar nada.
+  v_antes := disponibilidad_tipo(v_fase, v_gen);
+  v_r := anular_orden(v_o1, 'la aprieto dos veces');
+  if (v_r->>'ya_estaba')::boolean is not true then
+    raise exception 'TEST_FAIL: anular dos veces la misma orden no aviso que ya estaba: %', v_r;
+  end if;
+  if disponibilidad_tipo(v_fase, v_gen) <> v_antes then
+    raise exception 'TEST_FAIL: anular dos veces devolvio el cupo dos veces';
+  end if;
+
+  -- ── 3) una manilla que ya entró frena la anulación ──────
+  v_paso := true;
+  begin
+    perform anular_orden(v_o2, 'contracargo del banco');
+  exception when others then
+    v_paso := false;
+    if sqlerrm not like 'HAY_USADAS:%' then
+      raise exception 'TEST_FAIL: con una manilla usada dijo "%" en vez de HAY_USADAS', sqlerrm;
+    end if;
+    -- El error tiene que decir CUÁNTAS entraron: sin el número, el que lo
+    -- lee no tiene con qué decidir si sigue.
+    if sqlerrm not like '%1 de esta compra ya entró%' then
+      raise exception 'TEST_FAIL: el error no dice cuantas entraron: "%"', sqlerrm;
+    end if;
+  end;
+  if v_paso then raise exception 'TEST_FAIL: se anulo una orden con una manilla ya usada'; end if;
+
+  -- nada se tocó: la negativa no puede dejar la orden a medio anular
+  if (select estado from ordenes where id = v_o2) <> 'pagada' then
+    raise exception 'TEST_FAIL: la orden que rebotó quedo tocada';
+  end if;
+  select count(*) into v_n from entradas where orden_id = v_o2 and estado = 'anulada';
+  if v_n <> 0 then raise exception 'TEST_FAIL: la negativa igual anulo % manillas', v_n; end if;
+
+  -- con el parámetro explícito sí, y queda escrito cuántas ya habían entrado
+  v_r := anular_orden(v_o2, 'contracargo del banco: la tarjeta era robada', true);
+  if (v_r->>'entradas_anuladas')::int <> 2 or (v_r->>'usadas_incluidas')::int <> 1 then
+    raise exception 'TEST_FAIL: la anulacion forzada devolvio %', v_r;
+  end if;
+  -- El ingreso sigue escrito en la fila aunque la manilla esté anulada:
+  -- esa persona entró y la base no lo olvida.
+  select count(*) into v_n from entradas
+   where orden_id = v_o2 and estado = 'anulada' and used_at is not null;
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: la manilla usada perdio su used_at al anularse';
+  end if;
+
+  -- ── 4) anular libera la mesa ────────────────────────────
+  if (select orden_id from mesas where id = v_m1) is distinct from v_o3 then
+    raise exception 'TEST_FAIL: la mesa no quedo sembrada con su orden';
+  end if;
+  v_r := anular_orden(v_o3, 'el cliente se arrepintio antes del evento');
+  if (v_r->>'mesa_liberada')::boolean is not true then
+    raise exception 'TEST_FAIL: anular no dijo que libero la mesa: %', v_r;
+  end if;
+  if (select orden_id from mesas where id = v_m1) is not null
+     or (select estado from mesas where id = v_m1) <> 'disponible' then
+    raise exception 'TEST_FAIL: la mesa quedo tomada por una orden anulada';
+  end if;
+  if (select mesa_asignada_id from ordenes where id = v_o3) is not null then
+    raise exception 'TEST_FAIL: la orden anulada sigue apuntando a una mesa';
+  end if;
+
+  -- ── 5) las cortesías ────────────────────────────────────
+  v_antes := disponibilidad_tipo(v_fase, v_gen);
+  v_r := emitir_cortesias(v_ev, v_gen, 4, 'Radio Line', 'cuatro para la radio que transmite');
+  v_desp := disponibilidad_tipo(v_fase, v_gen);
+  if jsonb_array_length(v_r->'codes') <> 4 then
+    raise exception 'TEST_FAIL: se pidieron 4 cortesias y volvieron %', v_r->'codes';
+  end if;
+  select count(*) into v_n from entradas
+   where evento_id = v_ev and canal = 'cortesia' and precio = 0 and orden_id is null
+     and cliente = 'Radio Line' and fase_id = v_fase and tipo_id = v_gen;
+  if v_n <> 4 then
+    raise exception 'TEST_FAIL: las cortesias no salieron como cortesias: % filas', v_n;
+  end if;
+  if v_desp <> v_antes - 4 then
+    raise exception 'TEST_FAIL: 4 cortesias tenian que bajar el cupo de % a %, quedo en %',
+      v_antes, v_antes - 4, v_desp;
+  end if;
+
+  -- El combo: 3 manillas regaladas de un producto que emite 10 por unidad
+  -- son UNA unidad de cupo. Redondear para abajo sería vender esa mesa
+  -- otra vez con tres personas ya sentadas.
+  v_antes := disponibilidad_tipo(v_fase, v_combo);
+  perform emitir_cortesias(v_ev, v_combo, 3, 'El DJ', 'la mesa del dj y su gente');
+  v_desp := disponibilidad_tipo(v_fase, v_combo);
+  if v_desp <> v_antes - 1 then
+    raise exception 'TEST_FAIL: 3 manillas de un combo de 10 son 1 unidad: % -> %', v_antes, v_desp;
+  end if;
+
+  -- anular una cortesía SÍ devuelve su lugar: no tiene orden que la sostenga
+  select id into v_e_cort from entradas
+   where evento_id = v_ev and canal = 'cortesia' and cliente = 'Radio Line' order by id limit 1;
+  v_antes := disponibilidad_tipo(v_fase, v_gen);
+  v_r := anular_entrada(v_e_cort, 'esa manilla se le mando dos veces al mismo periodista');
+  if (v_r->>'devuelve_cupo')::boolean is not true then
+    raise exception 'TEST_FAIL: anular una cortesia no dijo que devuelve cupo: %', v_r;
+  end if;
+  if disponibilidad_tipo(v_fase, v_gen) <> v_antes + 1 then
+    raise exception 'TEST_FAIL: anular una cortesia no devolvio su lugar';
+  end if;
+
+  -- anular una manilla de una orden pagada NO devuelve cupo: la unidad se
+  -- vendió y se cobró; lo que se perdió es una manilla, no una venta
+  select id into v_e_suelta from entradas where orden_id = v_o6 order by id limit 1;
+  v_antes := disponibilidad_tipo(v_fase, v_gen);
+  v_r := anular_entrada(v_e_suelta, 'manilla perdida, se le emite otra a mano');
+  if (v_r->>'devuelve_cupo')::boolean is not false then
+    raise exception 'TEST_FAIL: una manilla de una orden pagada no devuelve cupo: %', v_r;
+  end if;
+  if disponibilidad_tipo(v_fase, v_gen) <> v_antes then
+    raise exception 'TEST_FAIL: anular una manilla suelta devolvio cupo que sigue vendido';
+  end if;
+  if (select estado from entradas where id = v_e_suelta) <> 'anulada'
+     or (select estado from ordenes where id = v_o6) <> 'pagada' then
+    raise exception 'TEST_FAIL: anular la manilla tenia que dejar la compra en pie';
+  end if;
+
+  -- ── 6) el tope de cortesías ─────────────────────────────
+  v_paso := true;
+  begin
+    perform emitir_cortesias(v_ev, v_gen, 51, 'Todos', 'un dedo apoyado en el cero');
+  exception when others then
+    v_paso := false;
+    if sqlerrm not like 'TOPE_CORTESIAS:%' then
+      raise exception 'TEST_FAIL: pasarse del tope dijo "%"', sqlerrm;
+    end if;
+    -- El tope va DICHO en el error: si no, se descubre probando.
+    if sqlerrm not like '%50%' then
+      raise exception 'TEST_FAIL: el error del tope no dice cual es el tope: "%"', sqlerrm;
+    end if;
+  end;
+  if v_paso then raise exception 'TEST_FAIL: se emitieron 51 cortesias de una'; end if;
+
+  select count(*) into v_n from entradas where evento_id = v_ev and cliente = 'Todos';
+  if v_n <> 0 then raise exception 'TEST_FAIL: el rebote del tope igual emitio % filas', v_n; end if;
+
+  -- ── 7) la revisión manual ───────────────────────────────
+  -- Confirmar emite, y al pasar la orden a pagada TOMA el cupo que estaba
+  -- disponible: una orden en revisión no lo retenía.
+  select count(*) into v_n from entradas where orden_id = v_o4;
+  if v_n <> 0 then raise exception 'TEST_FAIL: una orden en revision no deberia tener entradas'; end if;
+
+  v_antes := disponibilidad_tipo(v_fase, v_gen);
+  v_r := resolver_revision(v_o4, 'confirmar', 'la pasarela cobro 1 Bs de menos por redondeo, se acepta');
+  v_desp := disponibilidad_tipo(v_fase, v_gen);
+  if (v_r->>'ok')::boolean is not true or (v_r->>'entradas')::int <> 1 then
+    raise exception 'TEST_FAIL: confirmar la revision devolvio %', v_r;
+  end if;
+  if (select estado from ordenes where id = v_o4) <> 'pagada' then
+    raise exception 'TEST_FAIL: la revision confirmada no quedo pagada';
+  end if;
+  select count(*) into v_n from entradas where orden_id = v_o4 and estado = 'valida';
+  if v_n <> 1 then raise exception 'TEST_FAIL: la revision confirmada emitio % manillas', v_n; end if;
+  if v_desp <> v_antes - 1 then
+    raise exception 'TEST_FAIL: confirmar tenia que tomar 1 de cupo: % -> %', v_antes, v_desp;
+  end if;
+
+  -- Anular la otra: sin entradas, y el cupo que iba a ocupar queda libre.
+  v_antes := disponibilidad_tipo(v_fase, v_gen);
+  v_r := resolver_revision(v_o5, 'anular', 'la pasarela cobro 1 Bs, no hay pago que confirmar');
+  v_desp := disponibilidad_tipo(v_fase, v_gen);
+  if (v_r->>'ok')::boolean is not true or (v_r->>'decision') <> 'anular' then
+    raise exception 'TEST_FAIL: anular la revision devolvio %', v_r;
+  end if;
+  if (select estado from ordenes where id = v_o5) <> 'anulada' then
+    raise exception 'TEST_FAIL: la revision anulada no quedo anulada';
+  end if;
+  select count(*) into v_n from entradas where orden_id = v_o5;
+  if v_n <> 0 then raise exception 'TEST_FAIL: la revision anulada emitio % entradas', v_n; end if;
+  if v_desp <> v_antes then
+    raise exception 'TEST_FAIL: anular una revision no puede mover el cupo: % -> %', v_antes, v_desp;
+  end if;
+
+  -- y ya no se puede volver a resolver: no está en revisión
+  v_paso := true;
+  begin
+    perform resolver_revision(v_o5, 'confirmar', 'me arrepenti');
+  exception when others then
+    v_paso := false;
+    if sqlerrm not like 'NO_ESTA_EN_REVISION:%' then
+      raise exception 'TEST_FAIL: resolver una orden ya resuelta dijo "%"', sqlerrm;
+    end if;
+  end;
+  if v_paso then raise exception 'TEST_FAIL: se resolvio dos veces la misma revision'; end if;
+
+  -- una decisión que no existe no se inventa
+  v_paso := true;
+  begin
+    perform resolver_revision(v_o7, 'quizas', 'a ver que pasa');
+  exception when others then
+    v_paso := false;
+    if sqlerrm not like 'DECISION_INVALIDA:%' then
+      raise exception 'TEST_FAIL: una decision inventada dijo "%"', sqlerrm;
+    end if;
+  end;
+  if v_paso then raise exception 'TEST_FAIL: resolver_revision acepto una decision inventada'; end if;
+
+  -- la lista que el tablero no ofrecía: queda la o7 sin resolver
+  v_r := ordenes_en_revision(v_ev);
+  if jsonb_array_length(v_r) <> 1 then
+    raise exception 'TEST_FAIL: tenia que quedar 1 orden en revision, hay %', jsonb_array_length(v_r);
+  end if;
+  if ((v_r->0)->>'diferencia')::numeric >= 0 then
+    raise exception 'TEST_FAIL: la diferencia tiene que venir restada y en negativo: %', v_r->0;
+  end if;
+
+  -- ── 8) el rrpp y el admin de otro organizador ───────────
+  -- Las dos sesiones contra las mismas cinco funciones (más la lectura de
+  -- la bitácora). El admin de otro organizador es el caso que importa:
+  -- pasa puede_editar() y lo único que lo frena es mi_organizador()
+  -- adentro de cada función.
+  foreach v_actor in array array[v_rrpp, v_admin2] loop
+    perform set_config('request.jwt.claim.sub', v_actor::text, true);
+    for v_sql in
+      select unnest(array[
+        format('select anular_orden(%L, %L)', v_o8, 'probando desde afuera'),
+        format('select anular_entrada(%L, %L)', v_e_perm, 'probando desde afuera'),
+        format('select emitir_cortesias(%L, %L, 1, %L, %L)', v_ev, v_gen, 'Yo', 'probando desde afuera'),
+        format('select resolver_revision(%L, %L, %L)', v_o7, 'confirmar', 'probando desde afuera'),
+        format('select ordenes_en_revision(%L)', v_ev),
+        format('select bitacora_admin(%L)', v_ev)])
+    loop
+      begin
+        execute v_sql;
+        raise exception 'TEST_FAIL: % no rebotó para %', v_sql, v_actor;
+      exception when others then
+        if sqlerrm like 'TEST_FAIL%' then raise; end if;
+        if sqlerrm <> 'Sin permiso' then
+          raise exception 'TEST_FAIL: % dijo "%" en vez de Sin permiso (actor %)', v_sql, sqlerrm, v_actor;
+        end if;
+      end;
+    end loop;
+  end loop;
+
+  -- y nada de eso dejó rastro
+  if (select estado from ordenes where id = v_o8) <> 'pagada'
+     or (select estado from entradas where id = v_e_perm) <> 'valida'
+     or (select estado from ordenes where id = v_o7) <> 'revision_manual' then
+    raise exception 'TEST_FAIL: alguna de las llamadas rechazadas igual escribio';
+  end if;
+  select count(*) into v_n from entradas where evento_id = v_ev and cliente = 'Yo';
+  if v_n <> 0 then raise exception 'TEST_FAIL: una cortesia rechazada igual se emitio'; end if;
+
+  -- ── 9) el registro ──────────────────────────────────────
+  -- Se lee con el rol reseteado: desde la sesión que las escribió, la RLS
+  -- ya filtró y contar sobre lo filtrado se aprueba solo.
+  reset role;
+
+  select * into v_b from admin_bitacora
+   where orden_id = v_o1 and accion = 'orden_anulada';
+  if not found then raise exception 'TEST_FAIL: la anulacion de la orden no dejo registro'; end if;
+  if v_b.motivo <> 'pago doble: se le cobro dos veces la misma compra' then
+    raise exception 'TEST_FAIL: el registro no conserva el motivo, dice "%"', v_b.motivo;
+  end if;
+  if v_b.actor_id <> v_admin then
+    raise exception 'TEST_FAIL: el registro no dice quien lo hizo, dice %', v_b.actor_id;
+  end if;
+  if (v_b.detalle->>'entradas_anuladas')::int <> 3 then
+    raise exception 'TEST_FAIL: el registro no dice cuantas manillas cayeron: %', v_b.detalle;
+  end if;
+
+  -- una sola fila por decisión: anular la misma orden dos veces no escribe dos
+  select count(*) into v_n from admin_bitacora where orden_id = v_o1;
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: la orden anulada dos veces dejo % filas', v_n;
+  end if;
+
+  -- la anulación forzada anota cuántas ya habían entrado
+  select * into v_b from admin_bitacora where orden_id = v_o2 and accion = 'orden_anulada';
+  if (v_b.detalle->>'usadas_incluidas')::int <> 1 then
+    raise exception 'TEST_FAIL: el registro no dice cuantas ya habian entrado: %', v_b.detalle;
+  end if;
+
+  -- las cortesías dicen quién, para quién y con qué códigos.
+  -- Acotado al evento de esta prueba: las otras aserciones filtran por
+  -- orden_id, que es único, pero una cortesía no tiene orden. Sin este
+  -- filtro la consulta agarraba la primera fila que coincidiera en toda la
+  -- tabla —incluida una de otro evento— y el test fallaba por datos ajenos
+  -- en vez de por el código.
+  select * into v_b from admin_bitacora
+   where evento_id = v_ev
+     and accion = 'cortesias_emitidas' and detalle->>'para' = 'Radio Line';
+  if not found then raise exception 'TEST_FAIL: la emision de cortesias no dejo registro'; end if;
+  if v_b.actor_id <> v_admin or jsonb_array_length(v_b.detalle->'codes') <> 4 then
+    raise exception 'TEST_FAIL: el registro de las cortesias esta incompleto: %', to_jsonb(v_b);
+  end if;
+
+  -- la revisión confirmada guarda lo que la pasarela dijo haber cobrado
+  select * into v_b from admin_bitacora where orden_id = v_o4 and accion = 'revision_confirmada';
+  if not found or (v_b.detalle->>'monto_cobrado')::numeric <> 1 then
+    raise exception 'TEST_FAIL: la revision confirmada no guardo el monto cobrado: %', to_jsonb(v_b);
+  end if;
+
+  -- anular una revisión NO escribe dos filas: la de anular_orden ya dice
+  -- todo, y su estado_previo es el que cuenta de dónde venía
+  select count(*) into v_n from admin_bitacora where orden_id = v_o5;
+  if v_n <> 1 then raise exception 'TEST_FAIL: la revision anulada dejo % filas', v_n; end if;
+  select * into v_b from admin_bitacora where orden_id = v_o5;
+  if v_b.detalle->>'estado_previo' <> 'revision_manual' then
+    raise exception 'TEST_FAIL: el registro no dice que venia de una revision: %', v_b.detalle;
+  end if;
+
+  -- ── el registro no se corrige ───────────────────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+
+  v_paso := true;
+  begin
+    update admin_bitacora set motivo = 'otra cosa' where orden_id = v_o1;
+    get diagnostics v_n = row_count;
+    if v_n = 0 then v_paso := false; end if;
+  exception when others then v_paso := false;
+  end;
+  if v_paso then raise exception 'TEST_FAIL: se pudo reescribir el motivo de una anulacion'; end if;
+
+  v_paso := true;
+  begin
+    delete from admin_bitacora where orden_id = v_o1;
+    get diagnostics v_n = row_count;
+    if v_n = 0 then v_paso := false; end if;
+  exception when others then v_paso := false;
+  end;
+  if v_paso then raise exception 'TEST_FAIL: se pudo borrar una fila del registro'; end if;
+
+  -- y no se puede firmar con el nombre de otro
+  v_paso := true;
+  begin
+    insert into admin_bitacora (organizador_id, evento_id, accion, motivo, actor_id)
+    values (v_org, v_ev, 'orden_anulada', 'a nombre del companero', v_rrpp);
+  exception when others then v_paso := false;
+  end;
+  if v_paso then raise exception 'TEST_FAIL: se pudo firmar una fila del registro con el uid de otro'; end if;
+
+  -- ni una fila sin motivo, aunque se la escriba a mano esquivando la función
+  v_paso := true;
+  begin
+    insert into admin_bitacora (organizador_id, evento_id, accion, motivo, actor_id)
+    values (v_org, v_ev, 'orden_anulada', '   ', v_admin);
+  exception when others then v_paso := false;
+  end;
+  if v_paso then raise exception 'TEST_FAIL: entro una fila con el motivo en blanco'; end if;
+
+  reset role;
+  raise notice 'OK anular devuelve el cupo, exige motivo y frena en las usadas; las cortesias consumen cupo con tope; la revision manual se resuelve por los dos lados y todo queda firmado';
+end $$;
+
 rollback;
