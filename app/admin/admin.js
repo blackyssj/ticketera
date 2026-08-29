@@ -45,6 +45,12 @@ async function cargarPerfil() {
     throw new Error("Tu cuenta no está habilitada.");
   }
   S.yo = data;
+  /* El slug del organizador se trae acá porque de él cuelgan todos los links
+     públicos que muestra el panel. Antes salían de CFG.ORGANIZADOR, que es
+     una constante: La Manzana veía sus eventos con el link de Amstel. Ahora
+     esa constante ya no existe. Si la consulta falla no se corta la sesión —
+     el panel entero no puede caerse porque no se pudo armar un link. */
+  await miOrganizadorSlug().catch(() => null);
   return true;
 }
 
@@ -160,7 +166,7 @@ async function abrirEvento(id) {
       <label><span>Nombre</span><input id="fNombre" value="${esc(e.nombre)}" required></label>
       <label><span>Link público</span>
         <input id="fSlug" value="${esc(e.slug)}" pattern="[a-z0-9\\-]{2,60}" required>
-        <em class="ayuda">/${esc(CFG.ORGANIZADOR)}/<b id="vistaSlug">${esc(e.slug || "…")}</b></em></label>
+        <em class="ayuda">/${esc(S.orgSlug || "…")}/<b id="vistaSlug">${esc(e.slug || "…")}</b></em></label>
       <label><span>Lugar</span><input id="fLugar" value="${esc(e.lugar || "")}"></label>
       <label><span>Fecha</span><input id="fFecha" type="date" value="${e.fecha || ""}" required></label>
       <label><span>Hora</span><input id="fHora" type="time" value="${String(e.hora_inicio).slice(0,5)}"></label>
@@ -233,9 +239,9 @@ const ARTE_TOPE = 5 * 1024 * 1024;
    puede_editar() igual, y un rrpp ni siquiera tiene la pestaña de eventos. */
 const puedeEditar = () => !!S.yo && (S.yo.rol === "admin" || S.yo.rol === "staff");
 
-/* El slug del organizador de la SESIÓN, que es el que la policy compara con
-   la primera carpeta de la ruta. CFG.ORGANIZADOR es el del sitio público y
-   podría no ser el de quien está logueado; con ese la subida rebotaría.
+/* El slug del organizador de la SESIÓN: el que la policy del bucket compara
+   con la primera carpeta de la ruta, y el que arma los links públicos. Se
+   cachea en S.orgSlug apenas entra la sesión (cargarPerfil).
    La RLS de `organizadores` ya deja ver una sola fila: la propia. */
 async function miOrganizadorSlug() {
   if (S.orgSlug) return S.orgSlug;
@@ -571,7 +577,7 @@ async function zonaPublicar(eventoId, estado, slug) {
   const listo = chequeo && chequeo.ok;
   const faltan = (chequeo && chequeo.faltan) || [];
   const publicado = estado === "publicado";
-  const url = `${location.origin}/${CFG.ORGANIZADOR}/${slug}`;
+  const url = `${location.origin}/${S.orgSlug}/${slug}`;
 
   $("#zonaPublicar").innerHTML = `
     <div class="publicar ${publicado ? "vivo" : ""}">
@@ -754,7 +760,7 @@ function zonaLinks(eventos, error) {
     venta. Cuando el organizador publique uno, tu link aparece acá.</p>`;
 
   return eventos.map((e, i) => {
-    const url = `${location.origin}/${CFG.ORGANIZADOR}/${e.slug}` +
+    const url = `${location.origin}/${S.orgSlug}/${e.slug}` +
                 `?r=${encodeURIComponent(S.yo.slug)}`;
     return `<div class="link-evento">
       <span class="link-titulo">${esc(e.nombre)} · ${fmtF(e.fecha)}</span>

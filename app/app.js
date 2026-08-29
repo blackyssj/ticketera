@@ -16,9 +16,12 @@
    absoluto, así que no hay nada que saltarse.
 
    El link público que arma la administración es `/<organizador>/<evento>`
-   (rewrite a este mismo index.html en app/vercel.json). config.js queda
-   solo de respaldo: para el modo demo, y para cuando la ruta no trae los
-   dos segmentos (por ejemplo `/` sirviendo el evento por defecto). */
+   (rewrite a evento.html en app/vercel.json), y esa ruta es la ÚNICA fuente
+   del evento: config.js ya no trae un organizador por defecto. Lo traía
+   cuando `/` servía este archivo; ahora `/` es la portada de TICKETAZO y un
+   default acá haría que una ruta rota vendiera el evento de otro cliente en
+   vez de fallar. Sin los dos segmentos, `evento` responde que falta el
+   organizador y la página lo dice — que es lo que corresponde. */
 const CFG = (() => {
   const base = window.CONFIG || { MODO: "demo" };
   const forzado = new URLSearchParams(location.search).get("modo");

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="es-BO">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Entradas — TICKETAZO</title>
+<meta name="theme-color" content="#0B0A0A">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css?v=13">
+</head>
+<body>
+
+<header class="barra">
+  <div class="carril barra-in">
+    <span class="chapita" aria-hidden="true"><i></i><b></b></span>
+    <span class="marca-txt" id="marca">—</span>
+    <span class="barra-fecha" id="barraFecha"></span>
+  </div>
+</header>
+
+<!-- ══ paso 1 · hero + entradas ══════════════════════════════════ -->
+<section class="hero" id="hero">
+  <div class="carril">
+    <p class="eyebrow" id="heroLugar"></p>
+    <h1 class="titulo"><span class="l1" id="heroL1"></span><span class="l2" id="heroL2"></span></h1>
+    <p class="bajada" id="heroBajada"></p>
+    <div class="datos" id="heroDatos"></div>
+  </div>
+  <svg class="espuma-borde" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
+    <path fill="#F6F1E4" d="M0,52 C60,30 110,66 170,56 C230,46 262,22 322,32 C382,42 404,70 470,62 C536,54 566,26 630,34 C694,42 726,68 790,60 C854,52 884,24 950,32 C1016,40 1046,70 1110,62 C1174,54 1206,28 1268,36 C1330,44 1372,66 1440,50 L1440,90 L0,90 Z"></path>
+    <circle fill="#F6F1E4" cx="128" cy="40" r="9"></circle><circle fill="#F6F1E4" cx="352" cy="18" r="7"></circle>
+    <circle fill="#F6F1E4" cx="596" cy="24" r="10"></circle><circle fill="#F6F1E4" cx="828" cy="16" r="6"></circle>
+    <circle fill="#F6F1E4" cx="1042" cy="22" r="8"></circle><circle fill="#F6F1E4" cx="1300" cy="20" r="7"></circle>
+  </svg>
+</section>
+
+<main class="cuerpo">
+  <div class="carril">
+
+    <!-- rail de pasos -->
+    <nav class="pasos" id="pasos" aria-label="Pasos de la compra"></nav>
+
+    <div class="tablero">
+      <!-- ─── columna de contenido ─── -->
+      <div class="lienzo-col">
+
+        <!-- PASO entradas -->
+        <section class="panel" data-paso="entradas">
+          <div class="panel-cab">
+            <h2>Entradas</h2>
+            <span class="fase" id="faseChip"></span>
+          </div>
+          <div class="tipos" id="tipos"></div>
+        </section>
+
+        <!-- PASO datos -->
+        <section class="panel" data-paso="datos" hidden>
+          <div class="panel-cab">
+            <h2>Tus datos</h2>
+            <p class="panel-nota">Acá te mandamos el QR.</p>
+          </div>
+          <form class="form" id="form" novalidate>
+            <label class="campo">
+              <span>Nombre y apellido</span>
+              <input id="fNombre" name="nombre" type="text" autocomplete="name" required
+                     placeholder="Como figura en tu carnet">
+              <em class="error" id="eNombre"></em>
+            </label>
+            <label class="campo">
+              <span>WhatsApp</span>
+              <input id="fTel" name="telefono" type="tel" inputmode="numeric" autocomplete="tel"
+                     required placeholder="7 u 8 dígitos">
+              <em class="error" id="eTel"></em>
+            </label>
+            <label class="campo ancho">
+              <span>Correo</span>
+              <input id="fMail" name="email" type="email" autocomplete="email" required
+                     placeholder="vos@correo.com">
+              <em class="error" id="eMail"></em>
+            </label>
+          </form>
+          <p class="letra-chica">Usamos tus datos para emitir la entrada y avisarte si el evento cambia. Nada más.</p>
+        </section>
+
+        <!-- PASO pago -->
+        <section class="panel" data-paso="pago" hidden>
+          <div class="panel-cab"><h2>Pago</h2></div>
+          <div class="pago-estado" id="pagoEstado"></div>
+        </section>
+
+        <!-- PASO listo -->
+        <section class="panel" data-paso="listo" hidden>
+          <div class="panel-cab">
+            <h2>Listo</h2>
+            <p class="panel-nota" id="listoNota"></p>
+          </div>
+          <div class="tickets" id="tickets"></div>
+          <div class="listo-acciones">
+            <button class="btn primario" id="btnDescargar">Descargar las entradas</button>
+            <button class="btn plano" id="btnOtra">Comprar otra</button>
+          </div>
+          <div class="link-recuperar">
+            <div>
+              <p class="link-recuperar-titulo">Tus entradas viven acá para siempre</p>
+              <code id="listoLink"></code>
+            </div>
+            <button type="button" class="btn plano chico" id="btnCopiarLink">Copiar link</button>
+          </div>
+          <p class="letra-chica" id="listoRef"></p>
+        </section>
+
+      </div>
+
+      <!-- ─── rail de resumen ─── -->
+      <aside class="rail" id="rail" aria-label="Tu compra">
+        <button class="rail-tirador" id="railTirador" aria-expanded="false">
+          <span class="rail-resumen" id="railResumen">Elegí tus entradas</span>
+          <span class="reloj movil" hidden><i></i><span class="relojTxt">10:00</span></span>
+          <span class="rail-total" id="railTotalChico">0 Bs</span>
+          <span class="rail-chevron" aria-hidden="true">▲</span>
+        </button>
+
+        <div class="rail-cuerpo" id="railCuerpo">
+          <div class="rail-cab">
+            <h3>Tu compra</h3>
+            <span class="reloj escritorio" hidden><i></i><span class="relojTxt">10:00</span></span>
+          </div>
+          <div class="rail-lineas" id="railLineas">
+            <p class="rail-vacio">Todavía no elegiste nada.</p>
+          </div>
+          <dl class="rail-totales" id="railTotales" hidden>
+            <div><dt>Subtotal</dt><dd id="vSubtotal">0 Bs</dd></div>
+            <div><dt>Servicio</dt><dd id="vFee">0 Bs</dd></div>
+            <p class="fee-nota" id="feeNota"></p>
+            <div class="total"><dt>Total</dt><dd id="vTotal">0 Bs</dd></div>
+          </dl>
+        </div>
+
+        <!-- el pie NO se pliega: la acción primaria siempre está a la vista -->
+        <div class="rail-pie">
+          <button class="btn primario ancho" id="btnSeguir" disabled>Seguir</button>
+          <button class="btn plano ancho" id="btnAtras" hidden>Volver</button>
+          <p class="letra-chica" id="railAviso"></p>
+        </div>
+      </aside>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="/config.js"></script>
+<script src="/datos-demo.js?v=13"></script>
+<script src="/ticket.js?v=13"></script>
+<script src="/app.js?v=13"></script>
+</body>
+</html>
