@@ -1,6 +1,6 @@
-# Ticketera
+# TICKETAZO
 
-Ticketera multi-tenant con landing pública de autoservicio.
+TICKETAZO es una ticketera multi-tenant con portada pública y landing de autoservicio por evento.
 - **Diseño y decisiones:** [`docs/diseno.md`](docs/diseno.md)
 - **Vistas internas (admin, relacionador, puerta):** [`docs/diseno-vistas-internas.md`](docs/diseno-vistas-internas.md)
 - **Plan del bloque 1 (la base):** [`docs/plan-bloque1-base.md`](docs/plan-bloque1-base.md)
