@@ -112,9 +112,12 @@ Deno.serve(async (req) => {
         lugar: e.lugar ?? "",
         fecha_txt: `${DIA[f.getDay()]} ${f.getDate()} ${MES[f.getMonth()]} · ${String(e.hora_inicio).slice(0,5)}`,
         bajada: e.descripcion ?? "",
+        // El dato de reservas solo aparece si hay reservas. "0 disponibles"
+        // en un evento que no vende mesas no es un cero, es un renglón que
+        // el comprador tiene que descartar solo.
         datos: [["Puertas", String(e.hora_inicio).slice(0,5)],
                 ["Edad mínima", String(e.edad_min)],
-                ["Reservas", `${reservas} disponibles`],
+                ...(reservas > 0 ? [["Reservas", `${reservas} disponibles`]] : []),
                 ["Pago", "Con QR"]],
         tope_entradas_orden: e.tope_entradas_orden,
         arte_url: e.arte_url ?? null,

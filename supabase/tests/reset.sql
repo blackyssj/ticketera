@@ -1,8 +1,13 @@
--- Deja el evento de prueba como recién sembrado. Borra órdenes y entradas.
+-- Deja el evento como recién sembrado. Borra órdenes y entradas.
+--
+-- Las mesas vuelven todas a 'disponible' y sin orden: los estados
+-- 'pagada'/'reservada' que tenía este script eran de la planimetría de la
+-- demo vieja, sin ninguna orden detrás. Con la mesa asignada por el admin
+-- (0029), arrancar con mesas falsamente ocupadas deja fuera del selector a
+-- mesas que están libres.
+delete from puerta_bitacora;
 delete from entradas;
 delete from orden_items;
-update mesas set orden_id = null,
-  estado = case when etiqueta in ('M2','M8','M12','L3','A3') then 'pagada'
-                when etiqueta in ('M5','A6') then 'reservada'
-                else 'disponible' end;
+update ordenes set mesa_asignada_id = null;
+update mesas set orden_id = null, estado = 'disponible';
 delete from ordenes;
