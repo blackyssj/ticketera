@@ -14,11 +14,11 @@ from urllib.parse import quote
 from _api import REF, pat, request
 
 BASE = pathlib.Path(__file__).resolve().parent.parent / "supabase" / "functions"
-TODAS = ["evento", "crear-orden", "iniciar-pago", "estado-orden",
+TODAS = ["eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
          "orden", "enviar-entradas"]
 
-# Por defecto False: evento, crear-orden, iniciar-pago, estado-orden y orden
-# las llama el público con la anon key, sin sesión. enviar-entradas es la
+# Por defecto False: eventos, evento, crear-orden, iniciar-pago, estado-orden y
+# orden las llama el público con la anon key, sin sesión. enviar-entradas es la
 # excepción — solo la llama estado-orden, del lado del servidor, con
 # cabeceras de service_role — así que va con JWT exigido. Antes mandaba
 # False para las seis por igual; eso la dejaba pública sin que nadie lo
