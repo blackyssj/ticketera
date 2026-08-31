@@ -538,6 +538,16 @@ begin
     (v_org2, v_fase3, v_tipo3, 100, null);
 
   -- ── ventas ──────────────────────────────────────────────
+  -- La siembra se hace SIN sesión, como la hace la Edge Function
+  -- `crear-orden` (service_role, sin JWT). Hay que limpiarla a mano y no
+  -- alcanza con `reset role`: el claim se puso con `set_config(..., true)`,
+  -- que es local a la TRANSACCIÓN, y este archivo entero es una sola. Así
+  -- que el `request.jwt.claim.sub` del último bloque que impersonó a
+  -- alguien sigue puesto acá, `mi_organizador()` devuelve ese organizador,
+  -- y sembrar en el evento del OTRO tenant falla con SIN_FASE —
+  -- fase_vigente() acota por organizador desde 0044.
+  perform set_config('request.jwt.claim.sub', '', true);
+
   -- A: 3 generales (300) + un combo de 2 manillas (200) en el evento A
   v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 3)),
                        '{}'::jsonb, null::uuid, null::text, v_a)->>'orden')::uuid;
@@ -1102,6 +1112,12 @@ begin
     (v_mx, v_org,  v_ev2, 'X1', 10, 10, 5, 1200, 8),
     (v_mz, v_org2, v_ev3, 'Z1', 10, 10, 5, 1200, 8);
 
+  -- Sin sesión, como la hace crear-orden con service_role. `reset role` no
+  -- limpia el claim —es local a la transacción y el archivo es una sola—,
+  -- así que sin esto mi_organizador() todavía devuelve el organizador del
+  -- bloque anterior y sembrar en el otro tenant falla con SIN_FASE.
+  perform set_config('request.jwt.claim.sub', '', true);
+
   -- dos ventas pagadas, cada una de su relacionador, por el camino real
   v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 1)),
                        '{"nombre":"Juan Perez"}'::jsonb, null::uuid, null::text, v_a)->>'orden')::uuid;
@@ -1385,6 +1401,12 @@ begin
 
   -- ── las ventas, por el camino real ──────────────────────
   -- A: un combo (1 unidad, 10 manillas, 1000)
+  -- Sin sesión, como la hace crear-orden con service_role. `reset role`
+  -- no limpia el claim: es local a la transacción y este archivo es una
+  -- sola, así que sin esto mi_organizador() sigue devolviendo el del
+  -- bloque anterior y sembrar en otro tenant falla con SIN_FASE.
+  perform set_config('request.jwt.claim.sub', '', true);
+
   v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_combo, 'cantidad', 1)),
                        jsonb_build_object('nombre', 'Cliente A1', 'telefono', '70000001'),
                        null::uuid, null::text, v_a)->>'orden')::uuid;
@@ -2169,6 +2191,12 @@ begin
   -- 0033: así se prueba que lo que escribe el checkout es lo que después
   -- anula esta migración. Va con el rol de la conexión —emitir_orden no
   -- tiene grant a authenticated, la llaman las Edge Functions.
+  -- Sin sesión, como la hace crear-orden con service_role. `reset role`
+  -- no limpia el claim: es local a la transacción y este archivo es una
+  -- sola, así que sin esto mi_organizador() sigue devolviendo el del
+  -- bloque anterior y sembrar en otro tenant falla con SIN_FASE.
+  perform set_config('request.jwt.claim.sub', '', true);
+
   v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 3)),
                        jsonb_build_object('nombre', 'Cliente Uno', 'telefono', '70000001'),
                        null::uuid, null::text, null::uuid)->>'orden')::uuid;
@@ -2883,6 +2911,12 @@ begin
   -- Tres compras por el camino real. La primera es la del nombre con
   -- fórmula: entra por `crear_orden`, que es por donde entra cualquiera
   -- desde el formulario público.
+  -- Sin sesión, como la hace crear-orden con service_role. `reset role`
+  -- no limpia el claim: es local a la transacción y este archivo es una
+  -- sola, así que sin esto mi_organizador() sigue devolviendo el del
+  -- bloque anterior y sembrar en otro tenant falla con SIN_FASE.
+  perform set_config('request.jwt.claim.sub', '', true);
+
   v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 2)),
                        jsonb_build_object('nombre', v_malo, 'telefono', '+591 700 12345',
                                           'email', 'malo@example.com'),
