@@ -1075,3 +1075,11 @@ body[data-filtro="1"] .puerta-visor::before{
    es lo que TODAVÍA se debe, no lo que ya se resolvió. */
 .liq-linea.pagada{opacity:.62}
 .liq-linea.pagada .cifra.destacada{color:var(--txt-2)}
+
+/* El eco de lo que paga el comprador, debajo del precio que se escribe.
+   Chico y tenue a propósito: no es un dato que se edite, es la
+   consecuencia del que sí. */
+.celda-paga{
+  display:block;margin-top:5px;font-size:11px;line-height:1;
+  color:var(--txt-3);font-variant-numeric:tabular-nums;min-height:11px}
+.nota-fee{margin:14px 0 0;max-width:62ch}

@@ -456,6 +456,18 @@ async function pantallaEntradas(eventoId) {
      Acá ya tenemos los ids de fase de este evento, así que se filtra del
      lado del servidor con ellos. */
   const idsFase = F.map(f => f.id);
+  /* El fee del organizador se trae acá para poder mostrar, al lado de cada
+     precio, lo que el comprador va a pagar de verdad. Sin eso el organizador
+     escribe 120, el comprador ve 130, y se entera cuando alguien le
+     pregunta por qué le cobraron de más. */
+  const cfgFee = (await sb.from("organizadores")
+    .select("fee_pct,fee_fijo_transaccion,fee_piso")
+    .eq("id", S.yo.organizador_id).single()).data
+    || { fee_pct: 0, fee_fijo_transaccion: 0, fee_piso: 0 };
+  /* Antes de pintar, no después: textoPaga() se llama dentro del template y
+     con FEE_CFG todavía en cero el primer eco decía el precio pelado. */
+  FEE_CFG = cfgFee;
+
   const precios = idsFase.length
     ? await sb.from("fase_precio").select("*").in("fase_id", idsFase)
     : { data: [] };
@@ -485,12 +497,20 @@ async function pantallaEntradas(eventoId) {
                 <input class="celda-cupo" data-f="${f.id}" data-t="${t.id}"
                        type="number" min="1" placeholder="sin tope"
                        value="${p && p.cupo != null ? p.cupo : ""}" aria-label="Cupo">
+                <span class="celda-paga" data-f="${f.id}" data-t="${t.id}"
+                  >${p ? textoPaga(Number(p.precio)) : ""}</span>
               </td>`;
             }).join("")}
             <td class="col-accion"></td></tr>`).join("")}
         </tbody>
       </table>
     </div>
+    <p class="ayuda nota-fee">El precio es lo que te queda a vos. Encima va el
+       ${Math.round(cfgFee.fee_pct * 100)}% de servicio de TICKETAZO, que paga el
+       comprador${Number(cfgFee.fee_fijo_transaccion) > 0
+         ? ` más ${bs(cfgFee.fee_fijo_transaccion)} por compra` : ""}${
+         Number(cfgFee.fee_piso) > 0 ? `, con un mínimo de ${bs(cfgFee.fee_piso)}` : ""}.
+       Debajo de cada precio dice cuánto va a pagar.</p>
     <div class="acciones">
       <button class="btn plano" id="btnTipo">+ Tipo de entrada</button>
       <button class="btn primario" id="btnGuardarGrilla">Guardar precios</button>
@@ -501,9 +521,38 @@ async function pantallaEntradas(eventoId) {
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
   $("#btnTipo").onclick = () => nuevoTipo(eventoId);
   $("#btnFase").onclick = () => nuevaFase(eventoId);
+  /* En vivo: el organizador prueba un precio, ve lo que paga el comprador y
+     lo ajusta antes de guardar. Después de guardar ya es tarde: el número
+     redondo que quería era el de la vitrina, no el suyo. */
+  document.querySelectorAll("#main .celda-precio").forEach(inp => {
+    inp.oninput = () => {
+      const eco = document.querySelector(
+        `#main .celda-paga[data-f="${inp.dataset.f}"][data-t="${inp.dataset.t}"]`);
+      if (eco) eco.textContent = textoPaga(Number(inp.value));
+    };
+  });
+
   $("#btnGuardarGrilla").onclick = () => guardarGrilla(eventoId);
   zonaPublicar(eventoId, ev.data.estado, ev.data.slug);
 }
+
+
+/* La misma cuenta que crear_orden hace en la base (0025):
+   max(round(subtotal × pct) + fijo, piso). Está duplicada acá a propósito
+   y con el comentario para que se note: es una VISTA PREVIA, y la que vale
+   es la de la base. Si algún día dejan de coincidir, la que está mal es
+   esta — pero verla antes de guardar el precio evita el descubrimiento
+   caro, que es el comprador preguntando por qué le cobraron de más. */
+function feePreview(sub, cfg) {
+  if (!(sub > 0)) return 0;
+  return Math.max(Math.round(sub * Number(cfg.fee_pct || 0))
+                  + Number(cfg.fee_fijo_transaccion || 0),
+                  Number(cfg.fee_piso || 0));
+}
+
+let FEE_CFG = { fee_pct: 0, fee_fijo_transaccion: 0, fee_piso: 0 };
+const textoPaga = sub => !(sub > 0) ? ""
+  : `paga ${bs(sub + feePreview(sub, FEE_CFG))}`;
 
 function ventana(f) {
   const d = x => x ? new Date(x).toLocaleDateString("es-BO", { day: "numeric", month: "short" }) : "";
