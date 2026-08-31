@@ -28,10 +28,23 @@ let entradas = [];
 const ES_UUID = v => /^[0-9a-f-]{36}$/i.test(String(v || ""));
 
 /* A esta página se llega por dos puertas y el `?id=` no significa lo mismo
-   en las dos. Por el link que queda guardado, es el uuid de la orden. Por la
-   vuelta del pago, es el id de transacción de la pasarela, que se lo pega
-   ella al redirigir. Se distinguen por la forma: si no es un uuid, se busca
-   por pago_ref. */
+   en las dos.
+
+   Por el link que queda guardado, es el uuid de la orden.
+
+   Por la vuelta del pago, es el id de transacción de la pasarela — pero ese
+   id **empieza con nuestro uuid**, porque lo arma a partir del
+   `codigoTransaccion` que le mandamos:
+
+     orden   6654a148-30cf-4c06-88ff-6f40d2e281f3
+     ?id=    6654a148-30cf-4c06-88ff-6f40d2e281f3-1522812139-c4ca4238a0b9…
+
+   Así que los 36 primeros caracteres alcanzan y la orden se busca directo
+   por su uuid. La búsqueda por pago_ref queda de respaldo, para el día que
+   la pasarela cambie cómo arma ese id: si el prefijo deja de ser un uuid,
+   se pregunta por el id entero en vez de fallar. Que ese camino sea el raro
+   y no el normal también achica lo que se puede tantear con él — devuelve
+   el nombre del comprador y los códigos de QR. */
 function pedir(cuerpo) {
   return fetch(`${CFG.SUPABASE_URL}/functions/v1/orden`, {
     method: "POST",
@@ -68,9 +81,14 @@ async function cargar() {
   const id = new URLSearchParams(location.search).get("id");
   if (!id) { decir("Falta el link", "Abrí el link completo que te llegó al correo."); return; }
 
+  /* El uuid va adelante. Si los 36 primeros no tienen forma de uuid, el id
+     no es lo que esperamos y se cae al respaldo en vez de mandar cualquier
+     cosa como si fuera una orden. */
+  const prefijo = String(id).slice(0, 36);
+
   let r;
   try {
-    r = await pedir(ES_UUID(id) ? { orden: id } : { pago_ref: id });
+    r = await pedir(ES_UUID(prefijo) ? { orden: prefijo } : { pago_ref: id });
   } catch {
     decir("No se pudo cargar", "Revisá tu conexión y volvé a intentar.");
     return;
@@ -82,7 +100,7 @@ async function cargar() {
      funciona para siempre. El de la pasarela sirve un rato y solo para
      volver. replaceState y no un redirect, para no perder el historial. */
   const uuid = r.orden?.id || r.orden;
-  if (!ES_UUID(id) && ES_UUID(uuid)) {
+  if (id !== uuid && ES_UUID(uuid)) {
     history.replaceState(null, "", `?id=${uuid}`);
   }
 

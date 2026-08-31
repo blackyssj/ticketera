@@ -92,7 +92,12 @@ Deno.serve(async (req) => {
           // Obligatorio: es con esto que la pasarela nombra a la orden.
           codigoTransaccion: o.id,
           urlRespuesta: `${SITIO}/orden/`,
-          modalidad: "W",
+          /* R, no W. W es checkout embebido en iframe: la pasarela cobra
+             igual pero devuelve la URL de retorno vacía, así que el
+             comprador paga bien y se queda parado en la página de ellos,
+             sin entrada y sin saber qué pasó. Pasó de verdad con el primer
+             cobro real. La pasarela solo devuelve el retorno con R o I. */
+          modalidad: "R",
           so_extra1: o.id,
         }),
       });
