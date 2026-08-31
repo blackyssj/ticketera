@@ -181,7 +181,8 @@ async function abrirEvento(id) {
                <button type="button" class="btn plano" id="btnEntradas">Entradas y precios →</button>
                <button type="button" class="btn plano" id="btnCortesias">Cortesías →</button>
                <button type="button" class="btn plano" id="btnRrpp">Relacionadores →</button>
-               <button type="button" class="btn plano" id="btnCierre">Cierre y liquidación →</button>` : ""}
+               <button type="button" class="btn plano" id="btnCierre">Cierre y liquidación →</button>
+               <button type="button" class="btn plano" id="btnBitacora">Bitácora →</button>` : ""}
       </div>
       <p class="error" id="fError"></p>
     </form>
@@ -195,6 +196,7 @@ async function abrirEvento(id) {
     $("#btnCortesias").onclick = () => pantallaCortesias(id);
     $("#btnRrpp").onclick = () => pantallaRelacionadores(id);
     $("#btnCierre").onclick = () => pantallaCierre(id);
+    $("#btnBitacora").onclick = () => pantallaBitacora(id);
     cablearArte(e);   // solo con evento guardado: sin slug no hay carpeta donde subir
   }
 
@@ -701,6 +703,65 @@ async function copiarNodo(nodo, que = "El link") {
 }
 
 
+/* ══ bajar un CSV ═════════════════════════════════════════════════
+   Las reglas del formato viven en csv.js. Acá está lo otro que un export
+   necesita para no mentir: traer TODAS las filas.
+
+   Las funciones de 0040 paginan y devuelven `total` contado sin el tope.
+   Esto pide de a mil hasta juntar ese total. No es paranoia de escala: es
+   que PostgREST corta en 1000 sin decirlo en ningún lado de la respuesta,
+   y un archivo con 1000 de 1400 filas nadie lo nota — el que cuadra la
+   caja cuenta lo que ve y le da bien.
+
+   Si algo sale mal, sale mal FUERTE: tira y el que llama avisa. Un
+   archivo a medias no se baja, porque un archivo a medias es el único
+   resultado peor que ninguno.
+
+   El deduplicado por id no sobra. El offset se corre sobre un orden
+   estable, pero la bitácora se escribe mientras alguien exporta —se anula
+   una compra a las tres de la mañana— y una fila nueva arriba empuja a
+   todas las demás una posición: sin dedupe, la fila del borde de página
+   sale dos veces. */
+async function traerTodo(fn, args, tope = 1000) {
+  const filas = [], vistos = new Set();
+  let off = 0, total = 0, vueltas = 0;
+  for (;;) {
+    const { data, error } = await sb.rpc(fn, { ...args, p_desde: off, p_tope: tope });
+    if (error) throw new Error(sinCodigo(error.message));
+    const lote = (data && data.filas) || [];
+    total = Number((data && data.total) || 0);
+    lote.forEach(f => { if (!vistos.has(f.id)) { vistos.add(f.id); filas.push(f); } });
+    off += lote.length;
+    if (!lote.length || off >= total) break;
+    if (++vueltas > 60) throw new Error(
+      "Son demasiadas filas para bajarlas de una sola vez. Avisá al equipo antes de usar este archivo.");
+  }
+  return { filas, total };
+}
+
+/* El link que se le manda al que dice "compré y no me llegó nada". El
+   uuid de la orden ES la credencial de esa página (ver app/orden/orden.js):
+   impredecible y sin login, porque en la puerta, con la fila atrás, nadie
+   se acuerda de una clave.
+   Se arma con `location` y no con una constante: el panel y /orden/ se
+   sirven del mismo origen, así que en localhost sale localhost y en
+   producción sale producción, sin una URL más que mantener. */
+const linkOrden = id => `${location.origin}/orden/?id=${encodeURIComponent(id)}`;
+
+/* Bajar puede tardar —son varias vueltas a la base— y un botón que no
+   cambia invita a apretarlo de nuevo, que son dos archivos iguales en
+   Descargas. */
+async function conBoton(btn, txt, fn) {
+  if (!btn || btn.disabled) return;
+  const antes = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = txt;
+  try { await fn(); }
+  catch (err) { avisar(err.message || String(err)); }
+  finally { btn.disabled = false; btn.textContent = antes; }
+}
+
+
 /* ══ cierre y liquidación ═════════════════════════════════════════
    La última pantalla del ciclo. Muestra dos columnas de números a
    propósito: la foto con la que se cerró y lo que dicen los datos hoy.
@@ -712,7 +773,7 @@ const LIQ = { evento: null, ev: null, datos: null, pagando: null, cerrando: fals
 async function pantallaCierre(eventoId) {
   $("#main").innerHTML = `<p class="cargando">Cargando…</p>`;
   const [ev, res] = await Promise.all([
-    sb.from("eventos").select("id,nombre,estado").eq("id", eventoId).single(),
+    sb.from("eventos").select("id,nombre,slug,fecha,estado").eq("id", eventoId).single(),
     sb.rpc("liquidacion_evento", { p_evento: eventoId }),
   ]);
   if (ev.error || !ev.data) { avisar("Ese evento ya no existe."); mostrar("eventos"); return; }
@@ -765,7 +826,10 @@ function pintarCierre() {
             <p class="ayuda">Lo cerró ${esc(foto.cerrada_por || "—")} el
               ${fmtFH(foto.cerrada_at)} · <i>${esc(foto.motivo)}</i></p>
           </div>
-          <button type="button" class="btn plano chico" id="btnReabrir">Reabrir</button>
+          <span class="bajadas">
+            <button type="button" class="btn plano chico" id="btnCsvLiq">Bajar la liquidación</button>
+            <button type="button" class="btn plano chico" id="btnReabrir">Reabrir</button>
+          </span>
         </div>
         ${cuadroCifras(foto, "La liquidación")}
         ${foto.difiere ? cuadroDiferencia(foto, hoy) : ""}
@@ -782,8 +846,71 @@ function pintarCierre() {
   const irT = $("#btnIrTablero"); if (irT) irT.onclick = () => pantallaTablero(LIQ.evento);
   const bc = $("#btnCerrar"); if (bc) bc.onclick = () => pedirCierre();
   const br = $("#btnReabrir"); if (br) br.onclick = () => pedirReapertura();
+  const bl = $("#btnCsvLiq"); if (bl) bl.onclick = () => conBoton(bl, "Armando…", bajarLiquidacion);
   document.querySelectorAll("#main [data-pagar]").forEach(b =>
     b.onclick = () => pedirPago(b.dataset.pagar));
+}
+
+/* ── el CSV de la liquidación ──
+   Dos bloques en un archivo, separados por una línea en blanco: arriba la
+   foto con la que se cerró, abajo una línea por relacionador. Es raro
+   para un CSV y es a propósito — lo que se le manda al contador no es una
+   tabla, es un comprobante: primero cuánto se vendió y cuánto queda, y
+   después a quién hay que pagarle. Partirlo en dos archivos garantiza que
+   uno de los dos se pierda por el camino.
+
+   Sale la FOTO, no los datos de hoy. Es con esos números con los que se
+   pagó; si después se anuló algo, esa diferencia va abajo dicha con todas
+   las letras en vez de recalcular en silencio un archivo que ya se mandó. */
+function bajarLiquidacion() {
+  const d = LIQ.datos, foto = d.foto, hoy = d.hoy || {};
+  if (!foto) { avisar("Este evento todavía no está cerrado, así que no hay liquidación que bajar."); return; }
+  const filas = [
+    ["Evento", LIQ.ev.nombre],
+    ["Fecha del evento", CSV.f(LIQ.ev.fecha)],
+    ["Versión de la liquidación", CSV.ent(foto.version)],
+    ["Cerrada el", CSV.fh(foto.cerrada_at)],
+    ["La cerró", foto.cerrada_por || ""],
+    ["Motivo del cierre", foto.motivo || ""],
+    [],
+    ["Concepto", "Monto (Bs)"],
+    ["Se vendió", CSV.bs(foto.bruto)],
+    ["Servicio de TICKETAZO", CSV.bs(foto.fee)],
+    ["Pasó por la pasarela", CSV.bs(foto.cobrado)],
+    ["Comisiones de relacionadores", CSV.bs(-Number(foto.comisiones || 0))],
+    ["Para el organizador", CSV.bs(foto.neto)],
+    ["Manillas", CSV.ent(foto.entradas)],
+    ["Compras", CSV.ent(foto.ordenes)],
+  ];
+  if (foto.difiere) {
+    const dif = foto.diferencia || {};
+    filas.push([],
+      ["Los datos de hoy ya no coinciden con esta liquidación. No se recalcula: es con la que se pagó."],
+      ["Diferencia en lo vendido (Bs)", CSV.bs(dif.bruto)],
+      ["Diferencia en comisiones (Bs)", CSV.bs(dif.comisiones)],
+      ["Diferencia en manillas", CSV.ent(dif.entradas)],
+      ["Hoy el evento suma (Bs)", CSV.bs(hoy.bruto)]);
+  }
+  const lineas = foto.lineas || [];
+  filas.push([], ["Relacionador", "Código", "Manillas", "Recaudado (Bs)",
+                  "Comisión unitaria (Bs)", "Comisión (Bs)", "Estado",
+                  "Pagado (Bs)", "Pendiente (Bs)", "Pagada el", "La marcó", "Nota del pago"]);
+  lineas.forEach(l => filas.push([
+    l.nombre || "", l.slug || "", CSV.ent(l.entradas), CSV.bs(l.recaudado),
+    CSV.bs(l.comision_unitaria), CSV.bs(l.comision),
+    l.pagada ? "Pagada" : "Pendiente",
+    CSV.bs(l.pagada ? l.pagado_monto : 0),
+    CSV.bs(l.pagada ? 0 : l.comision),
+    CSV.fh(l.pagada_at), l.pagada_por || "", l.pagado_nota || "",
+  ]));
+  const debe = lineas.filter(l => !l.pagada).reduce((a, l) => a + Number(l.comision || 0), 0);
+  const pago = lineas.filter(l => l.pagada).reduce((a, l) => a + Number(l.pagado_monto || 0), 0);
+  filas.push(["Total", "", CSV.ent(lineas.reduce((a, l) => a + Number(l.entradas || 0), 0)), "", "",
+              CSV.bs(foto.comisiones), "", CSV.bs(pago), CSV.bs(debe), "", "", ""]);
+
+  CSV.bajar(CSV.nombre("liquidacion", LIQ.ev), filas);
+  avisar(`Bajó la liquidación con ${lineas.length} ` +
+         `${lineas.length === 1 ? "relacionador" : "relacionadores"}.`);
 }
 
 /* El fee viaja aparte en las tres cifras porque no es del organizador: es
@@ -934,7 +1061,7 @@ async function pantallaMisVentas() {
   const vistos = new Set();
   (re.data || []).forEach(e => {
     vistos.add(e.id);
-    evs.push({ id: e.id, nombre: e.nombre, fecha: e.fecha });
+    evs.push({ id: e.id, nombre: e.nombre, fecha: e.fecha, slug: e.slug });
   });
   ventas.forEach(v => {
     if (vistos.has(v.evento_id)) return;
@@ -995,8 +1122,10 @@ async function pantallaMisVentas() {
      que la base le va a rebotar solo enseña a desconfiar de los botones. */
   if (evs.length) {
     const sel = $("#selEventoSalon");
-    if (sel) sel.onchange = () => montarSalon(sel.value, { editar: puedeEditar() });
-    montarSalon(evs[0].id, { editar: puedeEditar() });
+    const cual = id => evs.find(e => e.id === id) || evs[0];
+    if (sel) sel.onchange = () => montarSalon(sel.value,
+      { editar: puedeEditar(), ev: cual(sel.value) });
+    montarSalon(evs[0].id, { editar: puedeEditar(), ev: evs[0] });
   }
 }
 
@@ -1106,7 +1235,7 @@ const fmtFH = t => t
 
 async function pantallaTablero(eventoId) {
   $("#main").innerHTML = `<p class="cargando">Cargando el tablero…</p>`;
-  const ev = await sb.from("eventos").select("id,nombre").eq("id", eventoId).single();
+  const ev = await sb.from("eventos").select("id,nombre,slug,fecha").eq("id", eventoId).single();
   if (ev.error || !ev.data) {
     avisar("Ese evento ya no existe.");
     mostrar("eventos");
@@ -1135,7 +1264,7 @@ async function pantallaTablero(eventoId) {
        registro de abajo: el mismo `alCambiar` refresca los dos, porque un
        tablero que sigue diciendo lo de antes de la anulación enseña a no
        creerle. */
-    montarSalon(eventoId, { editar: puedeEditar(),
+    montarSalon(eventoId, { editar: puedeEditar(), ev: ev.data,
                             alCambiar: () => Promise.all([refrescarResumen(eventoId),
                                                           refrescarRegistro(eventoId)]) }),
     refrescarRegistro(eventoId),
@@ -1347,8 +1476,13 @@ const SALON = { evento: null, editar: false, compras: [], mesas: [],
 async function montarSalon(eventoId, opts) {
   Object.assign(SALON, {
     evento: eventoId, editar: !!(opts && opts.editar),
+    /* El evento entero y no solo su id: el nombre del archivo que se baja
+       lleva el slug y la fecha, y sin eso todos los CSV de la carpeta de
+       Descargas se llaman igual. */
+    ev: (opts && opts.ev) || { id: eventoId },
     compras: [], mesas: [], busca: "", sel: null, asignando: null,
     anulando: null, abierta: null, manillas: {}, anulandoEntrada: null,
+    link: null,
     alCambiar: (opts && opts.alCambiar) || null,
   });
   const c = $("#zonaCompradores"), p = $("#zonaPlano");
@@ -1421,6 +1555,10 @@ function pintarCompradores(error) {
          autocomplete="off" placeholder="Buscar por nombre o teléfono"
          value="${esc(SALON.busca)}" aria-label="Buscar comprador por nombre o teléfono">` : ""}
       <span class="conteo" id="conteoCompradores"></span>
+      ${SALON.compras.length ? `<span class="bajadas">
+        <button type="button" class="btn plano chico" id="btnCsvCompradores">Bajar compradores</button>
+        ${SALON.editar ? `<button type="button" class="btn plano chico" id="btnCsvEntradas"
+          >Bajar entradas</button>` : ""}</span>` : ""}
     </div>
     ${error ? `<p class="error">${esc(error.message)}</p>` : ""}
     ${SALON.compras.length ? `
@@ -1430,12 +1568,17 @@ function pintarCompradores(error) {
             <th>Comprador</th><th>Contacto</th><th>Compró</th>
             <th class="n">Manillas</th><th class="n">Pagó</th>
             <th>Relacionador</th><th>Mesa</th>
-            ${SALON.editar ? `<th class="col-accion"></th>` : ""}
+            <th class="col-accion"></th>
           </tr></thead>
           <tbody id="filasCompradores"></tbody>
         </table>
       </div>`
       : error ? "" : `<p class="vacio">Todavía no hay compras pagadas en este evento.</p>`}`;
+
+  const bc = $("#btnCsvCompradores");
+  if (bc) bc.onclick = () => conBoton(bc, "Armando…", bajarCompradores);
+  const be = $("#btnCsvEntradas");
+  if (be) be.onclick = () => conBoton(be, "Buscando…", bajarEntradas);
 
   const b = $("#buscaComprador");
   /* El buscador filtra sobre lo que YA está en memoria: en la puerta se
@@ -1470,9 +1613,63 @@ function pintarFilasCompradores() {
     : `${SALON.compras.length} ${SALON.compras.length === 1 ? "compra" : "compras"}`;
   tb.innerHTML = filas.length
     ? filas.map(filaCompra).join("")
-    : `<tr><td class="sin-nada" colspan="${SALON.editar ? 8 : 7}">
+    : `<tr><td class="sin-nada" colspan="8">
          Nadie con ese nombre ni ese teléfono en este evento.</td></tr>`;
 }
+
+/* ── los dos CSV de esta lista ──
+   El de compradores baja SIEMPRE la lista entera, no lo que quedó
+   filtrado en pantalla. Bajar lo filtrado suena cómodo hasta que alguien
+   deja un nombre escrito en el buscador, exporta y manda un archivo con
+   tres filas: nadie lo nota, porque un CSV con tres filas se ve igual de
+   bien que uno con trescientas.
+
+   Y no vuelve a la base: `compradores_evento` ya trajo todo en un jsonb
+   —sin paginado que pueda comerse una fila— y ya decidió qué ve quién.
+   Un relacionador que aprieta este botón baja SUS compras, porque eso es
+   lo que la función le dio; el recorte no lo hace este archivo. */
+function bajarCompradores() {
+  const cab = ["Comprador", "Teléfono", "Correo", "Compró", "Unidades", "Manillas",
+               "Manillas usadas", "Manillas anuladas", "Pagó (Bs)", "Servicio (Bs)",
+               "Total (Bs)", "Relacionador", "Canal", "Mesa", "Fecha de la compra",
+               "Link de recuperación"];
+  const filas = SALON.compras.map(c => {
+    const m = mesaDeCompra(c);
+    return [
+      c.comprador || "", c.telefono || "", c.email || "", c.detalle || "",
+      CSV.ent(c.unidades), CSV.ent(c.manillas),
+      CSV.ent(c.manillas_usadas), CSV.ent(c.manillas_anuladas),
+      CSV.bs(c.pagado), CSV.bs(c.fee), CSV.bs(c.total),
+      c.rrpp_nombre || "", c.canal === "rrpp" ? "Relacionador" : "Público",
+      m ? `${m.etiqueta} (${PLANTA_TXT[m.planta] || m.planta})` : "",
+      CSV.fh(c.fecha), linkOrden(c.orden_id),
+    ];
+  });
+  CSV.bajar(CSV.nombre("compradores", SALON.ev), [cab, ...filas]);
+  avisar(`Bajaron ${filas.length} ${filas.length === 1 ? "compra" : "compras"}.`);
+}
+
+/* La lista que se imprime por si la puerta se queda sin señal. Va con las
+   anuladas adentro y marcadas: una lista de papel que las esconde deja
+   entrar justo a la que se anuló. */
+async function bajarEntradas() {
+  const { filas, total } = await traerTodo("entradas_evento", { p_evento: SALON.evento });
+  if (!total) { avisar("Este evento todavía no tiene ninguna manilla emitida."); return; }
+  const cab = ["Código", "A nombre de", "Tipo", "Canal", "Estado", "Entró", "Portero",
+               "Mesa", "Comprador", "Teléfono", "Relacionador", "Precio (Bs)"];
+  CSV.bajar(CSV.nombre("entradas", SALON.ev), [cab, ...filas.map(e => [
+    e.code, e.cliente || "", e.tipo || "", CANAL_UNO[e.canal] || e.canal,
+    (ESTADO_MANILLA[e.estado] || {}).txt || e.estado,
+    CSV.fh(e.used_at), e.portero || "", e.mesa || "",
+    e.comprador || "", e.telefono || "", e.rrpp || "", CSV.bs(e.precio),
+  ])]);
+  avisar(`Bajaron ${filas.length} de ${total} ${total === 1 ? "manilla" : "manillas"}.`);
+}
+
+/* En singular: acá una fila es UNA manilla. El CANAL_TXT de los
+   desgloses está en plural porque allá una fila es un montón. */
+const CANAL_UNO = { publico: "Público", rrpp: "Relacionador",
+                    puerta: "Puerta", cortesia: "Cortesía" };
 
 function filaCompra(c) {
   const m = mesaDeCompra(c);
@@ -1494,21 +1691,29 @@ function filaCompraFila(c, m) {
           noEntra(c, m) ? `<em class="chica-nota">es de ${num(m.manillas)}</em>` : ""}`
       : compraDeMesa(c) ? `<span class="chip-mesa falta">sin asignar</span>`
                         : `<span class="tenue">—</span>`}</td>
-    ${SALON.editar ? `<td class="col-accion">${accionesCompra(c, m)}</td>` : ""}
+    <td class="col-accion">${accionesCompra(c, m)}</td>
   </tr>`;
 }
 
+/* La columna de acciones existe ahora también sin `editar`. El único
+   botón que sobrevive ahí es el del link, y no es una concesión: el
+   relacionador es el primero que recibe el "compré y no me llegó nada",
+   y hasta hoy lo único que podía hacer era reenviarlo a la oficina. */
 function accionesCompra(c, m) {
+  const link = `<button type="button" class="btn plano chico" data-link="${esc(c.orden_id)}"
+      >${SALON.link === c.orden_id ? "Ocultar" : "Link"}</button>`;
+  if (!SALON.editar) return link;
   if (SALON.asignando === c.orden_id) return selectorDeMesas(c, m);
   const mesa = m
     ? `<button type="button" class="btn plano chico" data-abrir="${esc(c.orden_id)}">Cambiar</button>
        <button type="button" class="btn plano chico" data-liberar="${esc(c.orden_id)}">Liberar</button>`
     : `<button type="button" class="btn plano chico" data-abrir="${esc(c.orden_id)}">Asignar mesa</button>`;
-  /* "Manillas" antes que "Anular": la manilla suelta —la perdida, la
-     duplicada— es lo que se hace seguido, y anular la compra entera es lo
-     que no se deshace. El orden de los botones es el orden de la
+  /* "Link" antes que "Manillas" y "Manillas" antes que "Anular": el link
+     es lo que se pide todos los días —"compré y no me llegó nada"—, la
+     manilla suelta es lo que pasa a veces, y anular la compra entera es
+     lo que no se deshace. El orden de los botones es el orden de la
      frecuencia, no el del código. */
-  return `${mesa}
+  return `${mesa}${link}
     <button type="button" class="btn plano chico" data-manillas="${esc(c.orden_id)}"
       >${SALON.abierta === c.orden_id ? "Ocultar" : "Manillas"}</button>
     <button type="button" class="btn plano chico peligrosa" data-anular="${esc(c.orden_id)}">Anular</button>`;
@@ -1520,13 +1725,83 @@ function accionesCompra(c, m) {
    en la MISMA fila desplegada para que no se pueda tener abierta la
    anulación de una compra y la lista de otra al mismo tiempo. */
 function filaCompraDetalle(c) {
-  const cols = SALON.editar ? 8 : 7;
-  const abre = SALON.anulando === c.orden_id || SALON.abierta === c.orden_id;
+  const abre = SALON.anulando === c.orden_id || SALON.abierta === c.orden_id
+            || SALON.link === c.orden_id;
   if (!abre) return "";
-  return `<tr class="fila-detalle"><td colspan="${cols}">
+  return `<tr class="fila-detalle"><td colspan="8">
+    ${SALON.link === c.orden_id ? bloqueLink(c) : ""}
     ${SALON.anulando === c.orden_id ? formAnularCompra(c) : ""}
     ${SALON.abierta === c.orden_id ? listaManillas(c) : ""}
   </td></tr>`;
+}
+
+/* ── el link de una compra ──
+   Lo que se le da al que escribe "compré y no me llegó nada". El botón de
+   copiar es el que anda HOY y por eso va primero y es el primario: el
+   correo todavía no está configurado en este proyecto (no existe
+   RESEND_API_KEY) y la Edge Function `enviar-entradas`, cuando falta,
+   contesta `enviado:false` con el link adentro en vez de fallar.
+
+   De ahí sale la regla de esta pantalla: acá NO se escribe "se envió" en
+   ninguna parte hasta que la función conteste `enviado:true`. Prometer un
+   correo que no salió es peor que no ofrecerlo — el comprador se queda
+   esperando y el que atiende cree que ya está resuelto.
+
+   El día que alguien cargue la clave de Resend, este mismo botón manda el
+   correo de verdad y el aviso cambia solo. No hay nada que tocar acá. */
+function bloqueLink(c) {
+  const id = c.orden_id;
+  return `<div class="link-compra">
+    <p class="ayuda">El link no pide clave: el uuid de la compra es la
+      credencial. Mandáselo por WhatsApp al que dice que no le llegó nada.</p>
+    <p class="link-publico">
+      <code id="lkOrden">${esc(linkOrden(id))}</code>
+      <button type="button" class="btn primario chico" data-copiar="lkOrden"
+              data-que="El link">Copiar</button>
+    </p>
+    ${c.email
+      ? `<div class="acciones">
+           <button type="button" class="btn plano chico" data-mail="${esc(id)}"
+             >Mandarle el correo a ${esc(c.email)}</button>
+         </div>
+         ${S.correoOff ? `<p class="ayuda">La última vez que se intentó, el envío de
+            correos no estaba configurado en este servidor. El botón sigue ahí por si
+            ya lo configuraron; mientras tanto, el link de arriba es lo que funciona.</p>` : ""}`
+      : `<p class="ayuda">Esta compra no dejó correo, así que no hay a dónde mandarlo:
+           queda el link.</p>`}
+    <p class="mail-resultado" id="mailResultado"></p>
+  </div>`;
+}
+
+/* La única fuente de verdad de lo que pasó es la respuesta de la función:
+   `enviado` es booleano y no se interpreta. Si dice false, se dice que no
+   se mandó y se repite el link, que es lo que sí sirve. */
+async function mandarCorreo(ordenId) {
+  pintarMail("", null);
+  const { data, error } = await sb.functions.invoke("enviar-entradas", { body: { orden: ordenId } });
+  if (error || !data || data.ok === false) {
+    const m = (data && data.motivo) || (error && error.message) || "No se pudo llegar al servidor.";
+    pintarMail(`No se mandó ningún correo. ${sinCodigo(m)} Copiá el link de arriba y mandáselo vos.`, false);
+    return;
+  }
+  if (data.enviado) {
+    S.correoOff = false;
+    pintarMail(`Salió el correo. Si igual no le llega, que mire el spam — o mandale el link de arriba.`, true);
+    return;
+  }
+  /* Que el correo no esté configurado no es un problema de esta compra:
+     es el estado del servidor. Se recuerda para el resto de la sesión y
+     las próximas compras lo avisan ANTES de que alguien toque el botón. */
+  if (/no está configurado/i.test(String(data.motivo || ""))) S.correoOff = true;
+  pintarMail(`No se mandó ningún correo. ${sinCodigo(data.motivo || "El servidor no lo mandó.")} ` +
+             `Copiá el link de arriba y mandáselo vos.`, false);
+}
+
+function pintarMail(txt, ok) {
+  const z = $("#mailResultado");
+  if (!z) { if (txt) avisar(txt); return; }
+  z.textContent = txt;
+  if (ok === null) delete z.dataset.ok; else z.dataset.ok = ok ? "1" : "0";
 }
 
 /* La confirmación dice QUÉ se va a anular —cuántas manillas y cuánta
@@ -1629,9 +1904,19 @@ function selectorDeMesas(c, actual) {
 function clicEnCompradores(e) {
   const b = e.target.closest("button[data-abrir],button[data-liberar],button[data-confirmar]," +
                              "button[data-cerrar],button[data-anular],button[data-manillas]," +
-                             "button[data-anular-manilla]");
+                             "button[data-anular-manilla],button[data-link]," +
+                             "button[data-copiar],button[data-mail]");
   if (!b) return;
   const d = b.dataset;
+  /* Copiar y mandar no repintan la lista: si repintaran, el resultado del
+     correo —lo único que dice qué pasó de verdad— desaparecería en el
+     mismo clic que lo produjo. */
+  if (d.copiar) return copiarNodo(document.getElementById(d.copiar), d.que);
+  if (d.mail) return conBoton(b, "Mandando…", () => mandarCorreo(d.mail, b));
+  if (d.link) {
+    SALON.link = SALON.link === d.link ? null : d.link;
+    pintarFilasCompradores(); return;
+  }
   if (d.cerrar) {
     SALON.asignando = null; SALON.anulando = null; SALON.anulandoEntrada = null;
     pintarFilasCompradores(); return;
@@ -1911,50 +2196,229 @@ async function liberarMesa(ordenId) {
   await refrescarSalon();
 }
 
-/* ══ el registro de decisiones ════════════════════════════════════
-   Abajo de todo en el tablero, y no arriba: no es una alerta, es lo que
-   se mira cuando algo ya pasó y hay que explicarlo. Cada fila dice qué se
-   hizo, por qué y quién — y el motivo va entero, sin recortar: es la
-   única parte que nadie puede reconstruir después.
+/* ══ la bitácora ══════════════════════════════════════════════════
+   Todo lo que se decidió y todo lo que pasó en la puerta ya estaba
+   guardado con autor, hora y motivo, en dos tablas append-only que nadie
+   puede editar ni borrar. Lo que faltaba era poder leerlo sin un PAT.
 
-   La base no deja editarlo ni borrarlo (admin_bitacora es append-only),
-   así que acá no hay un solo botón: es una pantalla de lectura. */
+   Es la pantalla que se abre cuando alguien pregunta "¿quién anuló esta
+   compra?" o "¿por qué esta manilla figura sin usar si yo la escaneé?".
+   Esas dos preguntas no se contestan con una tabla: se contestan con una
+   historia. Por eso acá no hay grilla — hay una línea por hecho, agrupada
+   por día, en el orden en que pasaron las cosas, y el MOTIVO en grande.
+   El motivo es el campo que la base hace obligatorio para anular; que
+   quede escondido en la cuarta columna de una tabla es tirarlo.
+
+   ── las dos fuentes ──
+   `bitacora_admin` trae las decisiones del escritorio: anulaciones,
+   cortesías, revisiones, cierres y pagos. `bitacora_puerta` trae lo que
+   le pasó a cada manilla en el ingreso. Se muestran juntas y ordenadas
+   por hora porque así fue como pasaron: una manilla que se escaneó a las
+   23:40 y se anuló a las 23:50 cuenta una sola historia, no dos.
+
+   ── el permiso lo decide la base, y no se rehace acá ──
+   `bitacora_admin` exige puede_editar(): a un portero le contesta "Sin
+   permiso" y esta pantalla no lo muestra como un error, simplemente no
+   trae ese bloque. `bitacora_puerta` SIN puede_editar() devuelve solo lo
+   que hizo quien pregunta —un portero no audita a los otros porteros— y
+   lo dice en `alcance`. Acá se lee ese campo y se escribe el cartel; no
+   se mira el rol para decidir nada, porque el día que las dos lógicas se
+   desincronicen la pantalla va a mentir con total convicción. */
 const ACCION_TXT = {
   orden_anulada:       "Compra anulada",
   entrada_anulada:     "Manilla anulada",
   cortesias_emitidas:  "Cortesías emitidas",
   revision_confirmada: "Revisión confirmada",
+  evento_cerrado:      "Evento cerrado",
+  evento_reabierto:    "Evento reabierto",
+  comision_pagada:     "Comisión pagada",
 };
 
+const PUERTA_TXT = {
+  validada:  "Entró",
+  reingreso: "Volvió a entrar",
+  deshecha:  "Se deshizo el ingreso",
+  rechazada: "Rechazada en el filtro",
+};
+
+/* Las dos respuestas se aplanan a la MISMA forma antes de dibujar nada.
+   Con dos formas distintas hay dos plantillas, y dos plantillas es cómo
+   una fuente termina mostrando el motivo y la otra olvidándoselo. */
+function sucesoAdmin(f) {
+  return { id: "a" + f.id, at: f.ocurrio_at, fuente: "panel",
+           que: ACCION_TXT[f.accion] || f.accion,
+           sobre: detalleRegistro(f), motivo: f.motivo || "",
+           quien: f.actor || "—", donde: "en el panel" };
+}
+
+function sucesoPuerta(f) {
+  const nota = [];
+  if (f.accion === "deshecha" || f.accion === "reingreso") {
+    if (f.used_at_previo) nota.push(`había entrado ${fmtFH(f.used_at_previo)}`);
+    if (f.portero_previo_nombre) nota.push(`lo marcó ${f.portero_previo_nombre}`);
+  }
+  if (f.accion === "rechazada") nota.push(`estaba ${ESTADO_PREVIO_TXT[f.estado_previo] || f.estado_previo}`);
+  return { id: "p" + f.id, at: f.ocurrio_at, fuente: "puerta",
+           que: PUERTA_TXT[f.accion] || f.accion,
+           sobre: [f.code, f.cliente].filter(Boolean).join(" · "),
+           /* La puerta no pide motivo y acá no se le inventa uno: un
+              escaneo no es una decisión con explicación, es un hecho.
+              Lo que sí va es qué había antes, que es la mitad del dato
+              que hace falta para reclamarle a alguien. */
+           motivo: "", nota: nota.join(" · "),
+           quien: f.actor || "—", donde: "en la puerta" };
+}
+
+const ESTADO_PREVIO_TXT = { valida: "válida", usada: "ya usada", anulada: "anulada" };
+
+/* Trae las dos fuentes sin dejar que una tumbe a la otra: al portero,
+   `bitacora_admin` le tira "Sin permiso" y eso NO es un error de
+   pantalla, es la respuesta correcta. Por eso allSettled y no all. */
+async function traerBitacora(eventoId, tope) {
+  const [ra, rp] = await Promise.all([
+    sb.rpc("bitacora_admin",  { p_evento: eventoId, p_desde: 0, p_tope: tope }),
+    sb.rpc("bitacora_puerta", { p_evento: eventoId, p_entrada: null, p_desde: 0, p_tope: tope }),
+  ]);
+  const admin  = ra.error ? null : (ra.data || {});
+  const puerta = rp.error ? null : (rp.data || {});
+  const sucesos = [
+    ...((admin  && admin.filas)  || []).map(sucesoAdmin),
+    ...((puerta && puerta.filas) || []).map(sucesoPuerta),
+  ].sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0));
+  return { admin, puerta, sucesos,
+           errores: [ra.error, rp.error].filter(Boolean).map(e => sinCodigo(e.message)) };
+}
+
+const DIA_LARGO = t => new Date(t).toLocaleDateString("es-BO",
+  { weekday: "long", day: "numeric", month: "long" });
+const HORA = t => new Date(t).toLocaleTimeString("es-BO",
+  { hour: "2-digit", minute: "2-digit", hour12: false });
+
+/* Agrupada por día y con la hora al costado: "el jueves a las 23:50" es
+   como se acuerda una noche, no "2026-08-29T23:50:12.331Z". */
+function historia(sucesos) {
+  let dia = null;
+  return `<ol class="bitacora">${sucesos.map(s => {
+    const d = DIA_LARGO(s.at);
+    const cab = d === dia ? "" : `<li class="bit-dia">${esc(d)}</li>`;
+    dia = d;
+    return cab + `
+      <li class="bit-suceso bit-${s.fuente}">
+        <span class="bit-hora">${esc(HORA(s.at))}</span>
+        <div class="bit-cuerpo">
+          <p class="bit-que"><b>${esc(s.que)}</b>${s.sobre ? ` — ${esc(s.sobre)}` : ""}</p>
+          ${s.motivo ? `<p class="bit-motivo">“${esc(s.motivo)}”</p>` : ""}
+          ${s.nota ? `<p class="bit-nota">${esc(s.nota)}</p>` : ""}
+          <p class="bit-quien">${esc(s.quien)} · ${esc(s.donde)}</p>
+        </div>
+      </li>`;
+  }).join("")}</ol>`;
+}
+
+/* La pantalla entera. `volver` viene de quien la abre: desde el evento se
+   vuelve al evento y desde la puerta se vuelve a la puerta — con la
+   cámara apagada de antes, porque un <video> huérfano sigue comiendo
+   batería toda la noche. */
+async function pantallaBitacora(eventoId, opts) {
+  const volver = (opts && opts.volver) || (() => abrirEvento(eventoId));
+  BIT.evento = eventoId;
+  BIT.volver = volver;
+  $("#main").innerHTML = `<p class="cargando">Cargando la bitácora…</p>`;
+
+  const ev = await sb.from("eventos").select("id,nombre,slug,fecha").eq("id", eventoId).single();
+  /* Se vuelve por donde se vino y no a "eventos": el portero que llega
+     acá desde la puerta no tiene esa pestaña, y mandarlo ahí lo deja
+     mirando una pantalla en blanco. */
+  if (ev.error || !ev.data) { avisar("Ese evento ya no existe."); volver(); return; }
+  BIT.ev = ev.data;
+  const atras = (opts && opts.volverTxt) || BIT.ev.nombre;
+
+  const b = await traerBitacora(eventoId, 500);
+  const sinNada = !b.sucesos.length;
+  const soloMios = b.puerta && b.puerta.alcance === "mios";
+  const cortada = (b.admin && b.admin.cortada) || (b.puerta && b.puerta.cortada);
+
+  $("#main").innerHTML = `
+    <div class="cab-seccion">
+      <button class="btn plano chico" id="btnVolver">← ${esc(atras)}</button>
+      <h2>Bitácora</h2>
+      ${b.admin ? `<button type="button" class="btn plano chico" id="btnCsvBit"
+        >Bajar la bitácora</button>` : ""}
+    </div>
+    <p class="ayuda bajo-titulo">Qué pasó, quién y por qué. Se escribe sola, no se
+      puede editar ni borrar, y va de lo más nuevo a lo más viejo.${
+      soloMios ? " Acá ves solo lo que hiciste vos: un portero no audita a los otros porteros." : ""}${
+      cortada ? ` En pantalla entran las últimas 500; el archivo las trae todas.` : ""}</p>
+    ${b.errores.length && !b.admin && !b.puerta
+      ? `<p class="error">${esc(b.errores[0])}</p>` : ""}
+    ${sinNada
+      /* Con alcance 'mios' la frase no puede hablar del evento: el
+         portero no está viendo el evento, está viendo lo suyo, y decirle
+         "no pasó nada" sería afirmar algo que esta pantalla no sabe. */
+      ? soloMios
+        ? `<p class="vacio">Todavía no escaneaste ninguna manilla en este evento.
+             Acá va quedando lo tuyo: cada ingreso, cada deshacer y cada rechazo.</p>`
+        : `<p class="vacio">Todavía no pasó nada en este evento: no se anuló ni se regaló
+             nada, y nadie escaneó una manilla.</p>`
+      : historia(b.sucesos)}`;
+
+  $("#btnVolver").onclick = () => volver();
+  const bc = $("#btnCsvBit");
+  if (bc) bc.onclick = () => conBoton(bc, "Armando…", bajarBitacora);
+}
+
+const BIT = { evento: null, ev: null, volver: null };
+
+/* El archivo trae las dos fuentes completas, no las 500 de la pantalla:
+   se baja justo cuando hay que reconstruir una noche entera, que es
+   cuando 500 no alcanzan. Si algo se corta, `traerTodo` tira y no se baja
+   nada — un CSV de auditoría al que le faltan filas es el peor archivo
+   posible, porque se lee como si estuviera completo. */
+async function bajarBitacora() {
+  const [a, p] = await Promise.all([
+    traerTodo("bitacora_admin",  { p_evento: BIT.evento }),
+    traerTodo("bitacora_puerta", { p_evento: BIT.evento, p_entrada: null }),
+  ]);
+  const sucesos = [...a.filas.map(sucesoAdmin), ...p.filas.map(sucesoPuerta)]
+    .sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0));
+  if (!sucesos.length) { avisar("Todavía no hay nada anotado en este evento."); return; }
+  CSV.bajar(CSV.nombre("bitacora", BIT.ev), [
+    ["Cuándo", "Dónde", "Qué pasó", "Sobre", "Motivo", "Quién"],
+    ...sucesos.map(s => [CSV.fh(s.at), s.fuente === "panel" ? "Panel" : "Puerta",
+                         s.que, s.sobre || "", s.motivo || s.nota || "", s.quien]),
+  ]);
+  avisar(`Bajaron ${sucesos.length} ${sucesos.length === 1 ? "movimiento" : "movimientos"}.`);
+}
+
+/* ── el asomo del tablero ──
+   Abajo de todo y no arriba: no es una alerta, es lo que se mira cuando
+   algo ya pasó y hay que explicarlo. Van las últimas cinco decisiones y
+   un botón: el que llega hasta acá abajo quiere ver si hay algo raro, y
+   si lo hay entra a la bitácora entera. Cinco líneas contestan la primera
+   pregunta sin empujar el resto del tablero fuera de la pantalla. */
 async function refrescarRegistro(eventoId) {
   const z = $("#zonaRegistro");
   if (!z) return;
-  const { data, error } = await sb.rpc("bitacora_admin", { p_evento: eventoId });
-  if (error) { z.innerHTML = `<p class="error">${esc(error.message)}</p>`; return; }
+  const { data, error } = await sb.rpc("bitacora_admin",
+    { p_evento: eventoId, p_desde: 0, p_tope: 5 });
+  if (error) { z.innerHTML = `<p class="error">${esc(sinCodigo(error.message))}</p>`; return; }
   const filas = (data && data.filas) || [];
+  const total = Number((data && data.total) || 0);
   z.innerHTML = `
-    <h3 class="titulo-bloque">Decisiones</h3>
-    <p class="ayuda bajo-titulo">Anulaciones, cortesías y revisiones resueltas.
-      Se escribe solo y no se puede editar ni borrar.${
-      data && data.cortada ? ` Se muestran las últimas ${num(data.tope)} de ${num(data.total)}.` : ""}</p>
-    ${filas.length ? `
-      <div class="grilla-envoltorio">
-        <table class="tabla tabla-registro">
-          <thead><tr><th>Cuándo</th><th>Qué</th><th>Motivo</th><th>Quién</th></tr></thead>
-          <tbody>${filas.map(f => `
-            <tr>
-              <td class="dato">${esc(fmtFH(f.ocurrio_at))}</td>
-              <td><span class="prod-nombre">${esc(ACCION_TXT[f.accion] || f.accion)}</span>
-                <em>${esc(detalleRegistro(f))}</em></td>
-              <td class="detalle">${esc(f.motivo)}</td>
-              <td class="dato">${esc(f.actor || "—")}</td>
-            </tr>`).join("")}</tbody>
-        </table>
-      </div>`
+    <div class="cab-bloque sep">
+      <h3 class="titulo-bloque">Decisiones</h3>
+      <span class="conteo">${total ? `${num(total)} en total` : ""}</span>
+      <span class="bajadas">
+        <button type="button" class="btn plano chico" id="btnVerBitacora">Ver la bitácora →</button>
+      </span>
+    </div>
+    ${filas.length
+      ? historia(filas.map(sucesoAdmin))
       : `<p class="vacio">Todavía no se anuló ni se regaló nada en este evento.</p>`}`;
+  $("#btnVerBitacora").onclick = () => pantallaBitacora(eventoId);
 }
 
-/* La línea chica de cada fila: lo que la decisión tocó, en el vocabulario
+/* La línea chica de cada hecho: lo que la decisión tocó, en el vocabulario
    de cada acción. Un "3" suelto no dice nada; "3 manillas · 1 ya había
    entrado" es lo que hace falta para entender una anulación vieja. */
 function detalleRegistro(f) {
@@ -1962,7 +2426,7 @@ function detalleRegistro(f) {
   if (f.accion === "orden_anulada") {
     const usadas = Number(d.usadas_incluidas) || 0;
     return [
-      d.comprador || "sin nombre",
+      d.comprador || f.comprador || "sin nombre",
       manillasTxt(d.entradas_anuladas || 0),
       usadas ? `${num(usadas)} ya ${usadas === 1 ? "había" : "habían"} entrado` : "",
       d.mesa_liberada ? "mesa liberada" : "",
@@ -1970,20 +2434,32 @@ function detalleRegistro(f) {
     ].filter(Boolean).join(" · ");
   }
   if (f.accion === "entrada_anulada") {
-    return [d.code, d.cliente, d.estado_previo === "usada" ? "ya había entrado" : "",
+    return [d.code || f.code, d.cliente, d.estado_previo === "usada" ? "ya había entrado" : "",
             d.devuelve_cupo ? "devolvió su lugar" : ""].filter(Boolean).join(" · ");
   }
   if (f.accion === "cortesias_emitidas") {
     return [`${num(d.cantidad)} × ${d.tipo || ""}`, `para ${d.para || "—"}`].join(" · ");
   }
   if (f.accion === "revision_confirmada") {
-    return [d.comprador || "sin nombre", manillasTxt(d.entradas || 0),
+    return [d.comprador || f.comprador || "sin nombre", manillasTxt(d.entradas || 0),
             d.monto_cobrado != null ? `cobrado ${bs(d.monto_cobrado)} de ${bs(d.total)}` : "",
             d.pago_ref ? `ref ${d.pago_ref}` : ""].filter(Boolean).join(" · ");
   }
+  if (f.accion === "evento_cerrado") {
+    return [`versión ${d.version}`, `${bs(d.bruto)} vendidos`,
+            `${bs(d.comisiones)} en comisiones`].filter(Boolean).join(" · ");
+  }
+  if (f.accion === "evento_reabierto") {
+    const n = Number(d.comisiones_ya_pagadas) || 0;
+    return n ? `${num(n)} ${n === 1 ? "comisión ya pagada" : "comisiones ya pagadas"} contra la foto anterior`
+             : "no había ninguna comisión pagada todavía";
+  }
+  if (f.accion === "comision_pagada") {
+    return [d.nombre, d.monto != null ? bs(d.monto) : "",
+            d.entradas != null ? manillasTxt(d.entradas) : ""].filter(Boolean).join(" · ");
+  }
   return "";
 }
-
 /* ══ cortesías ════════════════════════════════════════════════════
    El formulario más corto posible —qué, cuántas, para quién, por qué— y
    después los códigos, que es a lo que se vino. Sale de acá con algo que
@@ -2866,5 +3342,8 @@ async function cambiarActivo(id) {
   } catch { /* sesión vieja o cuenta deshabilitada: queda la pantalla de entrar */ }
 })();
 
-window.ADMIN = { S, sb, mostrar, avisar, esc };   // para las tareas siguientes
+/* `bitacora` se expone para la puerta: el portero necesita poder revisar
+   sus propios escaneos sin salir de su pestaña, y la pantalla es la misma
+   —lo que ve cada uno lo decide bitacora_puerta() adentro, no esto. */
+window.ADMIN = { S, sb, mostrar, avisar, esc, bitacora: pantallaBitacora };
 })();

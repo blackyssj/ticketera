@@ -261,6 +261,13 @@ function dibujar() {
       </form>
       <p class="ayuda">El QR se lee solo. El código a mano es para cuando la
         pantalla del cliente no ilumina o el QR está roto.</p>
+
+      <div class="acciones">
+        <button type="button" class="btn plano chico" id="pBitacora">Ver la bitácora</button>
+      </div>
+      <p class="ayuda">Ahí queda escrito cada ingreso, cada deshacer y cada
+        rechazo, con la hora. Es lo que se mira cuando alguien discute si pasó
+        o no pasó.</p>
     </div>`;
 
   $("#pEvento").onchange = e => {
@@ -284,6 +291,17 @@ function dibujar() {
   $("#pFiltro").onclick = () => { despertarAudio(); cambiarFiltro(!P.filtro); };
   pintarFiltro();
   refrescarConteo();
+
+  /* La cámara se apaga ANTES de irse. La bitácora reemplaza el #main
+     entero, así que el <video> se queda huérfano pero el stream sigue
+     abierto: la batería del teléfono de la puerta se va igual y la luz de
+     la cámara queda prendida toda la noche sin que nadie sepa por qué.
+     Al volver, `pantalla()` la enciende de nuevo. */
+  $("#pBitacora").onclick = () => {
+    const ev = P.evento.id;
+    apagar();
+    window.ADMIN.bitacora(ev, { volver: () => pantalla(), volverTxt: "Puerta" });
+  };
 
   $("#pFormMano").onsubmit = ev => {
     ev.preventDefault();
