@@ -2805,4 +2805,296 @@ begin
   raise notice 'OK cerrar congela la foto, la puerta sigue andando, y una comision se paga una sola vez';
 end $$;
 
+-- ============================================================
+-- 0040 — los exportables
+--
+-- Lo que se prueba acá es lo que hace que un archivo mienta sin que nadie
+-- lo note, que es la única forma de falla que importa en un export:
+--
+-- 1) El corte silencioso. Se siembran 1200 manillas —doscientas más que
+--    el tope mudo de PostgREST— y se recorre `entradas_evento` como lo
+--    hace el navegador: pidiendo de a mil y avanzando `p_desde` hasta
+--    juntar `total`. Tienen que salir las 1200, DISTINTAS: un paginado
+--    sobre un orden ambiguo repite filas y se come otras, y el archivo
+--    queda con la cantidad justa y las filas equivocadas.
+-- 2) Que `total` se cuente sin el tope. Es lo único con lo que después se
+--    puede decir la verdad sobre si la lista quedó cortada; si se contara
+--    sobre la página, `cortada` sería false siempre.
+-- 3) El nombre con fórmula. Un comprador se llama
+--    `=HYPERLINK("http://malo","Hacé clic")` y su teléfono empieza con
+--    `+`. La base tiene que devolverlos TAL CUAL —neutralizar en la base
+--    sería corromper el dato para todas las pantallas— y el que neutraliza
+--    es csv.js, en el borde donde se escribe el archivo.
+-- 4) Los permisos, que no se rehacen en el frontend:
+--    · un rrpp no baja las manillas del evento (ni las suyas: la lista es
+--      del evento entero), pero SÍ sus compradores, porque
+--      compradores_evento ya recorta por auth.uid().
+--    · un portero SÍ baja las manillas —es su lista de contingencia sin
+--      señal— y en la bitácora de la puerta ve SOLO lo suyo, con
+--      `alcance` diciéndolo.
+--    · un admin de OTRO organizador no ve nada, y recibe el mismo
+--      'Sin permiso' que con un evento que no existe.
+-- 5) Que la bitácora de admin traiga el motivo, el autor y de quién era
+--    la compra. Sin el comprador, una anulación vieja es una acción y un
+--    uuid, y hay que ir a buscar a otra pantalla de quién era: que es el
+--    momento en que se deja de leer la bitácora.
+-- ============================================================
+do $$
+declare v_org    uuid := '00400040-0040-4040-8040-000000000001';
+        v_org2   uuid := '00400040-0040-4040-8040-000000000002';
+        v_admin  uuid := '00400040-0040-4040-8040-000000000003';
+        v_rrpp   uuid := '00400040-0040-4040-8040-000000000004';
+        v_admin2 uuid := '00400040-0040-4040-8040-000000000005';
+        v_por1   uuid := '00400040-0040-4040-8040-000000000006';
+        v_por2   uuid := '00400040-0040-4040-8040-000000000007';
+        v_ev     uuid := '00400040-0040-4040-8040-000000000008';
+        v_gen    uuid := '00400040-0040-4040-8040-000000000009';
+        v_fase   uuid := '00400040-0040-4040-8040-00000000000a';
+        v_malo   text := '=HYPERLINK("http://malo","Hacé clic")';
+        v_o1 uuid; v_o2 uuid; v_o3 uuid;
+        v_r jsonb; v_n int; v_off int; v_total int;
+        v_ids uuid[]; v_c1 text; v_c2 text;
+begin
+  -- ── el escenario ────────────────────────────────────────
+  insert into organizadores (id, slug, nombre, fee_pct, fee_fijo_transaccion, fee_piso) values
+    (v_org,  'prueba-0040',  'Prueba 0040',      0.1000, 0, 0),
+    (v_org2, 'prueba-0040b', 'Prueba 0040 otro', 0.1000, 0, 0);
+  insert into auth.users (id, email) values
+    (v_admin,  'admin-0040@ticketera.local'),
+    (v_rrpp,   'rrpp-0040@ticketera.local'),
+    (v_admin2, 'admin2-0040@ticketera.local'),
+    (v_por1,   'portero1-0040@ticketera.local'),
+    (v_por2,   'portero2-0040@ticketera.local');
+  insert into perfiles (id, organizador_id, nombre, rol, slug) values
+    (v_admin,  v_org,  'Admin 0040',    'admin',   null),
+    (v_rrpp,   v_org,  'Rrpp 0040',     'rrpp',    'rrpp-0040'),
+    (v_admin2, v_org2, 'Admin de otro', 'admin',   null),
+    (v_por1,   v_org,  'Portero Uno',   'portero', null),
+    (v_por2,   v_org,  'Portero Dos',   'portero', null);
+  insert into eventos (id, organizador_id, slug, nombre, fecha, estado) values
+    (v_ev, v_org, 'evento-0040', 'Evento 0040', current_date + 10, 'publicado');
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre, categoria, manillas, orden) values
+    (v_gen, v_org, v_ev, 'General 0040', 'entrada', 1, 1);
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta) values
+    (v_fase, v_org, v_ev, 'F1', now() - interval '1 hour', now() + interval '10 days');
+  insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo) values
+    (v_org, v_fase, v_gen, 100, 2000);
+
+  -- Tres compras por el camino real. La primera es la del nombre con
+  -- fórmula: entra por `crear_orden`, que es por donde entra cualquiera
+  -- desde el formulario público.
+  v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 2)),
+                       jsonb_build_object('nombre', v_malo, 'telefono', '+591 700 12345',
+                                          'email', 'malo@example.com'),
+                       null::uuid, null::text, null::uuid)->>'orden')::uuid;
+  perform emitir_orden(v_o1);
+  v_o2 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Marcelo Áñez', 'telefono', '70011223'),
+                       null::uuid, null::text, v_rrpp)->>'orden')::uuid;
+  perform emitir_orden(v_o2);
+  v_o3 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Lucía Terceros', 'telefono', '69884411'),
+                       null::uuid, null::text, null::uuid)->>'orden')::uuid;
+  perform emitir_orden(v_o3);
+
+  -- ── 1200 manillas ───────────────────────────────────────
+  -- Se insertan derecho y no por el checkout: lo que se prueba es el
+  -- paginado de entradas_evento, no la venta, y 1200 pasadas por
+  -- crear_orden serían minutos de test para probar otra cosa.
+  insert into entradas (organizador_id, evento_id, code, canal, tipo_id, fase_id,
+                        cliente, precio, estado)
+  select v_org, v_ev, 'Z' || lpad(i::text, 6, '0'), 'publico', v_gen, v_fase,
+         'Sembrada ' || i, 100, 'valida'
+    from generate_series(1, 1200) i;
+
+  select count(*) into v_total from entradas where evento_id = v_ev;
+  if v_total <= 1000 then
+    raise exception 'TEST_FAIL: el escenario tiene % manillas y tiene que pasar de 1000', v_total;
+  end if;
+
+  -- ── el recorrido, como lo hace el navegador ─────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+
+  v_r := entradas_evento(v_ev, 0, 1000);
+  if (v_r->>'total')::int <> v_total then
+    raise exception 'TEST_FAIL: entradas_evento dice total % y hay %', v_r->>'total', v_total;
+  end if;
+  if jsonb_array_length(v_r->'filas') <> 1000 then
+    raise exception 'TEST_FAIL: la primera pagina trajo % y se pidieron 1000',
+      jsonb_array_length(v_r->'filas');
+  end if;
+  if (v_r->>'cortada')::boolean is not true then
+    raise exception 'TEST_FAIL: con % de % filas dijo que no estaba cortada',
+      jsonb_array_length(v_r->'filas'), v_total;
+  end if;
+
+  v_ids := '{}';
+  v_off := 0;
+  loop
+    v_r := entradas_evento(v_ev, v_off, 1000);
+    v_n := jsonb_array_length(v_r->'filas');
+    exit when v_n = 0;
+    select v_ids || array_agg((f->>'id')::uuid) into v_ids
+      from jsonb_array_elements(v_r->'filas') f;
+    v_off := v_off + v_n;
+    exit when v_off >= (v_r->>'total')::int;
+  end loop;
+
+  if array_length(v_ids, 1) <> v_total then
+    raise exception 'TEST_FAIL: el recorrido junto % filas de %', array_length(v_ids, 1), v_total;
+  end if;
+  select count(distinct x) into v_n from unnest(v_ids) x;
+  if v_n <> v_total then
+    raise exception 'TEST_FAIL: el recorrido repitio filas: % distintas de %', v_n, v_total;
+  end if;
+  -- La última página tiene que decir que ya no falta nada.
+  if (v_r->>'cortada')::boolean is not false then
+    raise exception 'TEST_FAIL: la ultima pagina dijo que todavia estaba cortada';
+  end if;
+
+  -- ── el nombre con fórmula llega crudo ───────────────────
+  -- Neutralizar acá sería corromper el dato para toda la aplicación: el
+  -- nombre se muestra en el tablero, en la puerta y en el correo. El
+  -- apóstrofo lo pone csv.js, en el borde donde se escribe el archivo.
+  select f->>'comprador' into v_c1
+    from jsonb_array_elements(compradores_evento(v_ev, false)) f
+   where f->>'orden_id' = v_o1::text;
+  if v_c1 <> v_malo then
+    raise exception 'TEST_FAIL: la base devolvio el nombre cambiado: %', v_c1;
+  end if;
+  select f->>'telefono' into v_c2
+    from jsonb_array_elements(compradores_evento(v_ev, false)) f
+   where f->>'orden_id' = v_o1::text;
+  if v_c2 <> '+591 700 12345' then
+    raise exception 'TEST_FAIL: la base devolvio el telefono cambiado: %', v_c2;
+  end if;
+
+  -- ── una anulación con su motivo y su autor ──────────────
+  v_r := anular_orden(v_o3, 'pago doble; lo devolvió la pasarela', false);
+  reset role;
+  v_r := bitacora_admin(v_ev, 0, 200);
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  v_r := bitacora_admin(v_ev, 0, 200);
+  if (v_r->>'total')::int <> 1 then
+    raise exception 'TEST_FAIL: la bitacora del panel tiene % filas y tendria que tener 1', v_r->>'total';
+  end if;
+  if v_r->'filas'->0->>'motivo' <> 'pago doble; lo devolvió la pasarela' then
+    raise exception 'TEST_FAIL: la bitacora perdio el motivo: %', v_r->'filas'->0->>'motivo';
+  end if;
+  if v_r->'filas'->0->>'actor' <> 'Admin 0040' then
+    raise exception 'TEST_FAIL: la bitacora no dice quien fue: %', v_r->'filas'->0->>'actor';
+  end if;
+  -- El comprador es el dato que 0040 le agregó a cada fila: sin él, una
+  -- anulación vieja obliga a ir a buscar de quién era la compra.
+  if v_r->'filas'->0->>'comprador' <> 'Lucía Terceros' then
+    raise exception 'TEST_FAIL: la bitacora no dice de quien era la compra: %',
+      v_r->'filas'->0->>'comprador';
+  end if;
+  reset role;
+
+  -- ── dos porteros escanean ───────────────────────────────
+  select code into v_c1 from entradas where evento_id = v_ev and code = 'Z000001';
+  select code into v_c2 from entradas where evento_id = v_ev and code = 'Z000002';
+
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_por1::text, true);
+  perform validar_entrada(v_ev, v_c1);
+  -- El portero ve SU escaneo y ninguno más, y la función lo dice.
+  v_r := bitacora_puerta(v_ev, null, 0, 500);
+  if v_r->>'alcance' <> 'mios' then
+    raise exception 'TEST_FAIL: para un portero el alcance dijo %', v_r->>'alcance';
+  end if;
+  reset role;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_por2::text, true);
+  perform validar_entrada(v_ev, v_c2);
+  v_r := bitacora_puerta(v_ev, null, 0, 500);
+  if (v_r->>'total')::int <> 1 then
+    raise exception 'TEST_FAIL: el portero dos vio % filas y solo hizo 1', v_r->>'total';
+  end if;
+  if v_r->'filas'->0->>'code' <> v_c2 then
+    raise exception 'TEST_FAIL: el portero dos vio el escaneo del otro: %', v_r->'filas'->0->>'code';
+  end if;
+  -- Y no puede bajar las manillas del evento por la otra punta tampoco…
+  -- salvo que sí: es su lista de contingencia. Lo que no puede es auditar
+  -- al compañero, que es lo de arriba.
+  v_r := entradas_evento(v_ev, 0, 10);
+  if (v_r->>'total')::int <> v_total then
+    raise exception 'TEST_FAIL: al portero le negaron su lista de la puerta';
+  end if;
+  reset role;
+
+  -- El admin ve los dos escaneos, y con alcance de evento.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  v_r := bitacora_puerta(v_ev, null, 0, 500);
+  if v_r->>'alcance' <> 'evento' then
+    raise exception 'TEST_FAIL: para un admin el alcance dijo %', v_r->>'alcance';
+  end if;
+  if (v_r->>'total')::int <> 2 then
+    raise exception 'TEST_FAIL: el admin vio % escaneos y hubo 2', v_r->>'total';
+  end if;
+  reset role;
+
+  -- ── el relacionador ─────────────────────────────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_rrpp::text, true);
+  begin
+    v_r := entradas_evento(v_ev, 0, 10);
+    raise exception 'TEST_FAIL: un rrpp bajo la lista de manillas del evento';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  begin
+    v_r := bitacora_admin(v_ev, 0, 10);
+    raise exception 'TEST_FAIL: un rrpp leyo la bitacora del panel';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  -- Sus compradores sí, y SOLO los suyos: p_solo_mios en false no lo
+  -- amplía, porque compradores_evento lo ignora para el que no edita.
+  v_r := compradores_evento(v_ev, false);
+  if jsonb_array_length(v_r) <> 1 then
+    raise exception 'TEST_FAIL: el rrpp vio % compras y vendio 1', jsonb_array_length(v_r);
+  end if;
+  if v_r->0->>'orden_id' <> v_o2::text then
+    raise exception 'TEST_FAIL: el rrpp vio una compra que no es suya';
+  end if;
+  reset role;
+
+  -- ── el admin de otro organizador ────────────────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_admin2::text, true);
+  begin
+    v_r := entradas_evento(v_ev, 0, 10);
+    raise exception 'TEST_FAIL: un admin ajeno bajo las manillas de otro organizador';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  begin
+    v_r := bitacora_admin(v_ev, 0, 10);
+    raise exception 'TEST_FAIL: un admin ajeno leyo la bitacora de otro organizador';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  -- Un evento que no existe contesta lo MISMO que uno ajeno: si contestara
+  -- distinto, la función sería un oráculo de qué uuids hay en la base del
+  -- vecino.
+  begin
+    v_r := entradas_evento(gen_random_uuid(), 0, 10);
+    raise exception 'TEST_FAIL: entradas_evento contesto por un evento inexistente';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  if bitacora_puerta(v_ev, null, 0, 500)->>'total' <> '0' then
+    raise exception 'TEST_FAIL: un admin ajeno vio escaneos de otro organizador';
+  end if;
+  reset role;
+
+  raise notice 'OK los exportables traen todas las filas, dicen si cortaron, devuelven el nombre crudo para que lo neutralice el CSV, y cada rol baja solo lo suyo';
+end $$;
+
 rollback;

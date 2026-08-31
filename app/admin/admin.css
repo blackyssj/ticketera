@@ -1083,3 +1083,74 @@ body[data-filtro="1"] .puerta-visor::before{
   display:block;margin-top:5px;font-size:11px;line-height:1;
   color:var(--txt-3);font-variant-numeric:tabular-nums;min-height:11px}
 .nota-fee{margin:14px 0 0;max-width:62ch}
+
+/* El link de venta de cada relacionador, dentro de su fila. Va en el flujo
+   de la fila y no en un modal: el admin lo copia y lo manda, y un paso más
+   entre eso y el WhatsApp es un paso donde se manda el link pelado. */
+.persona-links{
+  grid-column:1/-1;margin-top:10px;padding-top:10px;
+  border-top:1px dashed var(--linea-2);display:grid;gap:6px}
+.persona-links .link-publico{margin:0}
+.link-evento-nombre{
+  font:600 11px/1 var(--texto);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--txt-3);margin-right:8px}
+.vacio-links{color:var(--txt-3);font-size:13px;border-top:1px dashed var(--linea-2)}
+
+/* ─── los botones de bajar ───
+   A la derecha del título del bloque y no arriba en una barra: un export
+   sirve para lo que se está mirando, y en una barra global habría que
+   elegir de nuevo el evento y acordarse de que existe. `margin-left:auto`
+   los empuja al borde para que no compitan con el buscador, que es lo que
+   se usa cien veces más seguido. */
+.bajadas{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+.cab-bloque .buscador+.conteo+.bajadas{margin-left:auto}
+.liq-cab .bajadas{margin-left:auto}
+
+/* ─── el link de una compra ───
+   Se despliega abajo de la fila, igual que la anulación: la pregunta es
+   "el link de ESTA compra" y en un modal la fila que la origina
+   desaparece justo cuando hay que confirmar de quién era. */
+.link-compra{display:grid;gap:10px;padding:16px 18px;border-left:3px solid var(--dorado)}
+.link-compra .link-publico{margin:0}
+.link-compra .acciones{margin-top:0}
+/* El resultado del envío arranca vacío y ocupa cero: un renglón fijo que
+   dice "—" al lado de un botón de mandar correos se lee como un estado, y
+   el estado que importa es el de después de apretar. */
+.mail-resultado{
+  font-family:var(--dato);font-size:12px;line-height:1.5;max-width:72ch;color:var(--txt-2)}
+.mail-resultado:empty{display:none}
+.mail-resultado[data-ok="1"]{color:var(--ok)}
+.mail-resultado[data-ok="0"]{color:var(--aviso)}
+
+/* ─── la bitácora ───
+   No es una tabla. Una tabla obliga a leer en columnas y lo que hay que
+   entender acá es una secuencia: a las 23:40 entró, a las 23:50 alguien
+   la anuló y escribió por qué. La hora al costado, el motivo entre
+   comillas y en el color del texto principal —es lo único que nadie puede
+   reconstruir después—, y quién lo hizo abajo, en chico. */
+.bitacora{list-style:none;margin:0;padding:0}
+.bit-dia{
+  font-family:var(--dato);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--txt-3);margin:22px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--linea);
+}
+.bit-dia:first-child{margin-top:4px}
+.bit-suceso{
+  display:flex;gap:14px;padding:11px 0 11px 14px;
+  border-bottom:1px solid var(--linea);border-left:2px solid var(--linea-2);
+}
+/* Dos fuentes, dos colores en el filo: lo que decidió una persona en el
+   escritorio y lo que pasó en la puerta no se confunden de un vistazo. */
+/* `bit-` adelante y no `.panel`/`.puerta` a secas: `.puerta` ya existe en
+   esta hoja —es la pantalla del molinete, con max-width y margin auto— y
+   las filas de la puerta salían centradas adentro de la bitácora. */
+.bit-suceso.bit-panel{border-left-color:var(--rojo)}
+.bit-suceso.bit-puerta{border-left-color:var(--txt-3)}
+.bit-hora{
+  font-family:var(--dato);font-size:12px;color:var(--txt-3);
+  flex:0 0 44px;padding-top:1px;font-variant-numeric:tabular-nums;
+}
+.bit-cuerpo{min-width:0;display:grid;gap:3px}
+.bit-que{font-size:14px;line-height:1.4;color:var(--txt-2)}
+.bit-que b{color:var(--txt);font-weight:600}
+.bit-motivo{font-size:14px;line-height:1.45;color:var(--txt);max-width:74ch}
+.bit-nota,.bit-quien{font-family:var(--dato);font-size:11.5px;color:var(--txt-3)}
