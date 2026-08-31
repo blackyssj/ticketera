@@ -234,6 +234,10 @@ function pintarHero() {
     notaFee.join(", ") + ". Ya incluye el procesamiento del pago.";
 }
 
+/* El nombre de cada paso va en su propio span porque en un teléfono no entran
+   los cuatro: ahí queda visible el del paso actual y los otros se leen por el
+   número. El span sigue en el DOM —escondido a la vista, no borrado— así que
+   el lector de pantalla los sigue nombrando. */
 function pintarPasos() {
   const i = PASOS.findIndex(p => p.id === S.paso);
   $("#pasos").innerHTML = PASOS.map((p, k) => {
@@ -241,9 +245,21 @@ function pintarPasos() {
     const tag = estado === "hecho" ? "button" : "div";
     return (k ? '<span class="paso-sep"></span>' : "") +
       `<${tag} class="paso" data-estado="${estado}"` +
+      (estado === "actual" ? ' aria-current="step"' : "") +
       (estado === "hecho" ? ` data-ir="${p.id}" type="button"` : "") +
-      `><span class="n">${k + 1}</span>${esc(p.txt)}</${tag}>`;
+      `><span class="n">${k + 1}</span><span class="t">${esc(p.txt)}</span></${tag}>`;
   }).join("");
+  marcarDesborde();
+}
+
+/* Con vocabularios largos ("Reservas", "Tu reserva") el rail puede seguir sin
+   entrar. Antes se cortaba en seco contra el borde y no había nada que dijera
+   que seguía: se degradaba a un scroll invisible. El degradado de la derecha
+   es esa señal, y se apaga al llegar al final para no teñir el último paso. */
+function marcarDesborde() {
+  const r = $("#pasos");
+  const falta = r.scrollWidth - r.clientWidth - r.scrollLeft > 1;
+  r.dataset.mas = falta ? "1" : "0";
 }
 
 /* Dos grupos, no una lista sola: una entrada y una mesa se compran distinto
@@ -623,6 +639,8 @@ $("#pasos").addEventListener("click", e => {
   const b = e.target.closest("[data-ir]");
   if (b && S.paso !== "pago" && S.paso !== "listo") irA(b.dataset.ir);
 });
+$("#pasos").addEventListener("scroll", marcarDesborde, { passive: true });
+addEventListener("resize", marcarDesborde);
 
 $("#btnSeguir").addEventListener("click", () => {
   if (S.paso === "entradas") return irA("datos");

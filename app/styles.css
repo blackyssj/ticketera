@@ -93,8 +93,14 @@ input{font:inherit}
   overflow-x:auto;scrollbar-width:none;
 }
 .pasos::-webkit-scrollbar{display:none}
+/* El degradado avisa que el rail sigue más allá del borde. Solo aparece con
+   data-mas="1" (app.js) para no teñir el último paso cuando ya entra entero. */
+.pasos[data-mas="1"]{
+  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 42px),transparent);
+  mask-image:linear-gradient(90deg,#000 calc(100% - 42px),transparent);
+}
 .paso{
-  display:flex;align-items:center;gap:9px;flex:0 0 auto;
+  display:flex;align-items:center;gap:9px;flex:0 0 auto;position:relative;
   padding:7px 14px 7px 8px;border-radius:999px;
   font-family:var(--dato);font-size:12px;letter-spacing:.04em;
   color:var(--tinta-40);white-space:nowrap;
@@ -299,6 +305,22 @@ body.sin-rail .lienzo-col{padding-bottom:0}
   .tipo-der{grid-column:1;grid-row:auto;justify-content:space-between}
   .tipo-precio{text-align:left}
   .tipo-cupo{grid-row:auto}
+}
+
+/* ══ teléfono ═════════════════════════════════════════════════════
+   Va después del bloque de 900px a propósito: si estas reglas quedaran
+   arriba, cualquier selector suelto de más abajo con la misma
+   especificidad las pisaría por orden de aparición. */
+@media (max-width:600px){
+  /* Los cuatro nombres no entran en 375px: se muestra el del paso en el que
+     estás y el resto queda en su número. El span no se borra —se saca de la
+     vista— para que el lector de pantalla siga leyendo "Pago, paso 3". */
+  .paso:not([data-estado="actual"]) .t{
+    position:absolute;width:1px;height:1px;overflow:hidden;
+    clip-path:inset(50%);white-space:nowrap;
+  }
+  .paso:not([data-estado="actual"]){padding:7px 8px;gap:0}
+  .paso-sep{flex-basis:10px}
 }
 
 @media (prefers-reduced-motion:reduce){
