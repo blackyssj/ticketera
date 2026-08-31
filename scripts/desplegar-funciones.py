@@ -15,6 +15,7 @@ from _api import REF, pat, request
 
 BASE = pathlib.Path(__file__).resolve().parent.parent / "supabase" / "functions"
 TODAS = ["eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
+         "barrer-pagos",
          "orden", "enviar-entradas", "equipo"]
 
 # Por defecto False: eventos, evento, crear-orden, iniciar-pago, estado-orden y

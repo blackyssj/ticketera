@@ -47,6 +47,13 @@ async function consultar(pago_ref: string): Promise<{ pagado: boolean; monto: nu
      Un header de más no rompe un pedido que ya funciona. */
   const usuario = Deno.env.get("V2PRO_USUARIO") ?? "";
   const pass    = Deno.env.get("V2PRO_PASS") ?? "";
+  /* El nombre del parámetro es `id_transaccion` y el valor es el id que
+     devolvió la pasarela, no el de la orden. Con cualquier otro nombre
+     —`codigo`, `codigoTransaccion`, `transaccion`— contesta
+     {"error":"1009","Descripcion":"Faltandatos"}: el mismo 1009 del campo
+     `correo` en solicitud_pago. Y con `id_transaccion` pero pasándole el
+     uuid de la orden contesta "Error al crear la llave", que es otra cosa
+     y también falla. Se averiguó probando contra el comercio real. */
   const r = await fetch(`${V2PRO}/consulta_transaccion_v2.php`, {
     method: "POST",
     headers: {
@@ -55,17 +62,29 @@ async function consultar(pago_ref: string): Promise<{ pagado: boolean; monto: nu
     },
     body: JSON.stringify({
       id_comercio: Deno.env.get("V2PRO_LLAVE"),
-      usuario,
-      pass,
-      codigo: pago_ref,
+      id_transaccion: pago_ref,
     }),
   });
-  const j = await r.json().catch(() => ({}));
-  const fila = Array.isArray(j) ? j[0] : (j.data?.[0] ?? j);
-  const estado = String(fila?.so_estado ?? "").toLowerCase();
+  const crudo = await r.text();
+  const j = (() => { try { return JSON.parse(crudo); } catch { return {}; } })();
+
+  /* La respuesta viene {error, id_transaccion, datos:{…}} y el estado está
+     adentro de `datos`, en `estado`. Los nombres con prefijo `so_` eran de
+     otra versión de la API y nunca existieron acá: por eso la consulta
+     devolvía siempre "no pagado" aunque el cobro hubiera entrado, que es
+     el peor silencio posible — la plata adentro y la entrada sin emitir. */
+  const d = j?.datos;
+  const fila = Array.isArray(d) ? (d[0] ?? {}) : (d ?? (Array.isArray(j) ? j[0] : j) ?? {});
+  const estado = String(fila.estado ?? fila.so_estado ?? "").trim().toLowerCase();
+  const montoCrudo = fila.monto ?? fila.so_monto;
+
+  if (String(j?.error ?? "0") !== "0") {
+    console.error(`v2pro consulta rechazada: ${crudo.slice(0, 300)}`);
+    return { pagado: false, monto: null };
+  }
   return {
     pagado: ["pagado", "aprobado", "completado", "1"].includes(estado),
-    monto: fila?.so_monto != null ? Number(fila.so_monto) : null,
+    monto: montoCrudo != null && montoCrudo !== "" ? Number(montoCrudo) : null,
   };
 }
 
