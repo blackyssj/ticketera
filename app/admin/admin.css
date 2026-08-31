@@ -1034,3 +1034,44 @@ body[data-filtro="1"] .puerta-visor::before{
   /* El botón debajo del campo: al lado deja ocho caracteres visibles de un
      código de doce. */
   .puerta-mano{flex-direction:column;align-items:stretch}
+
+/* ══ cierre y liquidación ═════════════════════════════════════════
+   Dos bloques de cifras que hay que poder comparar de un vistazo: la
+   liquidación con la que se cerró y lo que dicen los datos hoy. Por eso
+   comparten la misma grilla y el mismo tamaño de número — si uno se viera
+   más importante que el otro, la diferencia dejaría de leerse como
+   diferencia y pasaría a leerse como corrección. */
+.liq-cab{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+
+.liq-cifras{margin:18px 0 4px}
+.liq-cifras h4{
+  font:600 12px/1 var(--texto);letter-spacing:.14em;text-transform:uppercase;
+  color:var(--txt-3);margin:0 0 12px}
+.liq-cifras dl{margin:0;display:grid;gap:2px}
+.liq-cifras dl>div{
+  display:flex;align-items:baseline;justify-content:space-between;gap:16px;
+  padding:9px 0;border-bottom:1px solid var(--linea)}
+.liq-cifras dt{color:var(--txt-2);font-size:14px}
+.liq-cifras dd{margin:0;font-variant-numeric:tabular-nums;font-size:15px;color:var(--txt)}
+.liq-cifras .tenue dt,.liq-cifras .tenue dd{color:var(--txt-3);font-size:13px}
+.liq-cifras .total{border-bottom:0;border-top:1px solid var(--linea-2);margin-top:6px;padding-top:14px}
+.liq-cifras .total dt{color:var(--txt);font-weight:600;font-size:15px}
+.liq-cifras .total dd{font-family:var(--display);font-size:30px;font-weight:700;color:var(--dorado)}
+
+/* Lo que falta resolver y la diferencia usan el mismo amarillo de aviso:
+   ninguna de las dos impide cerrar, las dos cambian lo que hay que hacer. */
+.liq-pendiente,.liq-difiere{
+  background:var(--aviso-bg);border:1px solid rgba(246,180,74,.3);
+  border-radius:var(--r);padding:14px 16px;margin:14px 0}
+.liq-pendiente p,.liq-difiere p{margin:0 0 8px;font-size:14px;line-height:1.5}
+.liq-pendiente ul,.liq-difiere ul{margin:0 0 10px;padding-left:18px}
+.liq-pendiente li,.liq-difiere li{font-size:14px;line-height:1.6;color:var(--txt-2)}
+.liq-difiere b{color:var(--aviso)}
+.liq-pendiente .ayuda,.liq-difiere .ayuda{margin-bottom:0}
+.liq-ok{color:var(--ok);font-size:14px;margin:14px 0 0}
+
+.liq-linea{align-items:center}
+/* Pagada se apaga en vez de resaltarse: lo que hay que ver de un vistazo
+   es lo que TODAVÍA se debe, no lo que ya se resolvió. */
+.liq-linea.pagada{opacity:.62}
+.liq-linea.pagada .cifra.destacada{color:var(--txt-2)}
