@@ -130,9 +130,9 @@ async function cargar() {
 
   const n = r.entradas.length;
   const usadas = r.entradas.filter(e => e.estado === "usada").length;
-  /* Lo primero que tiene que quedar claro es que el cobro salió bien: quien
-     abre esta página acaba de pagar, o vuelve meses después a comprobar que
-     lo que pagó sigue existiendo. Recién después vienen las entradas. */
+  /* "ok" enciende el sello del cobro. Es lo primero que tiene que quedar
+     claro: quien abre esta página acaba de pagar, o vuelve semanas después
+     a comprobar que lo que pagó sigue existiendo. */
   decir("Tus entradas",
     `${n} ${n === 1 ? "entrada" : "entradas"} a nombre de ${r.orden.comprador}.` +
     (usadas ? ` ${usadas} ya ${usadas === 1 ? "ingresó" : "ingresaron"}.` : ""),
