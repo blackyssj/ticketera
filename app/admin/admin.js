@@ -180,7 +180,8 @@ async function abrirEvento(id) {
         ${id ? `<button type="button" class="btn plano" id="btnTablero">Tablero →</button>
                <button type="button" class="btn plano" id="btnEntradas">Entradas y precios →</button>
                <button type="button" class="btn plano" id="btnCortesias">Cortesías →</button>
-               <button type="button" class="btn plano" id="btnRrpp">Relacionadores →</button>` : ""}
+               <button type="button" class="btn plano" id="btnRrpp">Relacionadores →</button>
+               <button type="button" class="btn plano" id="btnCierre">Cierre y liquidación →</button>` : ""}
       </div>
       <p class="error" id="fError"></p>
     </form>
@@ -193,6 +194,7 @@ async function abrirEvento(id) {
     $("#btnEntradas").onclick = () => pantallaEntradas(id);
     $("#btnCortesias").onclick = () => pantallaCortesias(id);
     $("#btnRrpp").onclick = () => pantallaRelacionadores(id);
+    $("#btnCierre").onclick = () => pantallaCierre(id);
     cablearArte(e);   // solo con evento guardado: sin slug no hay carpeta donde subir
   }
 
@@ -647,6 +649,202 @@ async function copiarNodo(nodo, que = "El link") {
     sel.addRange(r);
     avisar("No se pudo copiar solo. Quedó seleccionado en pantalla: copialo a mano.");
   }
+}
+
+
+/* ══ cierre y liquidación ═════════════════════════════════════════
+   La última pantalla del ciclo. Muestra dos columnas de números a
+   propósito: la foto con la que se cerró y lo que dicen los datos hoy.
+   Si se anuló algo después del cierre, esa diferencia es lo primero que
+   hay que ver — el que ya cobró contra la foto tiene un comprobante que
+   no coincide con lo de hoy, y esconderlo no lo arregla. */
+const LIQ = { evento: null, ev: null, datos: null, pagando: null, cerrando: false };
+
+async function pantallaCierre(eventoId) {
+  $("#main").innerHTML = `<p class="cargando">Cargando…</p>`;
+  const [ev, res] = await Promise.all([
+    sb.from("eventos").select("id,nombre,estado").eq("id", eventoId).single(),
+    sb.rpc("liquidacion_evento", { p_evento: eventoId }),
+  ]);
+  if (ev.error || !ev.data) { avisar("Ese evento ya no existe."); mostrar("eventos"); return; }
+  if (res.error) { $("#main").innerHTML = `<p class="error">${esc(res.error.message)}</p>`; return; }
+  Object.assign(LIQ, { evento: eventoId, ev: ev.data, datos: res.data || {},
+                       pagando: null, cerrando: false });
+  pintarCierre();
+}
+
+function pintarCierre() {
+  const d = LIQ.datos, hoy = d.hoy || {}, foto = d.foto, sin = d.sin_resolver || {};
+  const cerrado = d.evento && d.evento.cerrado;
+  const pend = Number(sin.revision_manual || 0) + Number(sin.pendientes_vivas || 0);
+
+  $("#main").innerHTML = `
+    <div class="cab-seccion">
+      <button class="btn plano chico" id="btnVolver">← ${esc(LIQ.ev.nombre)}</button>
+      <h2>Cierre y liquidación</h2>
+    </div>
+
+    ${!cerrado ? `
+      <section class="tarjeta">
+        <h3>Todavía sin cerrar</h3>
+        <p class="ayuda">Cerrar congela las cifras. Lo que se le pague a cada
+          relacionador queda escrito con estos números, y una anulación posterior
+          ya no los mueve.</p>
+        ${pend ? `<div class="liq-pendiente">
+          <p><b>Hay plata sin resolver.</b> Cerrar igual se puede, pero la cuenta
+             va a quedar con esto adentro:</p>
+          <ul>
+            ${Number(sin.revision_manual) ? `<li>${sin.revision_manual}
+              ${Number(sin.revision_manual) === 1 ? "orden" : "órdenes"} en revisión manual
+              — se cobró un monto distinto al esperado y nadie decidió qué hacer.</li>` : ""}
+            ${Number(sin.pendientes_vivas) ? `<li>${sin.pendientes_vivas}
+              ${Number(sin.pendientes_vivas) === 1 ? "reserva" : "reservas"} todavía
+              en curso, con el cupo tomado.</li>` : ""}
+          </ul>
+          <button type="button" class="btn plano chico" id="btnIrTablero">Ver el tablero →</button>
+        </div>` : `<p class="liq-ok">✓ No quedó nada sin resolver.</p>`}
+        ${cuadroCifras(hoy, "Así quedaría la liquidación")}
+        <div class="acciones">
+          <button class="btn primario" id="btnCerrar">Cerrar el evento y liquidar</button>
+        </div>
+      </section>`
+    : `
+      <section class="tarjeta">
+        <div class="liq-cab">
+          <div>
+            <h3>Cerrado</h3>
+            <p class="ayuda">Lo cerró ${esc(foto.cerrada_por || "—")} el
+              ${fmtFH(foto.cerrada_at)} · <i>${esc(foto.motivo)}</i></p>
+          </div>
+          <button type="button" class="btn plano chico" id="btnReabrir">Reabrir</button>
+        </div>
+        ${cuadroCifras(foto, "La liquidación")}
+        ${foto.difiere ? cuadroDiferencia(foto, hoy) : ""}
+      </section>
+
+      <h3 class="titulo-bloque">A quién hay que pagarle</h3>
+      ${(foto.lineas || []).length ? `
+        <ul class="lista">${foto.lineas.map(l => filaLinea(l)).join("")}</ul>
+        ${resumenPagos(foto.lineas)}`
+      : `<p class="vacio">Ningún relacionador vendió en este evento, así que no hay
+           comisiones que pagar.</p>`}`}`;
+
+  $("#btnVolver").onclick = () => abrirEvento(LIQ.evento);
+  const irT = $("#btnIrTablero"); if (irT) irT.onclick = () => pantallaTablero(LIQ.evento);
+  const bc = $("#btnCerrar"); if (bc) bc.onclick = () => pedirCierre();
+  const br = $("#btnReabrir"); if (br) br.onclick = () => pedirReapertura();
+  document.querySelectorAll("#main [data-pagar]").forEach(b =>
+    b.onclick = () => pedirPago(b.dataset.pagar));
+}
+
+/* El fee viaja aparte en las tres cifras porque no es del organizador: es
+   lo de la plataforma. Meterlo adentro del bruto haría que el boliche crea
+   que le corresponde y descubra que no cuando cobra menos. */
+function cuadroCifras(c, titulo) {
+  return `
+    <div class="liq-cifras">
+      <h4>${esc(titulo)}</h4>
+      <dl>
+        <div><dt>Se vendió</dt><dd>${bs(c.bruto)}</dd></div>
+        <div class="tenue"><dt>Servicio de TICKETAZO</dt><dd>${bs(c.fee)}</dd></div>
+        <div class="tenue"><dt>Pasó por la pasarela</dt><dd>${bs(c.cobrado)}</dd></div>
+        <div><dt>Comisiones de relacionadores</dt><dd>− ${bs(c.comisiones)}</dd></div>
+        <div class="total"><dt>Para el organizador</dt><dd>${bs(c.neto)}</dd></div>
+      </dl>
+      <p class="ayuda">${c.entradas} ${Number(c.entradas) === 1 ? "manilla" : "manillas"}
+         en ${c.ordenes} ${Number(c.ordenes) === 1 ? "compra" : "compras"}.</p>
+    </div>`;
+}
+
+function cuadroDiferencia(foto, hoy) {
+  const dif = foto.diferencia || {};
+  const linea = (t, v, fmt) => Number(v) === 0 ? ""
+    : `<li>${esc(t)}: <b>${Number(v) > 0 ? "+" : "−"}${fmt(Math.abs(Number(v)))}</b></li>`;
+  return `
+    <div class="liq-difiere">
+      <p><b>Los datos de hoy ya no coinciden con la liquidación.</b> Pasó algo
+         después del cierre — casi siempre una anulación. La liquidación
+         <b>no</b> se recalcula: es con la que se pagó.</p>
+      <ul>
+        ${linea("Vendido", dif.bruto, bs)}
+        ${linea("Comisiones", dif.comisiones, bs)}
+        ${linea("Manillas", dif.entradas, n => n + (n === 1 ? " manilla" : " manillas"))}
+      </ul>
+      <p class="ayuda">Hoy el evento suma ${bs(hoy.bruto)} y ${bs(hoy.comisiones)} de
+         comisiones. Si hay que liquidar con estos números, reabrí y volvé a cerrar.</p>
+    </div>`;
+}
+
+function filaLinea(l) {
+  return `
+    <li class="fila quieta liq-linea${l.pagada ? " pagada" : ""}">
+      <span class="fila-nombre">${esc(l.nombre)}
+        <em>${l.slug ? "?r=" + esc(l.slug) + " · " : ""}${l.entradas}
+          ${Number(l.entradas) === 1 ? "manilla" : "manillas"} ×
+          ${bs(l.comision_unitaria)}</em></span>
+      <span class="cifra destacada">${bs(l.comision)}</span>
+      ${l.pagada
+        ? `<span class="pastilla verde">Pagada</span>
+           <span class="fila-dato tenue">${fmtFH(l.pagada_at)}${
+             l.pagada_por ? " · " + esc(l.pagada_por) : ""}${
+             l.pagado_nota ? " · " + esc(l.pagado_nota) : ""}</span>`
+        : `<button type="button" class="btn primario chico" data-pagar="${l.id}">
+             Marcar pagada</button>`}
+    </li>`;
+}
+
+function resumenPagos(lineas) {
+  const pagado = lineas.filter(l => l.pagada).reduce((a, l) => a + Number(l.pagado_monto || 0), 0);
+  const debe = lineas.filter(l => !l.pagada).reduce((a, l) => a + Number(l.comision || 0), 0);
+  return `
+    <div class="total">
+      <div>
+        <h3>${debe > 0 ? "Falta pagar" : "Todo pagado"}</h3>
+        <p>${pagado > 0 ? `Ya se pagaron ${bs(pagado)}.` : "Todavía no se pagó ninguna."}</p>
+      </div>
+      <span class="monto">${bs(debe)}</span>
+    </div>`;
+}
+
+
+/* El motivo es obligatorio en la base, así que la pantalla lo pide en vez
+   de dejar que la base rebote con un error que el usuario no pidió. */
+async function pedirCierre() {
+  const motivo = prompt("¿Por qué se cierra? Queda escrito con la liquidación.",
+                        "Evento terminado");
+  if (motivo === null) return;
+  const { data, error } = await sb.rpc("cerrar_evento",
+    { p_evento: LIQ.evento, p_motivo: motivo });
+  if (error) { avisar(sinCodigo(error.message)); return; }
+  avisar(data.motivo);
+  await pantallaCierre(LIQ.evento);
+}
+
+async function pedirReapertura() {
+  const motivo = prompt("¿Por qué se reabre? La liquidación anterior queda guardada.", "");
+  if (motivo === null) return;
+  const { data, error } = await sb.rpc("reabrir_evento",
+    { p_evento: LIQ.evento, p_motivo: motivo });
+  if (error) { avisar(sinCodigo(error.message)); return; }
+  avisar(data.motivo);
+  await pantallaCierre(LIQ.evento);
+}
+
+/* Marcar pagado no se deshace desde acá a propósito: si se marcó de más,
+   la salida es reabrir y volver a cerrar, que deja registro. Un botón de
+   "despagar" sería la puerta para tapar un pago que sí se hizo. */
+async function pedirPago(lineaId) {
+  const l = (LIQ.datos.foto.lineas || []).find(x => x.id === lineaId);
+  if (!l) return;
+  if (!confirm(`Marcar como pagada la comisión de ${l.nombre}: ${bs(l.comision)}.\n\n` +
+               `Esto queda registrado y no se deshace desde acá.`)) return;
+  const nota = prompt("¿Cómo se pagó? (opcional: transferencia, efectivo, nº de comprobante)", "");
+  if (nota === null) return;
+  const { data, error } = await sb.rpc("pagar_comision",
+    { p_linea: lineaId, p_monto: null, p_nota: nota });
+  if (error) { avisar(sinCodigo(error.message)); return; }
+  avisar(data.motivo);
+  await pantallaCierre(LIQ.evento);
 }
 
 /* ══ el relacionador ══════════════════════════════════════════════

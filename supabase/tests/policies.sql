@@ -2633,4 +2633,176 @@ begin
   raise notice 'OK anular devuelve el cupo, exige motivo y frena en las usadas; las cortesias consumen cupo con tope; la revision manual se resuelve por los dos lados y todo queda firmado';
 end $$;
 
+-- ============================================================
+-- 0039 — cerrar el evento y liquidar
+--
+-- Lo que se prueba acá, en orden de cuánto cuesta si falla:
+--
+-- 1) El doble pago. `pagar_comision` lleva la condición DENTRO del
+--    update; el test la ejerce pagando dos veces la misma línea. Se
+--    verificó por mutación que el test tiene dientes: sacándole el
+--    `and pagada_at is null`, la segunda llamada paga de nuevo.
+-- 2) Que la foto no se recalcule. Se cierra, se anula una orden después,
+--    y la foto tiene que seguir diciendo lo mismo mientras `hoy` cambia.
+--    Si la foto siguiera a los datos, lo que se pagó dejaría de coincidir
+--    con lo que la pantalla dice que se debía.
+-- 3) Que cerrar NO rompa la puerta. La gente entra después de que la
+--    venta cerró; si `validar_entrada` dejara de andar con el evento en
+--    'cerrado', el portero se queda con la fila afuera.
+-- 4) Que la foto salga del mismo cuerpo que ventas_por_rrpp(), comparando
+--    línea por línea en vez de mirarlas.
+-- ============================================================
+do $$
+declare
+  v_org   uuid := '0aaa0039-0000-4000-8000-000000000010';
+  v_org2  uuid := '0aaa0039-0000-4000-8000-000000000011';
+  v_admin uuid := '0aaa0039-0000-4000-8000-000000000012';
+  v_rrpp  uuid := '0aaa0039-0000-4000-8000-000000000013';
+  v_ajeno uuid := '0aaa0039-0000-4000-8000-000000000014';
+  v_ev    uuid := '0aaa0039-0000-4000-8000-000000000020';
+  v_fase  uuid := '0aaa0039-0000-4000-8000-000000000021';
+  v_tipo  uuid := '0aaa0039-0000-4000-8000-000000000022';
+  v_o1 uuid := gen_random_uuid(); v_o2 uuid := gen_random_uuid();
+  v_lin uuid; v_code text; x jsonb; q jsonb; v_n int;
+begin
+  insert into organizadores (id, slug, nombre) values
+    (v_org,'liq-0039','Liq'), (v_org2,'liq-0039-otro','Otro');
+  insert into auth.users (id, email) values
+    (v_admin,'adm0039@t.local'), (v_rrpp,'rrpp0039@t.local'), (v_ajeno,'aj0039@t.local');
+  insert into perfiles (id, organizador_id, nombre, rol, slug) values
+    (v_admin, v_org,  'Admin 0039',  'admin', null),
+    (v_rrpp,  v_org,  'Rrpp 0039',   'rrpp',  'r0039'),
+    (v_ajeno, v_org2, 'Ajeno 0039',  'admin', null);
+  insert into eventos (id, organizador_id, slug, nombre, fecha, comision_entrada)
+    values (v_ev, v_org, 'ev-0039', 'Evento 0039', current_date + 5, 10);
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre, categoria, manillas)
+    values (v_tipo, v_org, v_ev, 'General 0039', 'entrada', 1);
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta)
+    values (v_fase, v_org, v_ev, 'F', now() - interval '1 hour', now() + interval '10 days');
+  insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo)
+    values (v_org, v_fase, v_tipo, 100, 50);
+
+  -- dos ventas del relacionador: 3 entradas a 10 Bs de comision = 30
+  for i in 1..2 loop
+    insert into ordenes (id, organizador_id, evento_id, estado, expira_at, comprador_nombre,
+                         subtotal, fee, total, rrpp_id, pagada_at)
+    values (case when i=1 then v_o1 else v_o2 end, v_org, v_ev, 'pagada',
+            now() + interval '1 day', 'Comprador '||i,
+            case when i=1 then 200 else 100 end, case when i=1 then 16 else 8 end,
+            case when i=1 then 216 else 108 end, v_rrpp, now());
+    insert into orden_items (organizador_id, orden_id, tipo_id, fase_id, cantidad, precio_unitario)
+    values (v_org, case when i=1 then v_o1 else v_o2 end, v_tipo, v_fase,
+            case when i=1 then 2 else 1 end, 100);
+    insert into entradas (organizador_id, evento_id, orden_id, code, canal, tipo_id, fase_id,
+                          rrpp_id, cliente, precio)
+    select v_org, v_ev, case when i=1 then v_o1 else v_o2 end, nuevo_code(), 'rrpp',
+           v_tipo, v_fase, v_rrpp, 'Comprador '||i, 100
+      from generate_series(1, case when i=1 then 2 else 1 end);
+  end loop;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+
+  -- sin motivo no se cierra
+  begin
+    x := cerrar_evento(v_ev, '   ');
+    raise exception 'TEST_FAIL: cerro un evento sin motivo';
+  exception when others then
+    if sqlerrm not like 'MOTIVO_REQUERIDO%' then raise; end if;
+  end;
+
+  x := cerrar_evento(v_ev, 'evento terminado');
+  if (select estado from eventos where id = v_ev) <> 'cerrado' then
+    raise exception 'TEST_FAIL: el evento no quedo cerrado';
+  end if;
+  if (x->>'bruto')::numeric <> 300 or (x->>'comisiones')::numeric <> 30
+     or (x->>'neto')::numeric <> 270 then
+    raise exception 'TEST_FAIL: la cuenta del cierre no da: %', x;
+  end if;
+
+  -- (4) la foto sale del mismo cuerpo que ventas_por_rrpp(): comparada, no mirada
+  select count(*) into v_n
+    from liquidacion_linea l
+    join liquidacion q2 on q2.id = l.liquidacion_id and q2.evento_id = v_ev and q2.vigente
+    join lateral (select * from jsonb_to_recordset(ventas_por_rrpp(v_ev))
+                  as t(perfil_id uuid, entradas int, comision numeric)) v
+      on v.perfil_id = l.perfil_id
+   where v.entradas <> l.entradas or v.comision <> l.comision;
+  if v_n > 0 then raise exception 'TEST_FAIL: la foto no coincide con ventas_por_rrpp en % lineas', v_n; end if;
+
+  -- (3) la puerta sigue andando con el evento cerrado
+  select code into v_code from entradas where evento_id = v_ev and estado = 'valida' limit 1;
+  x := validar_entrada(v_ev, v_code);
+  if x->>'resultado' <> 'valida' then
+    raise exception 'TEST_FAIL: cerrar el evento rompio la puerta: %', x->>'resultado';
+  end if;
+
+  -- (2) anular despues de cerrar no mueve la foto
+  x := anular_orden(v_o2, 'contracargo posterior al cierre');
+  q := liquidacion_evento(v_ev);
+  if (q->'foto'->>'bruto')::numeric <> 300 then
+    raise exception 'TEST_FAIL: la foto se movio con una anulacion posterior: %', q->'foto'->>'bruto';
+  end if;
+  if (q->'hoy'->>'bruto')::numeric <> 200 then
+    raise exception 'TEST_FAIL: lo de hoy no reflejo la anulacion: %', q->'hoy'->>'bruto';
+  end if;
+  if not (q->'foto'->>'difiere')::boolean then
+    raise exception 'TEST_FAIL: no marco que la foto difiere de los datos de hoy';
+  end if;
+
+  -- (1) el doble pago
+  select l.id into v_lin from liquidacion_linea l
+    join liquidacion q2 on q2.id = l.liquidacion_id
+   where q2.evento_id = v_ev and q2.vigente limit 1;
+  x := pagar_comision(v_lin, null, 'transferencia');
+  if not (x->>'ok')::boolean then raise exception 'TEST_FAIL: no dejo pagar la primera vez: %', x; end if;
+  x := pagar_comision(v_lin, null, 'otra vez');
+  if (x->>'ok')::boolean then raise exception 'TEST_FAIL: PAGO DOS VECES la misma comision'; end if;
+  select count(*) into v_n from admin_bitacora
+   where evento_id = v_ev and accion = 'comision_pagada';
+  if v_n <> 1 then raise exception 'TEST_FAIL: quedaron % registros de pago para un solo pago', v_n; end if;
+
+  -- reabrir avisa de lo ya pagado
+  x := reabrir_evento(v_ev, 'faltaba resolver una orden');
+  if (x->>'comisiones_ya_pagadas')::int <> 1 then
+    raise exception 'TEST_FAIL: reabrir no aviso que ya se habia pagado una comision';
+  end if;
+  reset role;
+
+  -- un rrpp no cierra ni paga
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_rrpp::text, true);
+  begin
+    x := cerrar_evento(v_ev, 'prueba');
+    raise exception 'TEST_FAIL: un rrpp cerro un evento';
+  exception when others then if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  begin
+    x := pagar_comision(v_lin);
+    raise exception 'TEST_FAIL: un rrpp marco una comision como pagada';
+  exception when others then if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  reset role;
+
+  -- un admin de OTRO organizador tampoco: no le existe ni el evento ni la linea
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_ajeno::text, true);
+  begin
+    x := cerrar_evento(v_ev, 'prueba');
+    raise exception 'TEST_FAIL: un admin ajeno cerro este evento';
+  exception when others then if sqlerrm not like 'EVENTO_INEXISTENTE%' then raise; end if;
+  end;
+  begin
+    x := pagar_comision(v_lin);
+    raise exception 'TEST_FAIL: un admin ajeno pago una comision de otro organizador';
+  exception when others then if sqlerrm not like 'LINEA_INEXISTENTE%' then raise; end if;
+  end;
+  if liquidacion_evento(v_ev) <> '{}'::jsonb then
+    raise exception 'TEST_FAIL: un admin ajeno vio la liquidacion de otro organizador';
+  end if;
+  reset role;
+
+  raise notice 'OK cerrar congela la foto, la puerta sigue andando, y una comision se paga una sola vez';
+end $$;
+
 rollback;
