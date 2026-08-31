@@ -763,8 +763,12 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
    más. En cero se apaga —un cero no es una alerta— y en cuanto hay uno
    pasa a dorado, que es el color que en este panel dice "mirá esto"
    sin decir "esto está mal". */
-.tabla-porteros .deshechos{color:var(--dorado);font-weight:500}
-.tabla-porteros .deshechos em{color:var(--dorado);opacity:.8}
+/* `td.n` y `td.n em` de la tabla genérica ya fijan el color con dos clases
+   y un elemento: para ganarles hay que nombrar la celda entera, no basta
+   con la clase suelta. Sin esto el número queda del mismo gris que los
+   demás y la columna deja de decir lo único que vino a decir. */
+.tabla-porteros td.n.deshechos{color:var(--dorado);font-weight:500}
+.tabla-porteros td.n.deshechos em{color:var(--dorado);opacity:.8}
 .tabla-porteros tfoot td{
   border-top:1px solid var(--linea-2);background:var(--sup-2);
   font-family:var(--dato);font-size:13px;color:var(--txt-2);

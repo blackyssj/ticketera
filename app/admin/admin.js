@@ -1645,8 +1645,16 @@ async function refrescarPorteros(eventoId) {
   if (!z) return;
   const { data, error } = await sb.rpc("resumen_puerta", { p_evento: eventoId });
   if (error) { z.innerHTML = `<p class="error">${esc(sinCodigo(error.message))}</p>`; return; }
-  const filas = (data && data.porteros) || [];
-  const t = (data && data.total) || {};
+  /* {} en vez de error: resumen_puerta() contesta lo mismo para "no es de
+     tu organizador" que para "no existe", igual que resumen_evento(). Sin
+     este corte la pantalla diría "todavía nadie escaneó", que es afirmar
+     algo que no sabe. */
+  if (!data || !data.total) {
+    z.innerHTML = `<p class="vacio">No hay datos de puerta de este evento.</p>`;
+    return;
+  }
+  const filas = data.porteros || [];
+  const t = data.total;
 
   z.innerHTML = `
     <div class="cab-bloque sep">
