@@ -364,6 +364,25 @@ function pintarRail() {
 
   $("#railAviso").textContent = "";
   if (hay) arrancarReloj(); else pararReloj();
+  medirBarra();
+}
+
+/* En el teléfono el resumen es una barra fija abajo, y el contenido tenía
+   reservados 96px a mano. La barra mide 149 y cambia sola —el botón "Volver"
+   aparece en el paso de datos, el aviso puede ocupar dos líneas, el iPhone
+   suma su franja segura—, así que el número escrito a mano siempre iba a
+   quedar corto: la última entrada de la lista terminaba debajo de la barra.
+   Se mide lo que tapa de verdad y se publica en --alto-barra.
+
+   Solo el tirador y el pie, no el rail entero: cuando el resumen está
+   desplegado es una hoja que el comprador abrió a propósito, y reservarle
+   media pantalla al contenido de abajo no tendría sentido. */
+function medirBarra() {
+  const r = $("#rail");
+  const fija = r && !r.hidden && getComputedStyle(r).position === "fixed";
+  const alto = fija
+    ? $("#railTirador").offsetHeight + $(".rail-pie").offsetHeight : 0;
+  document.documentElement.style.setProperty("--alto-barra", alto + "px");
 }
 
 /* ── el hold ─────────────────────────────────────────────────────
@@ -640,7 +659,10 @@ $("#pasos").addEventListener("click", e => {
   if (b && S.paso !== "pago" && S.paso !== "listo") irA(b.dataset.ir);
 });
 $("#pasos").addEventListener("scroll", marcarDesborde, { passive: true });
-addEventListener("resize", marcarDesborde);
+addEventListener("resize", () => { marcarDesborde(); medirBarra(); });
+/* La barra crece cuando el aviso pasa a dos líneas o cuando termina de cargar
+   la tipografía, y eso no pasa por pintarRail(). El observer lo agarra igual. */
+if (window.ResizeObserver) new ResizeObserver(medirBarra).observe($("#rail"));
 
 $("#btnSeguir").addEventListener("click", () => {
   if (S.paso === "entradas") return irA("datos");

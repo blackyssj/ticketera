@@ -276,7 +276,13 @@ body.sin-rail .lienzo-col{padding-bottom:0}
 /* ══ móvil: el rail baja a hoja inferior ══ */
 @media (max-width:900px){
   .tablero{grid-template-columns:minmax(0,1fr);gap:0}
-  .lienzo-col{padding-bottom:96px}
+  /* Abajo manda la barra fija, así que el respiro del final lo pone la
+     columna de contenido y no el cuerpo: es la que tiene que dejar libre lo
+     que la barra tapa. Lo que la barra mide de verdad lo publica app.js en
+     --alto-barra; el respaldo de 150px es por si el JS todavía no midió. */
+  .cuerpo{padding-bottom:0}
+  .lienzo-col{padding-bottom:calc(var(--alto-barra,150px) + 26px)}
+  body.sin-rail .lienzo-col{padding-bottom:56px}
   .rail{
     position:fixed;left:0;right:0;bottom:0;top:auto;z-index:80;
     border-radius:10px 10px 0 0;border-top:2px solid var(--rojo);
