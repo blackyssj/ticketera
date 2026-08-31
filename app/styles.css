@@ -327,6 +327,24 @@ body.sin-rail .lienzo-col{padding-bottom:0}
   }
   .paso:not([data-estado="actual"]){padding:7px 8px;gap:0}
   .paso-sep{flex-basis:10px}
+
+  /* El hero se comía 409px de los 812 de un teléfono y dejaba la primera
+     entrada abajo de la barra: la persona llegaba por WhatsApp a comprar y
+     lo primero que veía era una pantalla de afiche. Sigue siendo el afiche
+     —el rojo, la espuma, el nombre grande son del evento y mandan—, pero
+     ocupa lo que necesita para presentarse y no una pantalla entera. */
+  .hero{padding-top:26px}
+  .hero .carril{padding-bottom:20px}
+  /* Un punto menos de cuerpo mete el lugar en un renglón en vez de dos. */
+  .eyebrow{margin-bottom:10px;font-size:11px;letter-spacing:.16em}
+  .bajada{margin-top:12px}
+  .datos{margin-top:14px;gap:6px 18px;font-size:12px}
+  /* Más bajo que en escritorio, pero no tanto como para que las burbujas se
+     aplasten: la espuma es de la marca, no relleno. */
+  .espuma-borde{height:28px}
+  .pasos{padding:14px 0}
+  .panel-cab{margin-bottom:12px}
+  .tipo{padding:14px 16px;gap:8px}
 }
 
 @media (prefers-reduced-motion:reduce){
