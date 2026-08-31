@@ -3097,4 +3097,224 @@ begin
   raise notice 'OK los exportables traen todas las filas, dicen si cortaron, devuelven el nombre crudo para que lo neutralice el CSV, y cada rol baja solo lo suyo';
 end $$;
 
+
+-- ============================================================
+-- 0042 — el resumen de la puerta cuenta bien con dos porteros
+--
+-- El número que esta función existe para mostrar es `deshechas`: deshacer
+-- es el único movimiento de la puerta que devuelve una manilla ya
+-- consumida al estado `valida`, o sea el único con el que alguien de
+-- adentro puede hacer entrar gente de más. Un test que solo contara
+-- "hubo filas" pasaría con las dos columnas cruzadas, así que acá se
+-- siembra una secuencia donde CADA número da distinto de todos los otros
+-- y se comparan uno por uno: si validadas y reingresos se intercambiaran,
+-- o si deshechas contara también las rechazadas, el test cae.
+--
+-- La secuencia sembrada, y por qué cada paso:
+--   p1 valida e1, e2 y e4   → 3 validadas
+--   p1 rechaza e3 en filtro → 1 rechazada (no toca la entrada)
+--   p1 deshace e1           → 1 deshecha PROPIA (él mismo la había marcado)
+--   p2 valida e1 de nuevo   → 1 reingreso, que no es una validada
+--   p2 deshace e4           → 1 deshecha AJENA (la había marcado p1)
+--
+-- Las dos deshechas son la misma acción y tienen que contar distinto en
+-- `deshechas_ajenas`: corregirse a uno mismo y deshacer lo del compañero
+-- no son la misma noticia.
+--
+-- Y quién la puede llamar: solo puede_editar(). El portero rebota aunque
+-- sea el que generó las filas —un resumen de una sola fila no le contesta
+-- nada y la versión completa es auditar a los compañeros—, el rrpp rebota,
+-- y un admin de otro organizador recibe el mismo `{}` que recibiría por un
+-- evento inexistente.
+-- ============================================================
+do $$
+declare v_org   uuid := '04200042-0042-4042-8042-000000000001';
+        v_org2  uuid := '04200042-0042-4042-8042-000000000002';
+        v_p1    uuid := '04200042-0042-4042-8042-000000000003';
+        v_p2    uuid := '04200042-0042-4042-8042-000000000004';
+        v_staff uuid := '04200042-0042-4042-8042-000000000005';
+        v_rrpp  uuid := '04200042-0042-4042-8042-000000000006';
+        v_adm2  uuid := '04200042-0042-4042-8042-000000000007';
+        v_ev    uuid := '04200042-0042-4042-8042-000000000008';
+        v_tipo  uuid := '04200042-0042-4042-8042-000000000009';
+        v_fase  uuid := '04200042-0042-4042-8042-00000000000a';
+        v_e1    uuid := '04200042-0042-4042-8042-00000000000b';
+        v_e2    uuid := '04200042-0042-4042-8042-00000000000c';
+        v_e3    uuid := '04200042-0042-4042-8042-00000000000d';
+        v_e4    uuid := '04200042-0042-4042-8042-00000000000e';
+        c1 text := 'BCDFGH420042';
+        c2 text := 'JKLMNP420042';
+        c3 text := 'QRSTVW420042';
+        c4 text := 'WXZBCD420042';
+        v_r jsonb; v_a jsonb; v_b jsonb;
+begin
+  insert into organizadores (id, slug, nombre) values
+    (v_org,  'prueba-0042',  'Prueba 0042'),
+    (v_org2, 'prueba-0042b', 'Prueba 0042 otro');
+  insert into auth.users (id, email) values
+    (v_p1,    'portero1-0042@ticketera.local'),
+    (v_p2,    'portero2-0042@ticketera.local'),
+    (v_staff, 'staff-0042@ticketera.local'),
+    (v_rrpp,  'rrpp-0042@ticketera.local'),
+    (v_adm2,  'admin-0042b@ticketera.local');
+  insert into perfiles (id, organizador_id, nombre, rol) values
+    (v_p1,    v_org,  'Portero Uno', 'portero'),
+    (v_p2,    v_org,  'Portero Dos', 'portero'),
+    (v_staff, v_org,  'Staff 0042',  'staff'),
+    (v_rrpp,  v_org,  'Rrpp 0042',   'rrpp'),
+    (v_adm2,  v_org2, 'Admin Ajeno', 'admin');
+  insert into eventos (id, organizador_id, slug, nombre, fecha, estado) values
+    (v_ev, v_org, 'evento-0042', 'Evento 0042', current_date + 10, 'publicado');
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre) values
+    (v_tipo, v_org, v_ev, 'General');
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta) values
+    (v_fase, v_org, v_ev, 'F1', now() - interval '1 hour', now() + interval '10 days');
+  insert into entradas (id, organizador_id, evento_id, code, canal, tipo_id, fase_id,
+                        cliente, precio, estado) values
+    (v_e1, v_org, v_ev, c1, 'publico', v_tipo, v_fase, 'Ana',  100, 'valida'),
+    (v_e2, v_org, v_ev, c2, 'publico', v_tipo, v_fase, 'Beto', 100, 'valida'),
+    (v_e3, v_org, v_ev, c3, 'publico', v_tipo, v_fase, 'Cami', 100, 'valida'),
+    (v_e4, v_org, v_ev, c4, 'publico', v_tipo, v_fase, 'Dani', 100, 'valida');
+
+  -- ── el turno del portero uno ────────────────────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_p1::text, true);
+  perform validar_entrada(v_ev, c1);
+  perform validar_entrada(v_ev, c2);
+  perform validar_entrada(v_ev, c4);
+  perform marcar_filtro_entrada(v_ev, c3);
+  perform descheckin_entrada(v_ev, c1);
+  reset role;
+
+  -- ── el turno del portero dos ────────────────────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_p2::text, true);
+  perform validar_entrada(v_ev, c1);   -- reingreso: e1 ya había entrado
+  perform descheckin_entrada(v_ev, c4);  -- deshace lo que marcó el uno
+  reset role;
+
+  -- ── lo lee el staff ─────────────────────────────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  v_r := resumen_puerta(v_ev);
+  reset role;
+
+  if jsonb_array_length(v_r->'porteros') <> 2 then
+    raise exception 'TEST_FAIL: tenian que aparecer los dos porteros, aparecieron %: %',
+      jsonb_array_length(v_r->'porteros'), v_r->'porteros';
+  end if;
+
+  -- El orden es por ingresos desc: el uno hizo 3 y el dos 1.
+  v_a := v_r->'porteros'->0;
+  v_b := v_r->'porteros'->1;
+  if v_a->>'actor_id' <> v_p1::text or v_b->>'actor_id' <> v_p2::text then
+    raise exception 'TEST_FAIL: el orden por ingresos no puso primero al que mas valido: %', v_r->'porteros';
+  end if;
+  if v_a->>'portero' <> 'Portero Uno' then
+    raise exception 'TEST_FAIL: no trajo el nombre del portero, trajo %', v_a->>'portero';
+  end if;
+
+  -- ── portero uno: 3 validadas, 0 reingresos, 1 rechazada, 1 deshecha propia
+  if (v_a->>'validadas')::int <> 3 then
+    raise exception 'TEST_FAIL: el uno valido 3, el resumen dice %', v_a->>'validadas';
+  end if;
+  if (v_a->>'reingresos')::int <> 0 then
+    raise exception 'TEST_FAIL: el uno no hizo ningun reingreso, el resumen dice %', v_a->>'reingresos';
+  end if;
+  if (v_a->>'ingresos')::int <> 3 then
+    raise exception 'TEST_FAIL: ingresos del uno tenia que ser 3, dice %', v_a->>'ingresos';
+  end if;
+  if (v_a->>'rechazadas')::int <> 1 then
+    raise exception 'TEST_FAIL: el uno rechazo 1 en filtro, el resumen dice %', v_a->>'rechazadas';
+  end if;
+  if (v_a->>'deshechas')::int <> 1 then
+    raise exception 'TEST_FAIL: el uno deshizo 1, el resumen dice %', v_a->>'deshechas';
+  end if;
+  if (v_a->>'deshechas_ajenas')::int <> 0 then
+    raise exception 'TEST_FAIL: la del uno era propia, el resumen la cuenta como ajena: %', v_a->>'deshechas_ajenas';
+  end if;
+  if (v_a->>'movimientos')::int <> 5 then
+    raise exception 'TEST_FAIL: el uno hizo 5 movimientos, el resumen dice %', v_a->>'movimientos';
+  end if;
+
+  -- ── portero dos: 0 validadas, 1 reingreso, 1 deshecha AJENA
+  if (v_b->>'validadas')::int <> 0 then
+    raise exception 'TEST_FAIL: el dos no valido ninguna nueva, el resumen dice %', v_b->>'validadas';
+  end if;
+  if (v_b->>'reingresos')::int <> 1 then
+    raise exception 'TEST_FAIL: el dos hizo 1 reingreso, el resumen dice %', v_b->>'reingresos';
+  end if;
+  if (v_b->>'ingresos')::int <> 1 then
+    raise exception 'TEST_FAIL: ingresos del dos tenia que ser 1, dice %', v_b->>'ingresos';
+  end if;
+  if (v_b->>'rechazadas')::int <> 0 then
+    raise exception 'TEST_FAIL: el dos no rechazo nada, el resumen dice %', v_b->>'rechazadas';
+  end if;
+  if (v_b->>'deshechas')::int <> 1 then
+    raise exception 'TEST_FAIL: el dos deshizo 1, el resumen dice %', v_b->>'deshechas';
+  end if;
+  if (v_b->>'deshechas_ajenas')::int <> 1 then
+    raise exception 'TEST_FAIL: el dos deshizo lo que marco el uno y no quedo como ajena: %', v_b->>'deshechas_ajenas';
+  end if;
+
+  -- Primer y ultimo escaneo: existen y no estan al reves.
+  if v_a->>'primero_at' is null or v_a->>'ultimo_at' is null then
+    raise exception 'TEST_FAIL: falta el primer o el ultimo escaneo del uno: %', v_a;
+  end if;
+  if (v_a->>'primero_at')::timestamptz > (v_a->>'ultimo_at')::timestamptz then
+    raise exception 'TEST_FAIL: el primer escaneo quedo despues del ultimo';
+  end if;
+
+  -- ── los totales son la suma de las filas, no otra cuenta ──
+  if (v_r->'total'->>'porteros')::int <> 2
+     or (v_r->'total'->>'movimientos')::int <> 7
+     or (v_r->'total'->>'ingresos')::int <> 4
+     or (v_r->'total'->>'validadas')::int <> 3
+     or (v_r->'total'->>'reingresos')::int <> 1
+     or (v_r->'total'->>'rechazadas')::int <> 1
+     or (v_r->'total'->>'deshechas')::int <> 2
+     or (v_r->'total'->>'deshechas_ajenas')::int <> 1 then
+    raise exception 'TEST_FAIL: los totales no son la suma de las filas: %', v_r->'total';
+  end if;
+
+  -- ── quien NO la puede llamar ─────────────────────────────
+  -- El rrpp: no tiene nada que hacer en la puerta.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_rrpp::text, true);
+  begin
+    v_r := resumen_puerta(v_ev);
+    raise exception 'TEST_FAIL: un rrpp leyo el resumen de la puerta';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  reset role;
+
+  -- El portero, aunque sea el que generó las filas: auditar a los
+  -- companeros no es su trabajo, y lo suyo ya lo tiene en bitacora_puerta.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_p1::text, true);
+  begin
+    v_r := resumen_puerta(v_ev);
+    raise exception 'TEST_FAIL: un portero leyo el resumen de todos los porteros';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  reset role;
+
+  -- El admin de otro organizador: el mismo vacio que por un evento que no
+  -- existe, para que la funcion no sirva de oraculo de que uuids hay en la
+  -- base del vecino.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_adm2::text, true);
+  if resumen_puerta(v_ev) <> '{}'::jsonb then
+    raise exception 'TEST_FAIL: un admin ajeno vio el resumen de puerta de otro organizador';
+  end if;
+  if resumen_puerta(gen_random_uuid()) <> '{}'::jsonb then
+    raise exception 'TEST_FAIL: un evento inexistente contesto distinto que uno ajeno';
+  end if;
+  reset role;
+
+  raise notice 'OK el resumen de puerta cuenta validadas, reingresos, rechazadas y deshechas por portero, separa las deshechas ajenas, y solo lo ve quien puede_editar()';
+end $$;
+
 rollback;
