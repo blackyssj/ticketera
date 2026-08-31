@@ -600,9 +600,13 @@ async function mostrarListo() {
   // El correo depende de si RESEND_API_KEY está configurada de verdad
   // (D.correo_configurado, que manda la función `evento`). Si no lo está,
   // ningún correo sale nunca — prometerlo ahí sería mentir.
+  // El uuid entero ya está arriba, dentro del link que se copia. Repetirlo
+  // acá en crudo ocupaba dos renglones y no le decía nada al comprador: los
+  // ocho primeros alcanzan para que la organización encuentre la compra, que
+  // es para lo único que este número se lee.
   const correoOk = D.correo_configurado !== false;
   $("#listoRef").textContent =
-    `Orden ${S.orden.id}${S.orden.pago_ref ? " · pago " + S.orden.pago_ref : ""}.` +
+    `Orden #${String(S.orden.id).slice(0, 8).toUpperCase()}.` +
     (correoOk ? ` También te las mandamos a ${S.comprador.email}.` : "");
   $("#tickets").innerHTML = `<p class="rail-vacio">Dibujando tus entradas…</p>`;
 
@@ -613,21 +617,27 @@ async function mostrarListo() {
 
   // Escalonadas: la primera aparece sola y el resto la siguen. Todas juntas
   // se leen como un bloque; de a una se lee como "estas son tuyas".
-  $("#tickets").innerHTML = S.entradas.map((t, i) =>
-    `<img style="--i:${Math.min(i, 8)}" src="${t.png}"
-          alt="Entrada ${esc(t.etiqueta)}, código ${esc(t.code)}"
-          loading="${i < 2 ? "eager" : "lazy"}">`
-  ).join("");
+  // La tira la arma ticket.js, la misma que dibuja /orden/?id=…: son el mismo
+  // momento y separarlas en dos plantillas es pedir que se despeguen.
+  $("#tickets").innerHTML = window.tiraTickets(S.entradas);
 }
 
-function descargar() {
-  S.entradas.forEach((t, i) => {
-    const a = document.createElement("a");
-    a.href = t.png;
-    a.download = `entrada-${i + 1}-${t.code}.png`;
-    document.body.appendChild(a); a.click(); a.remove();
-  });
-  avisar(`${S.entradas.length} ${S.entradas.length === 1 ? "entrada descargada" : "entradas descargadas"}.`);
+/* Guardar y no descargar: en un teléfono la descarga de seis PNG no deja
+   nada a la vista. ticket.js abre la hoja de compartir del sistema cuando
+   existe —ahí adentro está "Guardar imagen"— y baja los archivos cuando no. */
+async function descargar() {
+  const b = $("#btnDescargar");
+  b.disabled = true;
+  try {
+    const como = await window.guardarEntradas(S.entradas);
+    if (como === "bajada")
+      avisar(`${S.entradas.length} ${S.entradas.length === 1
+        ? "entrada guardada" : "entradas guardadas"}.`);
+  } catch (err) {
+    avisar("No se pudieron guardar. Mantené apretada la entrada y elegí Guardar imagen.");
+  } finally {
+    b.disabled = false;
+  }
 }
 
 /* ══ eventos ══════════════════════════════════════════════════════ */
