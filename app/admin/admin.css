@@ -756,6 +756,21 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 
 .tabla-registro .detalle{max-width:46ch}
 
+/* ─── la puerta, portero por portero ───
+   La última columna es la que importa y por eso es la única con color:
+   deshacer devuelve una manilla ya usada a válida, o sea es el único
+   movimiento con el que alguien de adentro puede hacer entrar gente de
+   más. En cero se apaga —un cero no es una alerta— y en cuanto hay uno
+   pasa a dorado, que es el color que en este panel dice "mirá esto"
+   sin decir "esto está mal". */
+.tabla-porteros .deshechos{color:var(--dorado);font-weight:500}
+.tabla-porteros .deshechos em{color:var(--dorado);opacity:.8}
+.tabla-porteros tfoot td{
+  border-top:1px solid var(--linea-2);background:var(--sup-2);
+  font-family:var(--dato);font-size:13px;color:var(--txt-2);
+}
+.tabla-porteros tfoot td.n{color:var(--txt)}
+
 @media (max-width:860px){
   .dos-tablas{grid-template-columns:1fr}
   .form-cortesias{grid-template-columns:1fr}

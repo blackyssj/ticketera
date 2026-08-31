@@ -594,6 +594,10 @@ const fechaHoraBO = iso => iso
       { timeZone: RELOJ_BO, day: "numeric", month: "short",
         hour: "2-digit", minute: "2-digit", hour12: false })
   : "";
+const horaBO = iso => iso
+  ? new Date(iso).toLocaleTimeString("es-BO",
+      { timeZone: RELOJ_BO, hour: "2-digit", minute: "2-digit", hour12: false })
+  : "";
 
 /* Las partes que van en un <input type="date"> y en uno type="time">, en
    hora de Bolivia. Salen de `toLocaleDateString("en-CA")` porque el
@@ -1597,6 +1601,7 @@ async function pantallaTablero(eventoId) {
     <div id="zonaResumen"><p class="cargando">Cargando…</p></div>
     <section id="zonaCompradores"></section>
     <section id="zonaPlano"></section>
+    ${puedeEditar() ? `<section id="zonaPorteros"></section>` : ""}
     <section id="zonaRegistro"></section>`;
 
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
@@ -1614,8 +1619,92 @@ async function pantallaTablero(eventoId) {
     montarSalon(eventoId, { editar: puedeEditar(), ev: ev.data,
                             alCambiar: () => Promise.all([refrescarResumen(eventoId),
                                                           refrescarRegistro(eventoId)]) }),
+    refrescarPorteros(eventoId),
     refrescarRegistro(eventoId),
   ]);
+}
+
+/* ══ la puerta, portero por portero ═══════════════════════════════
+   Van a ser cuatro personas escaneando y hasta acá el panel no tenía
+   dónde ver quién hizo qué: la bitácora muestra el detalle —mil filas de
+   una noche— y sacar de ahí el resumen es contar a ojo, o sea que en la
+   práctica ese número no existía.
+
+   La columna que manda es «Deshizo», y por eso está al final y en color:
+   validar consume una manilla que estaba vendida y rechazar no toca
+   nada, pero deshacer devuelve una manilla ya consumida al estado
+   `valida` — o sea la vuelve a hacer utilizable. Es el único movimiento
+   de la puerta con el que alguien de adentro puede hacer entrar gente de
+   más. Tres en una noche son dedos gordos; cuarenta son otra cosa, y esa
+   diferencia tiene que estar al lado de las demás y no escondida en el
+   detalle. El «de otro portero» que va debajo afina la misma pregunta:
+   corregirse a uno mismo no es lo mismo que deshacer lo que marcó el
+   compañero. */
+async function refrescarPorteros(eventoId) {
+  const z = $("#zonaPorteros");
+  if (!z) return;
+  const { data, error } = await sb.rpc("resumen_puerta", { p_evento: eventoId });
+  if (error) { z.innerHTML = `<p class="error">${esc(sinCodigo(error.message))}</p>`; return; }
+  const filas = (data && data.porteros) || [];
+  const t = (data && data.total) || {};
+
+  z.innerHTML = `
+    <div class="cab-bloque sep">
+      <h3 class="titulo-bloque">Puerta</h3>
+      <span class="conteo">${filas.length
+        ? `${num(t.ingresos)} ${Number(t.ingresos) === 1 ? "manilla" : "manillas"} por ${
+            num(filas.length)} ${filas.length === 1 ? "persona" : "personas"}`
+        : ""}</span>
+    </div>
+    ${filas.length ? `
+      <p class="ayuda bajo-titulo">Deshacer devuelve una manilla ya usada a válida:
+        es el único movimiento con el que se puede hacer entrar a alguien de más.
+        Unos pocos en la noche son escaneos corregidos; muchos son otra cosa.</p>
+      <div class="grilla-envoltorio">
+        <table class="tabla tabla-porteros">
+          <thead><tr>
+            <th>Portero</th><th>Turno</th>
+            <th class="n">Dejó pasar</th><th class="n">Rechazó</th><th class="n">Deshizo</th>
+          </tr></thead>
+          <tbody>${filas.map(filaPortero).join("")}</tbody>
+          ${filas.length > 1 ? `<tfoot><tr>
+            <td class="dato">Los ${num(filas.length)}</td>
+            <td class="dato">${esc(turnoTxt(t.primero_at, t.ultimo_at))}</td>
+            <td class="n">${num(t.ingresos)}</td>
+            <td class="n">${num(t.rechazadas)}</td>
+            <td class="n${Number(t.deshechas) ? " deshechos" : ""}">${num(t.deshechas)}</td>
+          </tr></tfoot>` : ""}
+        </table>
+      </div>`
+      : `<p class="vacio">Todavía nadie escaneó una manilla en este evento. Cuando
+           empiece la puerta, acá va lo que hizo cada uno.</p>`}`;
+}
+
+function filaPortero(f) {
+  const des = Number(f.deshechas) || 0;
+  const aj  = Number(f.deshechas_ajenas) || 0;
+  const rei = Number(f.reingresos) || 0;
+  return `<tr>
+    <td><span class="prod-nombre">${esc(f.portero)}</span>
+      <i>${esc(f.rol || "")}${f.activo === false ? " · desactivado" : ""}</i></td>
+    <td class="dato">${esc(turnoTxt(f.primero_at, f.ultimo_at))}</td>
+    <td class="n">${num(f.ingresos)}${rei
+      ? `<em>${num(rei)} ${rei === 1 ? "reingreso" : "reingresos"}</em>` : ""}</td>
+    <td class="n">${num(f.rechazadas)}</td>
+    <td class="n${des ? " deshechos" : ""}">${num(des)}${aj
+      ? `<em>${num(aj)} de otro portero</em>` : ""}</td>
+  </tr>`;
+}
+
+/* El turno REAL, que casi nunca es el anunciado. Si empezó y terminó el
+   mismo día se dice la fecha una sola vez: repetirla en las dos puntas
+   ocupa el ancho que necesita la columna de al lado. */
+function turnoTxt(desde, hasta) {
+  if (!desde) return "—";
+  const d1 = partesBO(desde).fecha, d2 = partesBO(hasta).fecha;
+  return d1 === d2
+    ? `${fechaBO(desde)} · ${horaBO(desde)} → ${horaBO(hasta)}`
+    : `${fechaHoraBO(desde)} → ${fechaHoraBO(hasta)}`;
 }
 
 async function refrescarResumen(eventoId) {
