@@ -1083,3 +1083,15 @@ body[data-filtro="1"] .puerta-visor::before{
   display:block;margin-top:5px;font-size:11px;line-height:1;
   color:var(--txt-3);font-variant-numeric:tabular-nums;min-height:11px}
 .nota-fee{margin:14px 0 0;max-width:62ch}
+
+/* El link de venta de cada relacionador, dentro de su fila. Va en el flujo
+   de la fila y no en un modal: el admin lo copia y lo manda, y un paso más
+   entre eso y el WhatsApp es un paso donde se manda el link pelado. */
+.persona-links{
+  grid-column:1/-1;margin-top:10px;padding-top:10px;
+  border-top:1px dashed var(--linea-2);display:grid;gap:6px}
+.persona-links .link-publico{margin:0}
+.link-evento-nombre{
+  font:600 11px/1 var(--texto);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--txt-3);margin-right:8px}
+.vacio-links{color:var(--txt-3);font-size:13px;border-top:1px dashed var(--linea-2)}

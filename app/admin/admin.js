@@ -2436,7 +2436,7 @@ async function resolverRevision(ordenId, decision, motivo) {
    Nada de los `if` de rol de acá es seguridad: el que llegue por consola
    se choca con la función o con la RLS, que son las que deciden. */
 
-const EQ = { gente: [], editando: null, alta: false, clave: null };
+const EQ = { gente: [], editando: null, alta: false, clave: null, eventos: [] };
 
 const ROLES_TXT = { admin: "Administrador", staff: "Staff",
                     rrpp: "Relacionador", portero: "Portero" };
@@ -2484,13 +2484,23 @@ async function pantallaEquipo(opts) {
      lo haga: es la misma regla de siempre —PostgREST corta en 1000 filas
      sin avisar y lo que se filtra en JS no ahorra ese corte— y además
      deja escrito acá qué lista se está pidiendo. */
-  const { data, error } = await sb.from("perfiles")
-    .select("id,nombre,rol,activo,slug,comision_entrada")
-    .eq("organizador_id", S.yo.organizador_id)
-    .order("activo", { ascending: false })
-    .order("nombre");
-  if (error) { $("#main").innerHTML = `<p class="error">${esc(error.message)}</p>`; return; }
-  EQ.gente = data || [];
+  const [gente, evs] = await Promise.all([
+    sb.from("perfiles")
+      .select("id,nombre,rol,activo,slug,comision_entrada")
+      .eq("organizador_id", S.yo.organizador_id)
+      .order("activo", { ascending: false })
+      .order("nombre"),
+    /* Los eventos a la venta, para poder armar acá el link de cada
+       relacionador. El admin es el que da de alta a la persona y el que se
+       la manda por WhatsApp; obligarlo a entrar con la cuenta de esa
+       persona para copiarle su propio link es la clase de vuelta que
+       termina en que le pase el link pelado y la venta no sea de nadie. */
+    sb.from("eventos").select("id,slug,nombre,fecha")
+      .eq("estado", "publicado").order("fecha", { ascending: true }),
+  ]);
+  if (gente.error) { $("#main").innerHTML = `<p class="error">${esc(gente.error.message)}</p>`; return; }
+  EQ.gente = gente.data || [];
+  EQ.eventos = evs.error ? [] : (evs.data || []);
   pintarEquipo();
 }
 
@@ -2568,8 +2578,30 @@ function filaPersona(p) {
         : `<button type="button" class="btn plano chico" data-activo="${esc(p.id)}"
              >${p.activo ? "Desactivar" : "Reactivar"}</button>`}
     </span>
+    ${p.rol === "rrpp" && p.slug ? zonaLinksDe(p) : ""}
     ${editando ? formEdicion(p, yo) : ""}
   </li>`;
+}
+
+/* El link de venta de una persona, listo para copiar y mandar. Uno por
+   evento a la venta: el ?r= es de la persona, pero el link es de un evento
+   concreto y mandar el del evento equivocado vende otra cosa. */
+function zonaLinksDe(p) {
+  if (!EQ.eventos.length) return `<div class="persona-links vacio-links">
+    Cuando haya un evento a la venta, acá aparece el link de ${esc(p.nombre)}.</div>`;
+  return `<div class="persona-links">
+    ${EQ.eventos.map((e, i) => {
+      const url = `${location.origin}/${S.orgSlug}/${e.slug}` +
+                  `?r=${encodeURIComponent(p.slug)}`;
+      const id = `lk-${p.id}-${i}`;
+      return `<p class="link-publico">
+        ${EQ.eventos.length > 1 ? `<span class="link-evento-nombre">${esc(e.nombre)}</span>` : ""}
+        <code id="${id}">${esc(url)}</code>
+        <button type="button" class="btn plano chico" data-copiar="${id}"
+          data-que="El link de ${esc(p.nombre)}">Copiar</button>
+      </p>`;
+    }).join("")}
+  </div>`;
 }
 
 /* ── editar: el código y la comisión ──
