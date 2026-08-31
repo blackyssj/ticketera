@@ -234,6 +234,10 @@ function pintarHero() {
     notaFee.join(", ") + ". Ya incluye el procesamiento del pago.";
 }
 
+/* El nombre de cada paso va en su propio span porque en un teléfono no entran
+   los cuatro: ahí queda visible el del paso actual y los otros se leen por el
+   número. El span sigue en el DOM —escondido a la vista, no borrado— así que
+   el lector de pantalla los sigue nombrando. */
 function pintarPasos() {
   const i = PASOS.findIndex(p => p.id === S.paso);
   $("#pasos").innerHTML = PASOS.map((p, k) => {
@@ -241,9 +245,21 @@ function pintarPasos() {
     const tag = estado === "hecho" ? "button" : "div";
     return (k ? '<span class="paso-sep"></span>' : "") +
       `<${tag} class="paso" data-estado="${estado}"` +
+      (estado === "actual" ? ' aria-current="step"' : "") +
       (estado === "hecho" ? ` data-ir="${p.id}" type="button"` : "") +
-      `><span class="n">${k + 1}</span>${esc(p.txt)}</${tag}>`;
+      `><span class="n">${k + 1}</span><span class="t">${esc(p.txt)}</span></${tag}>`;
   }).join("");
+  marcarDesborde();
+}
+
+/* Con vocabularios largos ("Reservas", "Tu reserva") el rail puede seguir sin
+   entrar. Antes se cortaba en seco contra el borde y no había nada que dijera
+   que seguía: se degradaba a un scroll invisible. El degradado de la derecha
+   es esa señal, y se apaga al llegar al final para no teñir el último paso. */
+function marcarDesborde() {
+  const r = $("#pasos");
+  const falta = r.scrollWidth - r.clientWidth - r.scrollLeft > 1;
+  r.dataset.mas = falta ? "1" : "0";
 }
 
 /* Dos grupos, no una lista sola: una entrada y una mesa se compran distinto
@@ -348,6 +364,25 @@ function pintarRail() {
 
   $("#railAviso").textContent = "";
   if (hay) arrancarReloj(); else pararReloj();
+  medirBarra();
+}
+
+/* En el teléfono el resumen es una barra fija abajo, y el contenido tenía
+   reservados 96px a mano. La barra mide 149 y cambia sola —el botón "Volver"
+   aparece en el paso de datos, el aviso puede ocupar dos líneas, el iPhone
+   suma su franja segura—, así que el número escrito a mano siempre iba a
+   quedar corto: la última entrada de la lista terminaba debajo de la barra.
+   Se mide lo que tapa de verdad y se publica en --alto-barra.
+
+   Solo el tirador y el pie, no el rail entero: cuando el resumen está
+   desplegado es una hoja que el comprador abrió a propósito, y reservarle
+   media pantalla al contenido de abajo no tendría sentido. */
+function medirBarra() {
+  const r = $("#rail");
+  const fija = r && !r.hidden && getComputedStyle(r).position === "fixed";
+  const alto = fija
+    ? $("#railTirador").offsetHeight + $(".rail-pie").offsetHeight : 0;
+  document.documentElement.style.setProperty("--alto-barra", alto + "px");
 }
 
 /* ── el hold ─────────────────────────────────────────────────────
@@ -565,9 +600,13 @@ async function mostrarListo() {
   // El correo depende de si RESEND_API_KEY está configurada de verdad
   // (D.correo_configurado, que manda la función `evento`). Si no lo está,
   // ningún correo sale nunca — prometerlo ahí sería mentir.
+  // El uuid entero ya está arriba, dentro del link que se copia. Repetirlo
+  // acá en crudo ocupaba dos renglones y no le decía nada al comprador: los
+  // ocho primeros alcanzan para que la organización encuentre la compra, que
+  // es para lo único que este número se lee.
   const correoOk = D.correo_configurado !== false;
   $("#listoRef").textContent =
-    `Orden ${S.orden.id}${S.orden.pago_ref ? " · pago " + S.orden.pago_ref : ""}.` +
+    `Orden #${String(S.orden.id).slice(0, 8).toUpperCase()}.` +
     (correoOk ? ` También te las mandamos a ${S.comprador.email}.` : "");
   $("#tickets").innerHTML = `<p class="rail-vacio">Dibujando tus entradas…</p>`;
 
@@ -578,21 +617,27 @@ async function mostrarListo() {
 
   // Escalonadas: la primera aparece sola y el resto la siguen. Todas juntas
   // se leen como un bloque; de a una se lee como "estas son tuyas".
-  $("#tickets").innerHTML = S.entradas.map((t, i) =>
-    `<img style="--i:${Math.min(i, 8)}" src="${t.png}"
-          alt="Entrada ${esc(t.etiqueta)}, código ${esc(t.code)}"
-          loading="${i < 2 ? "eager" : "lazy"}">`
-  ).join("");
+  // La tira la arma ticket.js, la misma que dibuja /orden/?id=…: son el mismo
+  // momento y separarlas en dos plantillas es pedir que se despeguen.
+  $("#tickets").innerHTML = window.tiraTickets(S.entradas);
 }
 
-function descargar() {
-  S.entradas.forEach((t, i) => {
-    const a = document.createElement("a");
-    a.href = t.png;
-    a.download = `entrada-${i + 1}-${t.code}.png`;
-    document.body.appendChild(a); a.click(); a.remove();
-  });
-  avisar(`${S.entradas.length} ${S.entradas.length === 1 ? "entrada descargada" : "entradas descargadas"}.`);
+/* Guardar y no descargar: en un teléfono la descarga de seis PNG no deja
+   nada a la vista. ticket.js abre la hoja de compartir del sistema cuando
+   existe —ahí adentro está "Guardar imagen"— y baja los archivos cuando no. */
+async function descargar() {
+  const b = $("#btnDescargar");
+  b.disabled = true;
+  try {
+    const como = await window.guardarEntradas(S.entradas);
+    if (como === "bajada")
+      avisar(`${S.entradas.length} ${S.entradas.length === 1
+        ? "entrada guardada" : "entradas guardadas"}.`);
+  } catch (err) {
+    avisar("No se pudieron guardar. Mantené apretada la entrada y elegí Guardar imagen.");
+  } finally {
+    b.disabled = false;
+  }
 }
 
 /* ══ eventos ══════════════════════════════════════════════════════ */
@@ -623,6 +668,11 @@ $("#pasos").addEventListener("click", e => {
   const b = e.target.closest("[data-ir]");
   if (b && S.paso !== "pago" && S.paso !== "listo") irA(b.dataset.ir);
 });
+$("#pasos").addEventListener("scroll", marcarDesborde, { passive: true });
+addEventListener("resize", () => { marcarDesborde(); medirBarra(); });
+/* La barra crece cuando el aviso pasa a dos líneas o cuando termina de cargar
+   la tipografía, y eso no pasa por pintarRail(). El observer lo agarra igual. */
+if (window.ResizeObserver) new ResizeObserver(medirBarra).observe($("#rail"));
 
 $("#btnSeguir").addEventListener("click", () => {
   if (S.paso === "entradas") return irA("datos");

@@ -445,12 +445,19 @@ function cablearArte(ev) {
 async function pantallaEntradas(eventoId) {
   $("#main").innerHTML = `<p class="cargando">Cargando…</p>`;
 
-  const [ev, tipos, fases] = await Promise.all([
+  const [ev, tipos, fases, vig] = await Promise.all([
     sb.from("eventos").select("id,nombre,estado,slug").eq("id", eventoId).single(),
     sb.from("tipo_entrada").select("*").eq("evento_id", eventoId).order("orden"),
     sb.from("evento_fase").select("*").eq("evento_id", eventoId).order("orden"),
+    /* Cuál vende AHORA no se deduce acá: se le pregunta a la misma función
+       que decide el precio de la venta real. Recalcularlo en JavaScript
+       sería una segunda opinión, y el día que las dos discrepen la
+       pantalla va a estar tranquilizando sobre algo que no está pasando. */
+    sb.rpc("fase_vigente", { p_evento: eventoId }),
   ]);
   const T = tipos.data || [], F = fases.data || [];
+  const vigente = vig.data || null;
+  const proxima = proximaFase(F);
   /* fase_precio sin filtro traía las de TODO el organizador, y PostgREST
      corta en 1000 filas sin avisar: un precio fuera del corte desaparecía
      de la pantalla y, como el código creía que no existía, dejar la
@@ -484,7 +491,7 @@ async function pantallaEntradas(eventoId) {
     <div class="grilla-envoltorio">
       <table class="grilla">
         <thead><tr><th>Tipo</th>
-          ${F.map(f => `<th>${esc(f.nombre)}<em>${ventana(f)}</em></th>`).join("")}
+          ${F.map(f => cabezaFase(f, vigente, proxima, F)).join("")}
           <th class="col-accion"><button class="btn plano chico" id="btnFase">+ Fase</button></th>
         </tr></thead>
         <tbody>
@@ -507,6 +514,7 @@ async function pantallaEntradas(eventoId) {
         </tbody>
       </table>
     </div>
+    <section id="zonaFase"></section>
     <p class="ayuda nota-fee">El precio es lo que te queda a vos. Encima va el
        ${Math.round(cfgFee.fee_pct * 100)}% de servicio de TICKETAZO, que paga el
        comprador${Number(cfgFee.fee_fijo_transaccion) > 0
@@ -522,7 +530,14 @@ async function pantallaEntradas(eventoId) {
 
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
   $("#btnTipo").onclick = () => nuevoTipo(eventoId);
-  $("#btnFase").onclick = () => nuevaFase(eventoId);
+  /* El formulario se abre con la foto de fases que ya tiene la pantalla:
+     el chequeo de solapamiento necesita a las OTRAS fases para poder
+     nombrarlas, y volver a pedirlas al guardar dejaría la advertencia
+     dependiendo de un request más que puede fallar justo ahí. */
+  $("#btnFase").onclick = () => abrirFase(eventoId, null, F, vigente);
+  document.querySelectorAll("#main .fase-editar").forEach(b => {
+    b.onclick = () => abrirFase(eventoId, F.find(f => f.id === b.dataset.fase), F, vigente);
+  });
   /* En vivo: el organizador prueba un precio, ve lo que paga el comprador y
      lo ajusta antes de guardar. Después de guardar ya es tarde: el número
      redondo que quería era el de la vitrina, no el suyo. */
@@ -556,10 +571,137 @@ let FEE_CFG = { fee_pct: 0, fee_fijo_transaccion: 0, fee_piso: 0 };
 const textoPaga = sub => !(sub > 0) ? ""
   : `paga ${bs(sub + feePreview(sub, FEE_CFG))}`;
 
-function ventana(f) {
-  const d = x => x ? new Date(x).toLocaleDateString("es-BO", { day: "numeric", month: "short" }) : "";
-  if (!f.desde && !f.hasta) return "siempre";
-  return `${d(f.desde)} → ${d(f.hasta) || "sin fin"}`;
+/* ══ el reloj de Bolivia ══════════════════════════════════════════
+   Bolivia es UTC−4 todo el año: no hay horario de verano, así que el
+   offset es una constante y no hace falta arrastrar una librería de husos
+   para una sola zona.
+
+   Lo que sí hace falta es no dejarlo librado al reloj de la máquina.
+   `toLocaleString` sin `timeZone` usa el huso del navegador, y el panel se
+   abre desde donde sea — el organizador de viaje, alguien del equipo en
+   otro país. Sin fijar la zona, la misma fase se leería con otra hora en
+   cada pantalla y "cierra el 5" sería el 4 o el 6 según dónde esté parado
+   el que mira. Una fase que cierra el 5 cierra el 5 a las 23:59 DE
+   BOLIVIA, y eso vale tanto para escribirla como para leerla. */
+const RELOJ_BO = "America/La_Paz";
+
+const fechaBO = iso => iso
+  ? new Date(iso).toLocaleDateString("es-BO",
+      { timeZone: RELOJ_BO, day: "numeric", month: "short" })
+  : "";
+const fechaHoraBO = iso => iso
+  ? new Date(iso).toLocaleString("es-BO",
+      { timeZone: RELOJ_BO, day: "numeric", month: "short",
+        hour: "2-digit", minute: "2-digit", hour12: false })
+  : "";
+const horaBO = iso => iso
+  ? new Date(iso).toLocaleTimeString("es-BO",
+      { timeZone: RELOJ_BO, hour: "2-digit", minute: "2-digit", hour12: false })
+  : "";
+
+/* Las partes que van en un <input type="date"> y en uno type="time">, en
+   hora de Bolivia. Salen de `toLocaleDateString("en-CA")` porque el
+   formato corto de ese locale YA es AAAA-MM-DD, que es exactamente lo que
+   el input espera: armarlo a mano con getFullYear/getMonth+1 es la receta
+   del bug de un día, y encima daría la fecha del huso del navegador. */
+function partesBO(iso) {
+  if (!iso) return { fecha: "", hora: "" };
+  const d = new Date(iso);
+  return {
+    fecha: d.toLocaleDateString("en-CA", { timeZone: RELOJ_BO }),
+    hora: d.toLocaleTimeString("en-GB",
+      { timeZone: RELOJ_BO, hour: "2-digit", minute: "2-digit", hour12: false }),
+  };
+}
+
+/* El camino de vuelta: lo tipeado se fija a −04:00 explícitamente. Sin el
+   offset, `new Date("2026-09-05T23:59")` se interpreta en el huso del
+   navegador y la fase cerraría a otra hora — en Madrid, seis horas antes. */
+const isoBO = (fecha, hora) => fecha ? `${fecha}T${hora || "00:00"}:00-04:00` : null;
+
+const ventana = f => !f.desde && !f.hasta ? "siempre"
+  : `${fechaHoraBO(f.desde) || "sin principio"} → ${fechaHoraBO(f.hasta) || "sin fin"}`;
+
+/* ══ las fases ════════════════════════════════════════════════════
+   Una fase es una ventana de tiempo con su propia lista de precios: la
+   preventa cierra el jueves y la general arranca ahí. Hasta acá se creaba
+   con dos prompt(), con `desde` clavado en el instante del clic, y después
+   no se podía tocar nunca más — ni corregir el nombre, ni mover el cierre,
+   ni borrar la que salió mal. O sea que el caso normal de una ticketera,
+   dejar la general programada para cuando cierre la preventa, no se podía
+   armar: toda fase nacía abierta.
+
+   Y abajo de eso hay una trampa. `fase_vigente()` (0004, con el desempate
+   de 0017) elige así:
+
+     where activo and (desde is null or desde <= now())
+                  and (hasta is null or hasta >  now())
+     order by orden, id limit 1
+
+   Con dos fases pisadas gana la de `orden` menor y la otra queda muerta
+   sin que nada avise. El que arma "Preventa hasta el 5" y "General desde
+   el 1" cree que subió el precio el día 1 y en realidad siguió vendiendo
+   barato hasta el 5. Eso es plata, y es invisible.
+
+   `fase_vigente()` no se toca: hay ventas hechas con esa lógica y
+   cambiarla movería el precio de lo que se está vendiendo ahora mismo. Lo
+   que cambia es la pantalla, en dos lugares:
+
+   · En la grilla, cada fase dice qué está haciendo AHORA. La que está
+     dentro de su ventana pero igual no vende sale marcada «tapada por
+     «X»» — ese estado antes había que deducirlo de dos fechas y de un
+     `order by` que no aparece escrito en ninguna pantalla.
+   · Al guardar, si el rango se pisa con otro, sale el choque con nombres,
+     fechas y cuál de las dos gana, y el botón cambia a «Guardar igual».
+
+   Aviso y no rechazo, a propósito. Rechazar trabaría el camino normal
+   para SALIR de un solapamiento: arreglar "Preventa hasta el 5" contra
+   "General desde el 1" es editar una de las dos, y cuál se toque primero
+   no puede decidir si el formulario acepta. Lo peligroso acá no es la
+   acción, es que sea silenciosa — así que se le saca el silencio y se
+   pide un segundo clic deliberado, que es justo lo que un prompt() nunca
+   pidió. */
+
+/* La próxima que abre: la de `desde` más chico entre las que todavía no
+   arrancaron. Se marca aparte de las demás programadas porque es la única
+   sobre la que hay algo que hacer hoy — es la que hay que mirar antes de
+   irse a dormir. */
+function proximaFase(F) {
+  const ahora = Date.now();
+  const futuras = F.filter(f => f.activo && f.desde && Date.parse(f.desde) > ahora)
+                   .sort((a, b) => Date.parse(a.desde) - Date.parse(b.desde));
+  return futuras.length ? futuras[0].id : null;
+}
+
+/* Cinco estados, y el que justifica la función es `tapada`: una fase
+   dentro de su ventana que igual no vende, porque otra de `orden` menor
+   también lo está. Las otras cuatro se pueden deducir de las fechas;
+   ésta no. */
+function estadoFase(f, F, vigenteId, proximaId) {
+  const ahora = Date.now();
+  const abrio = !f.desde || Date.parse(f.desde) <= ahora;
+  const cerro = f.hasta && Date.parse(f.hasta) <= ahora;
+  if (!f.activo) return { cls: "gris", txt: "inactiva" };
+  if (f.id === vigenteId) return { cls: "verde", txt: "vende ahora" };
+  if (cerro) return { cls: "gris", txt: `cerró ${fechaBO(f.hasta)}` };
+  if (!abrio) return { cls: "dorada",
+    txt: `${f.id === proximaId ? "próxima · " : ""}abre ${fechaHoraBO(f.desde)}` };
+  /* Está en ventana y no es la vigente: la tapa otra. Se la nombra, porque
+     "tapada" sin decir por quién obliga a mirar las cinco columnas y
+     comparar fechas a ojo, que es exactamente lo que nadie hace. */
+  const gana = F.find(x => x.id === vigenteId);
+  return { cls: "roja", txt: gana ? `tapada por «${gana.nombre}»` : "no vende" };
+}
+
+function cabezaFase(f, vigenteId, proximaId, F) {
+  const e = estadoFase(f, F || [], vigenteId, proximaId);
+  return `<th class="th-fase">
+    <span class="fase-titulo">${esc(f.nombre)}</span>
+    <em>${esc(ventana(f))}</em>
+    <span class="pastilla ${e.cls} fase-estado">${esc(e.txt)}</span>
+    ${puedeEditar() ? `<button type="button" class="btn plano chico fase-editar"
+      data-fase="${esc(f.id)}">Editar</button>` : ""}
+  </th>`;
 }
 
 /* Antes: un .delete() por celda vaciada y después un .upsert() con el
@@ -608,22 +750,231 @@ async function nuevoTipo(eventoId) {
   pantallaEntradas(eventoId);
 }
 
-async function nuevaFase(eventoId) {
-  const nombre = prompt("Nombre de la fase (Preventa 1, General…)");
-  if (!nombre) return;
-  const hasta = prompt("¿Hasta qué día vale? (AAAA-MM-DD, vacío = sin fin)");
-  /* orden fijo en 0 empataba con `order by orden` — Postgres desempataba a
-     su antojo y fase_vigente() podía resolver la fase incorrecta. Acá se
-     calcula el siguiente a partir del máximo que ya tenga el evento. */
-  const { data: ultima } = await sb.from("evento_fase").select("orden")
-    .eq("evento_id", eventoId).order("orden", { ascending: false }).limit(1);
-  const orden = (ultima && ultima[0] ? ultima[0].orden : -1) + 1;
-  const { error } = await sb.from("evento_fase").insert({
-    organizador_id: S.yo.organizador_id, evento_id: eventoId,
-    nombre: nombre.trim(), desde: new Date().toISOString(),
-    hasta: hasta ? `${hasta}T23:59:00-04:00` : null, orden });
-  if (error) { avisar(error.message); return; }
-  pantallaEntradas(eventoId);
+/* El formulario. Un prompt() para una fecha es donde alguien tipea
+   "12/09/2026" y se guarda cualquier cosa: no valida, no muestra un
+   calendario, no deja corregir, y el valor viaja como texto libre hasta
+   la base. Un <input type="date"> lo valida el navegador y devuelve
+   siempre AAAA-MM-DD, que es la única forma en que `isoBO` puede
+   construir un instante que signifique lo que el organizador quiso. */
+const FASE = { evento: null, fase: null, todas: [], vigente: null, insistiendo: false };
+
+function abrirFase(eventoId, fase, todas, vigente) {
+  Object.assign(FASE, { evento: eventoId, fase: fase || null,
+                        todas: todas || [], vigente: vigente || null,
+                        insistiendo: false });
+  pintarFase();
+  const z = $("#zonaFase");
+  if (z) z.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function pintarFase() {
+  const z = $("#zonaFase");
+  if (!z) return;
+  const f = FASE.fase;
+  /* La fase nueva nace con la fecha y la hora de HOY en el campo `abre`,
+     no vacía. Vacío significaría "desde siempre", que se pisa con todo lo
+     que ya exista y dispararía el aviso de choque en el caso más común de
+     todos. Prefijado a hoy hace lo mismo que hacía el prompt() —nace
+     abierta— con la diferencia que ahora se ve y se puede correr a mañana,
+     que es para lo que existe esta pantalla. */
+  const d = partesBO(f ? f.desde : new Date().toISOString());
+  const h = partesBO(f && f.hasta);
+  z.innerHTML = `
+    <form class="tarjeta form-fase" id="formFase">
+      <h3>${f ? `Fase «${esc(f.nombre)}»` : "Fase nueva"}</h3>
+      <label class="ancha"><span>Nombre</span>
+        <input id="faNombre" value="${esc(f ? f.nombre : "")}" maxlength="60" required
+               placeholder="Preventa, General, Última tanda…"></label>
+      <label><span>Abre</span>
+        <span class="par-fh">
+          <input id="faDesdeF" type="date" value="${esc(d.fecha)}">
+          <input id="faDesdeH" type="time" value="${esc(d.hora)}"></span>
+        <em class="ayuda">Vacío = abierta desde siempre. Poné una fecha futura
+          para dejarla programada.</em></label>
+      <label><span>Cierra</span>
+        <span class="par-fh">
+          <input id="faHastaF" type="date" value="${esc(h.fecha)}">
+          <input id="faHastaH" type="time" value="${esc(h.hora)}"></span>
+        <em class="ayuda">Vacío = sin fin. Si ponés solo la fecha, cierra ese
+          día a las 23:59 de Bolivia.</em></label>
+      <p class="ayuda ancha">Las horas son de Bolivia (UTC−4), como en toda la
+        ticketera.</p>
+      <div id="faChoque"></div>
+      <div class="acciones">
+        <button class="btn primario" id="faGuardar">${
+          FASE.insistiendo ? "Guardar igual" : "Guardar"}</button>
+        <button type="button" class="btn plano" id="faCancelar">Cancelar</button>
+        ${f ? `<button type="button" class="btn plano peligrosa" id="faBorrar">Borrar la fase</button>` : ""}
+      </div>
+      <p class="error" id="faError"></p>
+    </form>`;
+
+  $("#formFase").onsubmit = e => { e.preventDefault(); guardarFase(); };
+  $("#faCancelar").onclick = () => { z.innerHTML = ""; };
+  const b = $("#faBorrar");
+  if (b) b.onclick = () => borrarFase();
+  /* Tocar cualquier campo apaga el "Guardar igual": el segundo clic tiene
+     que confirmar EL choque que se mostró, no uno anterior sobre fechas
+     que ya cambiaron. */
+  ["faNombre", "faDesdeF", "faDesdeH", "faHastaF", "faHastaH"].forEach(id => {
+    const i = $("#" + id);
+    if (i) i.oninput = () => {
+      if (!FASE.insistiendo) return;
+      FASE.insistiendo = false;
+      $("#faGuardar").textContent = "Guardar";
+      $("#faChoque").innerHTML = "";
+    };
+  });
+}
+
+/* Dos fases se pisan si sus ventanas se cruzan aunque sea un minuto. Un
+   `desde` vacío es "desde siempre" y un `hasta` vacío es "para siempre":
+   por eso el null cuenta como infinito y no como cero, que es el error
+   clásico de esta comparación y el que haría pasar por limpio justo el
+   caso peor — la fase sin fecha de fin, que se pisa con todo lo que venga
+   después. */
+function sePisan(a, b) {
+  const d1 = a.desde ? Date.parse(a.desde) : -Infinity;
+  const h1 = a.hasta ? Date.parse(a.hasta) : Infinity;
+  const d2 = b.desde ? Date.parse(b.desde) : -Infinity;
+  const h2 = b.hasta ? Date.parse(b.hasta) : Infinity;
+  return d1 < h2 && d2 < h1;
+}
+
+/* Cuál de las dos gana en el pedazo que comparten: la misma regla que
+   `fase_vigente()`, `order by orden, id`. Escrita acá con el comentario
+   arriba porque es una COPIA, y la que vale es la de la base: si algún
+   día dejan de coincidir, la que está mal es ésta. */
+const ganaFase = (a, b) =>
+  (a.orden !== b.orden ? a.orden < b.orden : String(a.id) < String(b.id)) ? a : b;
+
+async function guardarFase() {
+  const nombre = $("#faNombre").value.trim();
+  $("#faError").textContent = "";
+  if (!nombre) { $("#faError").textContent = "Ponele un nombre."; return; }
+
+  const desde = isoBO($("#faDesdeF").value, $("#faDesdeH").value);
+  /* El default del cierre son las 23:59 y no las 00:00: "la preventa vale
+     hasta el 5" quiere decir todo el día 5. Con 00:00 la preventa habría
+     cerrado la noche del 4 y el organizador se enteraría por el primero
+     que llame a preguntar por qué le cobraron de más. */
+  const hasta = isoBO($("#faHastaF").value, $("#faHastaH").value || "23:59");
+  if (desde && hasta && Date.parse(desde) >= Date.parse(hasta)) {
+    $("#faError").textContent = "La fase cerraría antes de abrir. Revisá las dos fechas.";
+    return;
+  }
+
+  const f = FASE.fase;
+  /* Al crear todavía no hay `orden` —se calcula recién al insertar— así
+     que para el chequeo se la trata como la última, que es donde va a
+     quedar: es la que PIERDE contra cualquier fase existente con la que se
+     pise, y eso es exactamente lo que hay que decirle al organizador. */
+  const propuesta = { id: f ? f.id : null, nombre,
+                      desde, hasta, activo: f ? f.activo : true,
+                      orden: f ? f.orden : Infinity };
+  const choques = FASE.todas
+    .filter(o => o.id !== propuesta.id && o.activo && sePisan(propuesta, o));
+
+  if (choques.length && !FASE.insistiendo) {
+    FASE.insistiendo = true;
+    $("#faGuardar").textContent = "Guardar igual";
+    $("#faChoque").innerHTML = avisoChoque(propuesta, choques);
+    return;
+  }
+
+  const fila = { nombre, desde, hasta };
+  if (f) {
+    /* `.select()` obligatorio: si la policy filtrara la fila, el update
+       vuelve sin error y con cero filas y la pantalla diría "guardado"
+       sobre algo que no se guardó. Ya pasó dos veces en este proyecto. */
+    const { data, error } = await sb.from("evento_fase")
+      .update(fila).eq("id", f.id).select("id");
+    if (error) { $("#faError").textContent = error.message; return; }
+    if (!data || !data.length) {
+      $("#faError").textContent = "No se guardó nada: tu cuenta no puede editar esta fase.";
+      return;
+    }
+    avisar("Fase guardada.");
+  } else {
+    const { error } = await insertarFase(FASE.evento, fila);
+    if (error) { $("#faError").textContent = error.message; return; }
+    avisar("Fase creada.");
+  }
+  pantallaEntradas(FASE.evento);
+}
+
+/* `orden` fijo en 0 empataba, y `fase_vigente()` desempataba por `id`: la
+   fase que vendía dependía de un uuid al azar. 0017 le puso un unique
+   (evento_id, orden) para que no vuelva a pasar, pero ese unique convierte
+   la carrera en un 23505: dos personas creando una fase a la vez leen el
+   mismo máximo y la segunda rebota. Se reintenta releyendo el máximo, que
+   es lo que un `select max()+1` sin transacción no puede prometer solo. */
+async function insertarFase(eventoId, fila) {
+  let ultimo = null;
+  for (let intento = 0; intento < 3; intento++) {
+    const { data: ult } = await sb.from("evento_fase").select("orden")
+      .eq("evento_id", eventoId).order("orden", { ascending: false }).limit(1);
+    const orden = (ult && ult[0] ? ult[0].orden : -1) + 1;
+    const { error } = await sb.from("evento_fase").insert({
+      organizador_id: S.yo.organizador_id, evento_id: eventoId, ...fila, orden });
+    if (!error) return { error: null };
+    if (error.code !== "23505") return { error };
+    ultimo = error;
+  }
+  return { error: { ...ultimo,
+    message: "Alguien más está creando fases al mismo tiempo. Probá de nuevo." } };
+}
+
+/* El choque, dicho entero: quién con quién, en qué pedazo de tiempo, y
+   cuál de las dos va a vender ahí. Sin la última línea el aviso sería
+   "ojo, se pisan" — cierto e inútil, porque lo que el organizador tiene
+   que decidir es si le sirve que la otra sea la que cobre. */
+function avisoChoque(propuesta, choques) {
+  return `<div class="choque">
+    <h4>Se pisa con ${choques.length === 1 ? "otra fase" : `otras ${choques.length} fases`}</h4>
+    <ul>${choques.map(o => {
+      const gana = ganaFase(propuesta, o);
+      const d = Math.max(propuesta.desde ? Date.parse(propuesta.desde) : -Infinity,
+                         o.desde ? Date.parse(o.desde) : -Infinity);
+      const h = Math.min(propuesta.hasta ? Date.parse(propuesta.hasta) : Infinity,
+                         o.hasta ? Date.parse(o.hasta) : Infinity);
+      const tramo = `${d === -Infinity ? "desde siempre" : `del ${fechaHoraBO(new Date(d).toISOString())}`}
+                     ${h === Infinity ? "en adelante" : `al ${fechaHoraBO(new Date(h).toISOString())}`}`;
+      const pierde = gana === propuesta ? o : propuesta;
+      return `<li><b>«${esc(o.nombre)}»</b> <i>(${esc(ventana(o))})</i><br>
+        Se cruzan ${esc(tramo)}. En ese tramo vende
+        <b>«${esc(gana.nombre)}»</b> y «${esc(pierde.nombre)}» no vende nada:
+        el precio que cobra la página es el de la que gana.</li>`;
+    }).join("")}</ul>
+    <p>Sale por el orden en que se crearon las fases, no por la fecha. Si querés
+      que mande la otra, cerrá ésta antes de que la otra abra: poneles el mismo
+      día y la de arriba que termine donde la de abajo empieza.</p>
+  </div>`;
+}
+
+/* Borrar solo si no vendió nada, y la cuenta la hace la base
+   (`borrar_fase`, 0043): el `if` de acá es para no hacer un viaje en vano
+   y para poder avisar del caso que la base no puede ver — que la fase que
+   se está por borrar es la única abierta, o sea que después de esto la
+   página pública deja de vender. */
+async function borrarFase() {
+  const f = FASE.fase;
+  if (!f) return;
+  const sola = f.id === FASE.vigente;
+  if (!confirm(`¿Borrar la fase «${f.nombre}»?\n\n` +
+      `Se van también los precios que cargaste en su columna.` +
+      (sola ? `\n\nOJO: es la fase que está vendiendo AHORA. Sin ninguna fase abierta,
+la página pública deja de vender hasta que abras otra.` : "") +
+      `\n\nSi ya vendió algo, no se va a borrar.`)) return;
+
+  const { data, error } = await sb.rpc("borrar_fase", { p_fase: f.id });
+  if (error) { $("#faError").textContent = sinCodigo(error.message); return; }
+  if (!data || !data.ok) {
+    $("#faError").textContent = "No se borró nada. Recargá y fijate cómo quedó.";
+    return;
+  }
+  avisar(data.motivo);
+  pantallaEntradas(FASE.evento);
 }
 
 /* El chequeo se muestra ANTES de que el organizador apriete, no como error
@@ -1250,6 +1601,7 @@ async function pantallaTablero(eventoId) {
     <div id="zonaResumen"><p class="cargando">Cargando…</p></div>
     <section id="zonaCompradores"></section>
     <section id="zonaPlano"></section>
+    ${puedeEditar() ? `<section id="zonaPorteros"></section>` : ""}
     <section id="zonaRegistro"></section>`;
 
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
@@ -1267,8 +1619,100 @@ async function pantallaTablero(eventoId) {
     montarSalon(eventoId, { editar: puedeEditar(), ev: ev.data,
                             alCambiar: () => Promise.all([refrescarResumen(eventoId),
                                                           refrescarRegistro(eventoId)]) }),
+    refrescarPorteros(eventoId),
     refrescarRegistro(eventoId),
   ]);
+}
+
+/* ══ la puerta, portero por portero ═══════════════════════════════
+   Van a ser cuatro personas escaneando y hasta acá el panel no tenía
+   dónde ver quién hizo qué: la bitácora muestra el detalle —mil filas de
+   una noche— y sacar de ahí el resumen es contar a ojo, o sea que en la
+   práctica ese número no existía.
+
+   La columna que manda es «Deshizo», y por eso está al final y en color:
+   validar consume una manilla que estaba vendida y rechazar no toca
+   nada, pero deshacer devuelve una manilla ya consumida al estado
+   `valida` — o sea la vuelve a hacer utilizable. Es el único movimiento
+   de la puerta con el que alguien de adentro puede hacer entrar gente de
+   más. Tres en una noche son dedos gordos; cuarenta son otra cosa, y esa
+   diferencia tiene que estar al lado de las demás y no escondida en el
+   detalle. El «de otro portero» que va debajo afina la misma pregunta:
+   corregirse a uno mismo no es lo mismo que deshacer lo que marcó el
+   compañero. */
+async function refrescarPorteros(eventoId) {
+  const z = $("#zonaPorteros");
+  if (!z) return;
+  const { data, error } = await sb.rpc("resumen_puerta", { p_evento: eventoId });
+  if (error) { z.innerHTML = `<p class="error">${esc(sinCodigo(error.message))}</p>`; return; }
+  /* {} en vez de error: resumen_puerta() contesta lo mismo para "no es de
+     tu organizador" que para "no existe", igual que resumen_evento(). Sin
+     este corte la pantalla diría "todavía nadie escaneó", que es afirmar
+     algo que no sabe. */
+  if (!data || !data.total) {
+    z.innerHTML = `<p class="vacio">No hay datos de puerta de este evento.</p>`;
+    return;
+  }
+  const filas = data.porteros || [];
+  const t = data.total;
+
+  z.innerHTML = `
+    <div class="cab-bloque sep">
+      <h3 class="titulo-bloque">Puerta</h3>
+      <span class="conteo">${filas.length
+        ? `${num(t.ingresos)} ${Number(t.ingresos) === 1 ? "manilla" : "manillas"} por ${
+            num(filas.length)} ${filas.length === 1 ? "persona" : "personas"}`
+        : ""}</span>
+    </div>
+    ${filas.length ? `
+      <p class="ayuda bajo-titulo">Deshacer devuelve una manilla ya usada a válida:
+        es el único movimiento con el que se puede hacer entrar a alguien de más.
+        Unos pocos en la noche son escaneos corregidos; muchos son otra cosa.</p>
+      <div class="grilla-envoltorio">
+        <table class="tabla tabla-porteros">
+          <thead><tr>
+            <th>Portero</th><th>Turno</th>
+            <th class="n">Dejó pasar</th><th class="n">Rechazó</th><th class="n">Deshizo</th>
+          </tr></thead>
+          <tbody>${filas.map(filaPortero).join("")}</tbody>
+          ${filas.length > 1 ? `<tfoot><tr>
+            <td class="dato">Los ${num(filas.length)}</td>
+            <td class="dato">${esc(turnoTxt(t.primero_at, t.ultimo_at))}</td>
+            <td class="n">${num(t.ingresos)}</td>
+            <td class="n">${num(t.rechazadas)}</td>
+            <td class="n${Number(t.deshechas) ? " deshechos" : ""}">${num(t.deshechas)}</td>
+          </tr></tfoot>` : ""}
+        </table>
+      </div>`
+      : `<p class="vacio">Todavía nadie escaneó una manilla en este evento. Cuando
+           empiece la puerta, acá va lo que hizo cada uno.</p>`}`;
+}
+
+function filaPortero(f) {
+  const des = Number(f.deshechas) || 0;
+  const aj  = Number(f.deshechas_ajenas) || 0;
+  const rei = Number(f.reingresos) || 0;
+  return `<tr>
+    <td><span class="prod-nombre">${esc(f.portero)}</span>
+      <i>${esc(f.rol || "")}${f.activo === false ? " · desactivado" : ""}</i></td>
+    <td class="dato">${esc(turnoTxt(f.primero_at, f.ultimo_at))}</td>
+    <td class="n">${num(f.ingresos)}${rei
+      ? `<em>${num(rei)} ${rei === 1 ? "reingreso" : "reingresos"}</em>` : ""}</td>
+    <td class="n">${num(f.rechazadas)}</td>
+    <td class="n${des ? " deshechos" : ""}">${num(des)}${aj
+      ? `<em>${num(aj)} de otro portero</em>` : ""}</td>
+  </tr>`;
+}
+
+/* El turno REAL, que casi nunca es el anunciado. Si empezó y terminó el
+   mismo día se dice la fecha una sola vez: repetirla en las dos puntas
+   ocupa el ancho que necesita la columna de al lado. */
+function turnoTxt(desde, hasta) {
+  if (!desde) return "—";
+  const d1 = partesBO(desde).fecha, d2 = partesBO(hasta).fecha;
+  return d1 === d2
+    ? `${fechaBO(desde)} · ${horaBO(desde)} → ${horaBO(hasta)}`
+    : `${fechaHoraBO(desde)} → ${fechaHoraBO(hasta)}`;
 }
 
 async function refrescarResumen(eventoId) {

@@ -93,8 +93,14 @@ input{font:inherit}
   overflow-x:auto;scrollbar-width:none;
 }
 .pasos::-webkit-scrollbar{display:none}
+/* El degradado avisa que el rail sigue más allá del borde. Solo aparece con
+   data-mas="1" (app.js) para no teñir el último paso cuando ya entra entero. */
+.pasos[data-mas="1"]{
+  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 42px),transparent);
+  mask-image:linear-gradient(90deg,#000 calc(100% - 42px),transparent);
+}
 .paso{
-  display:flex;align-items:center;gap:9px;flex:0 0 auto;
+  display:flex;align-items:center;gap:9px;flex:0 0 auto;position:relative;
   padding:7px 14px 7px 8px;border-radius:999px;
   font-family:var(--dato);font-size:12px;letter-spacing:.04em;
   color:var(--tinta-40);white-space:nowrap;
@@ -190,13 +196,51 @@ input{font:inherit}
 }
 @keyframes girar{to{transform:rotate(360deg)}}
 
-/* ─── tickets ─── */
-.tickets{display:flex;gap:14px;max-width:100%;overflow-x:auto;padding-bottom:8px;
-  scroll-snap-type:x mandatory;overscroll-behavior-x:contain}
-.tickets img{
-  width:min(258px,64vw);flex:0 0 auto;border-radius:6px;scroll-snap-align:start;
-  box-shadow:0 10px 34px rgba(0,0,0,.24);background:var(--tinta);
+/* ─── los pases ───
+   Antes era una fila que scrolleaba de costado: con una entrada sola quedaba
+   pegada a la izquierda y con media pantalla vacía al lado, y en un teléfono
+   nadie descubre que hay que arrastrar. Una grilla que en un teléfono es una
+   columna y en escritorio son tres: cada pase entra entero, que es como se
+   le saca la captura y como se muestra en la puerta. */
+/* auto-fit y no auto-fill: con una entrada sola las pistas vacías se
+   derrumban y el pase queda centrado en vez de pegado a la izquierda con
+   media pantalla al lado, que era justo el problema de la tira. */
+.tickets{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+  gap:18px;justify-items:center;align-items:start;
 }
+.pase{
+  margin:0;width:100%;max-width:380px;
+  background:var(--noche);border-radius:8px;
+  box-shadow:0 12px 34px rgba(0,0,0,.22);
+}
+.pase-arte{position:relative;line-height:0;border-radius:8px 8px 0 0;overflow:hidden}
+.tickets img{display:block;width:100%;height:auto}
+
+/* El talón: la línea por donde se corta una entrada de papel. Es lo que hace
+   que un flyer con un QR encima se lea como una entrada y no como una foto. */
+.pase-pie{
+  position:relative;display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;
+  padding:14px 16px;color:var(--espuma);
+  border-top:1.5px dashed rgba(246,241,228,.26);
+}
+.pase-pie::before,.pase-pie::after{
+  content:"";position:absolute;top:-10px;width:18px;height:18px;border-radius:50%;
+  background:var(--espuma);
+}
+.pase-pie::before{left:-9px}
+.pase-pie::after{right:-9px}
+.pase-tipo{font-family:var(--display);font-size:23px;text-transform:uppercase;line-height:1}
+.pase-code{font-family:var(--dato);font-size:12.5px;color:var(--humo);letter-spacing:.04em}
+.pase-n{margin-left:auto;font-family:var(--dato);font-size:11px;color:var(--humo-2);
+  letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+/* La acción que importa cuando importa: parada en la puerta, con la fila
+   atrás, no hay tiempo de buscar nada. */
+.pase-puerta{flex:1 0 100%;min-height:48px;background:var(--rojo);color:#fff;text-align:center}
+.pase-puerta:hover{background:var(--rojo-claro)}
+.pase[data-usada="1"] .pase-arte{opacity:.62}
+.pase[data-usada="1"] .pase-puerta{background:var(--noche-3);color:var(--humo)}
+
 body.sin-rail .lienzo-col{padding-bottom:0}
 .listo-acciones{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
 
@@ -270,7 +314,13 @@ body.sin-rail .lienzo-col{padding-bottom:0}
 /* ══ móvil: el rail baja a hoja inferior ══ */
 @media (max-width:900px){
   .tablero{grid-template-columns:minmax(0,1fr);gap:0}
-  .lienzo-col{padding-bottom:96px}
+  /* Abajo manda la barra fija, así que el respiro del final lo pone la
+     columna de contenido y no el cuerpo: es la que tiene que dejar libre lo
+     que la barra tapa. Lo que la barra mide de verdad lo publica app.js en
+     --alto-barra; el respaldo de 150px es por si el JS todavía no midió. */
+  .cuerpo{padding-bottom:0}
+  .lienzo-col{padding-bottom:calc(var(--alto-barra,150px) + 26px)}
+  body.sin-rail .lienzo-col{padding-bottom:56px}
   .rail{
     position:fixed;left:0;right:0;bottom:0;top:auto;z-index:80;
     border-radius:10px 10px 0 0;border-top:2px solid var(--rojo);
@@ -299,6 +349,52 @@ body.sin-rail .lienzo-col{padding-bottom:0}
   .tipo-der{grid-column:1;grid-row:auto;justify-content:space-between}
   .tipo-precio{text-align:left}
   .tipo-cupo{grid-row:auto}
+}
+
+/* ══ teléfono ═════════════════════════════════════════════════════
+   Va después del bloque de 900px a propósito: si estas reglas quedaran
+   arriba, cualquier selector suelto de más abajo con la misma
+   especificidad las pisaría por orden de aparición. */
+@media (max-width:600px){
+  /* Los cuatro nombres no entran en 375px: se muestra el del paso en el que
+     estás y el resto queda en su número. El span no se borra —se saca de la
+     vista— para que el lector de pantalla siga leyendo "Pago, paso 3". */
+  .paso:not([data-estado="actual"]) .t{
+    position:absolute;width:1px;height:1px;overflow:hidden;
+    clip-path:inset(50%);white-space:nowrap;
+  }
+  .paso:not([data-estado="actual"]){padding:0;width:44px;justify-content:center;gap:0}
+  .paso-sep{flex-basis:10px}
+
+  /* El hero se comía 409px de los 812 de un teléfono y dejaba la primera
+     entrada abajo de la barra: la persona llegaba por WhatsApp a comprar y
+     lo primero que veía era una pantalla de afiche. Sigue siendo el afiche
+     —el rojo, la espuma, el nombre grande son del evento y mandan—, pero
+     ocupa lo que necesita para presentarse y no una pantalla entera. */
+  .hero{padding-top:24px}
+  .hero .carril{padding-bottom:14px}
+  /* Un punto menos de cuerpo mete el lugar en un renglón en vez de dos. */
+  .eyebrow{margin-bottom:10px;font-size:11px;letter-spacing:.16em}
+  .bajada{margin-top:10px}
+  .datos{margin-top:12px;gap:6px 18px;font-size:12px}
+  /* Más bajo que en escritorio, pero no tanto como para que las burbujas se
+     aplasten: la espuma es de la marca, no relleno. */
+  .espuma-borde{height:28px}
+  .pasos{padding:10px 0}
+  .panel-cab{margin-bottom:10px}
+  .tipo{padding:12px 16px;gap:8px}
+}
+
+/* ══ lo que se toca con el dedo ═══════════════════════════════════
+   44px de alto mínimo. Va por pointer:coarse además de por ancho porque lo
+   que define el tamaño no es la pantalla sino el dedo: una tablet apaisada
+   entra en 1024px y se toca igual. Los pasos ya cumplidos son botones para
+   volver, y volver con la yema en un stepper de 34px es apretar el de al
+   lado. */
+@media (max-width:900px), (pointer:coarse){
+  .paso,.btn,.stepper button,.rlinea .x{min-height:44px}
+  .stepper button{width:44px}
+  .stepper output{width:42px}
 }
 
 @media (prefers-reduced-motion:reduce){
@@ -365,14 +461,89 @@ body.sin-rail .lienzo-col{padding-bottom:0}
 }
 
 /* una entrada ya usada se marca, para no discutir en la puerta */
-.ticket-fig{margin:0;position:relative;flex:0 0 auto}
 .ticket-usada{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-8deg);
   background:rgba(11,10,10,.86);color:var(--espuma);
   font-family:var(--dato);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
   padding:7px 14px;border:1.5px solid var(--rojo);border-radius:3px;
 }
-.ticket-fig img{display:block}
+
+/* ══════════════════════════════════════════════════════════════════
+   Tus entradas — /orden/?id=…
+   La página que se abre después de pagar y, semanas más tarde, en la
+   puerta. Tres cosas en este orden: que no quede duda de que el cobro
+   salió, que el QR se escanee rápido, y que se pueda guardar.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* La cabecera sale del flex de .panel-cab: acá el orden es de arriba abajo
+   —estado, qué es esto, de quién es— y no tres cosas en una línea. */
+.entrega .panel-cab{display:block}
+.entrega .panel-cab h2{font-size:clamp(30px,6vw,44px)}
+.entrega .panel-nota{margin-top:8px;font-size:13px}
+
+/* El acuse del cobro. Usa la misma pastilla que la fase en la página de
+   venta: es el vocabulario que el comprador ya vio hace un minuto. */
+.sello{
+  display:inline-flex;align-items:center;gap:7px;margin-bottom:12px;
+  background:var(--tinta);color:var(--dorado);
+  font-family:var(--dato);font-size:11.5px;letter-spacing:.1em;
+  text-transform:uppercase;padding:6px 12px;border-radius:999px;
+}
+
+/* Flex y no una grilla de columnas fijas: los dos datos ocupan lo que miden.
+   En escritorio quedan uno al lado del otro y pegados a la izquierda; en un
+   teléfono el lugar largo baja solo abajo de la hora. */
+.cuando{
+  display:flex;flex-wrap:wrap;gap:12px 44px;margin:0 0 16px;padding:14px 16px;
+  background:#fff;border:1.5px solid var(--tinta-16);border-radius:4px;
+}
+.cuando > div{display:flex;flex-direction:column;gap:3px;min-width:150px;max-width:100%}
+.cuando dt{font-family:var(--dato);font-size:10.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--tinta-40)}
+.cuando dd{margin:0;font-size:14.5px;font-weight:500;color:var(--tinta)}
+
+.instruccion{margin:0 0 16px;font-family:var(--dato);font-size:12px;color:var(--tinta-60)}
+
+/* Guardar no es descargar: en un teléfono el gesto real es compartir,
+   mantener apretado o sacar captura. La nota lo dice porque la hoja del
+   sistema no existe en todos lados y el gesto tampoco se adivina. */
+.guardar{margin-top:22px}
+.guardar .btn{border:1.5px solid var(--tinta);color:var(--tinta);min-height:48px}
+.guardar .btn:hover{background:var(--tinta);color:var(--espuma)}
+.guardar-nota{margin-top:10px;font-family:var(--dato);font-size:11.5px;
+  color:var(--tinta-40);line-height:1.55}
+.guardar-nota b{color:var(--tinta-60);font-weight:500}
+
+/* ─── modo puerta ───
+   El QR sobre el arte es la entrada que el comprador guarda; este es el que
+   se escanea. Pantalla negra para que el lector no pelee con el flyer, el
+   código lo más grande que entre, y nada más. */
+.puerta{
+  position:fixed;inset:0;z-index:300;background:var(--noche);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  padding:calc(44px + env(safe-area-inset-top)) 18px calc(20px + env(safe-area-inset-bottom));
+  text-align:center;
+}
+body.con-puerta{overflow:hidden}
+.puerta-qr{width:min(84vw,46vh);height:auto;display:block;border-radius:6px;background:#fff}
+.puerta-code{font-family:var(--dato);font-size:clamp(22px,7vw,32px);font-weight:500;
+  letter-spacing:.06em;color:var(--espuma)}
+.puerta-quien{font-size:13.5px;color:var(--humo)}
+.puerta-nav{display:flex;align-items:center;gap:18px}
+.puerta-paso{width:48px;height:48px;border:1.5px solid var(--linea);border-radius:50%;
+  color:var(--espuma);font-size:26px;line-height:1}
+.puerta-paso:hover{border-color:var(--espuma)}
+.puerta-cuenta{font-family:var(--dato);font-size:12.5px;color:var(--humo);
+  letter-spacing:.1em;text-transform:uppercase;min-width:7ch}
+/* humo y no humo-2: es un consejo que hay que poder leer de reojo en la
+   fila, con la pantalla ya bajada de brillo. */
+.puerta-tip{font-family:var(--dato);font-size:11.5px;color:var(--humo);letter-spacing:.06em}
+.puerta-x{
+  position:absolute;top:calc(8px + env(safe-area-inset-top));right:10px;
+  min-height:44px;padding:10px 16px;color:var(--humo);
+  font-family:var(--dato);font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+}
+.puerta-x:hover{color:var(--espuma)}
 
 /* ─── grupos de producto ───
    Una entrada y una mesa se compran distinto: mezclarlas en una lista sola

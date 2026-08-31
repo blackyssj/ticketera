@@ -210,6 +210,69 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 .celda-cupo::placeholder{color:var(--txt-3)}
 .col-accion{width:1%;white-space:nowrap;background:var(--sup-2) !important}
 
+/* ─── la cabecera de cada fase ───
+   Cuatro cosas apiladas y en este orden: cómo se llama, qué ventana tiene,
+   qué está haciendo AHORA, y el botón para tocarla. El estado va tercero y
+   no último porque es lo único de la columna que cambia solo: la fecha se
+   lee cuando se busca, el estado se lee de reojo. */
+.th-fase{min-width:190px}
+.fase-titulo{display:block}
+.fase-estado{display:inline-block;margin-top:7px;white-space:normal;letter-spacing:.05em}
+/* La roja —"tapada por X"— es la única que informa de plata que no está
+   entrando, así que se le da un pelo más de peso que a las otras. */
+.pastilla.roja.fase-estado{font-weight:500}
+.fase-editar{display:block;margin-top:9px}
+
+/* ─── el formulario de la fase ───
+   Dos columnas como el del evento: nombre arriba a lo ancho, y abajo las
+   dos ventanas una al lado de la otra, que es como se piensan — "abre acá,
+   cierra allá". */
+.form-fase{
+  margin-top:18px;max-width:660px;
+  display:grid;grid-template-columns:1fr 1fr;gap:16px;
+}
+.form-fase h3,.form-fase .ancha,.form-fase .acciones,
+.form-fase .error,.form-fase>div{grid-column:1/-1}
+.form-fase label{display:flex;flex-direction:column;gap:6px;min-width:0}
+.form-fase label>span:first-child{
+  font-family:var(--dato);font-size:11px;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--txt-3);
+}
+.form-fase input{
+  width:100%;padding:11px 13px;background:var(--hundido);color:var(--txt);
+  border:1px solid var(--linea-2);border-radius:var(--r-chico);
+}
+/* La fecha y la hora son un solo dato partido en dos campos: pegados y en
+   la misma línea se leen como uno. Separados, alguien llena la fecha, se
+   olvida la hora y guarda una fase que abre a medianoche. */
+.par-fh{display:flex;gap:8px}
+.par-fh input[type="date"]{flex:1 1 60%}
+.par-fh input[type="time"]{flex:1 1 40%}
+.form-fase label .ayuda{margin-top:2px}
+.form-fase .acciones{margin-top:4px}
+/* El borrar se va al otro extremo: es el único de los tres que no tiene
+   vuelta atrás y no tiene por qué estar al lado del que se aprieta siempre. */
+.form-fase #faBorrar{margin-left:auto}
+
+/* ─── el choque de dos fases ───
+   Rojo y adentro del formulario, arriba de los botones: es lo último que
+   se lee antes de decidir. Un toast se va solo a los cuatro segundos y
+   esto tiene que seguir ahí mientras se piensa. */
+.choque{
+  padding:16px 18px;border-radius:var(--r-chico);
+  border:1px solid rgba(251,113,133,.3);background:var(--peligro-bg);
+}
+.choque h4{
+  margin:0 0 10px;font-family:var(--display);font-size:19px;
+  text-transform:uppercase;color:var(--peligro);letter-spacing:.01em;
+}
+.choque ul{margin:0;padding-left:19px}
+.choque li{margin-top:8px;font-size:13.5px;line-height:1.5;color:var(--txt-2)}
+.choque li:first-child{margin-top:0}
+.choque li b{color:var(--txt);font-weight:600}
+.choque li i{font-family:var(--dato);font-size:11.5px;font-style:normal;color:var(--txt-3)}
+.choque p{margin:12px 0 0;font-size:13px;line-height:1.5;color:var(--txt-3)}
+
 /* ─── publicar ─── */
 .publicar{
   display:flex;align-items:center;gap:20px;margin-top:28px;padding:20px 22px;
@@ -692,6 +755,25 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 .rev-tarjeta .form-anular{margin-top:14px;border-radius:var(--r-chico)}
 
 .tabla-registro .detalle{max-width:46ch}
+
+/* ─── la puerta, portero por portero ───
+   La última columna es la que importa y por eso es la única con color:
+   deshacer devuelve una manilla ya usada a válida, o sea es el único
+   movimiento con el que alguien de adentro puede hacer entrar gente de
+   más. En cero se apaga —un cero no es una alerta— y en cuanto hay uno
+   pasa a dorado, que es el color que en este panel dice "mirá esto"
+   sin decir "esto está mal". */
+/* `td.n` y `td.n em` de la tabla genérica ya fijan el color con dos clases
+   y un elemento: para ganarles hay que nombrar la celda entera, no basta
+   con la clase suelta. Sin esto el número queda del mismo gris que los
+   demás y la columna deja de decir lo único que vino a decir. */
+.tabla-porteros td.n.deshechos{color:var(--dorado);font-weight:500}
+.tabla-porteros td.n.deshechos em{color:var(--dorado);opacity:.8}
+.tabla-porteros tfoot td{
+  border-top:1px solid var(--linea-2);background:var(--sup-2);
+  font-family:var(--dato);font-size:13px;color:var(--txt-2);
+}
+.tabla-porteros tfoot td.n{color:var(--txt)}
 
 @media (max-width:860px){
   .dos-tablas{grid-template-columns:1fr}

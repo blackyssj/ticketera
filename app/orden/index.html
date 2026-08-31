@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../styles.css?v=23">
+<link rel="stylesheet" href="../styles.css?v=25">
 </head>
 <body>
 
@@ -23,25 +23,69 @@
 
 <main class="cuerpo">
   <div class="carril">
-    <section class="panel">
+    <section class="panel entrega" id="panel" data-estado="buscando">
+
       <div class="panel-cab">
+        <span class="sello" id="sello" hidden>✓ Pago confirmado</span>
         <h2 id="titulo">Tus entradas</h2>
         <p class="panel-nota" id="nota">Buscando tu compra…</p>
       </div>
+
+      <!-- El dónde y el cuándo, arriba de todo: el que abre este link tres
+           semanas después del pago vuelve por esto tanto como por el QR. -->
+      <dl class="cuando" id="cuando" hidden>
+        <div><dt>Puertas</dt><dd id="cuandoHora">—</dd></div>
+        <div><dt>Dónde</dt><dd id="cuandoLugar">—</dd></div>
+      </dl>
+
+      <p class="instruccion" id="instruccion" hidden>
+        En la puerta mostrá el QR. Cada entrada vale para un solo ingreso.
+      </p>
+
       <div class="tickets" id="tickets"></div>
-      <div class="listo-acciones" id="acciones" hidden>
-        <button class="btn primario" id="btnDescargar">Descargar las entradas</button>
+
+      <div class="guardar" id="acciones" hidden>
+        <button class="btn ancho" id="btnGuardar">Guardar las entradas</button>
+        <p class="guardar-nota">También podés mantener apretada la entrada y
+          elegir <b>Guardar imagen</b>, o sacarle una captura de pantalla.</p>
       </div>
+
+      <div class="link-recuperar" id="bloqueLink" hidden>
+        <div>
+          <p class="link-recuperar-titulo">Este link es tuyo para siempre</p>
+          <code id="linkOrden"></code>
+        </div>
+        <button type="button" class="btn plano chico" id="btnCopiarLink">Copiar link</button>
+      </div>
+
       <p class="letra-chica" id="pie"></p>
     </section>
   </div>
 </main>
 
+<!-- ══ modo puerta ══════════════════════════════════════════════════
+     El QR sobre el arte es la entrada que el comprador guarda; este es el
+     que se escanea. Pantalla negra, el código lo más grande que entre y
+     nada más encima. -->
+<div class="puerta" id="puerta" role="dialog" aria-modal="true"
+     aria-label="Entrada para escanear en la puerta" hidden>
+  <button type="button" class="puerta-x" id="puertaX">Cerrar</button>
+  <img class="puerta-qr" id="puertaQR" alt="">
+  <p class="puerta-code" id="puertaCode"></p>
+  <p class="puerta-quien" id="puertaQuien"></p>
+  <div class="puerta-nav" id="puertaNav" hidden>
+    <button type="button" class="puerta-paso" id="puertaAnt" aria-label="Entrada anterior">‹</button>
+    <span class="puerta-cuenta" id="puertaCuenta"></span>
+    <button type="button" class="puerta-paso" id="puertaSig" aria-label="Entrada siguiente">›</button>
+  </div>
+  <p class="puerta-tip">Subí el brillo de la pantalla.</p>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script src="../config.js"></script>
-<script src="../ticket.js?v=23"></script>
-<script src="orden.js?v=23"></script>
+<script src="../ticket.js?v=25"></script>
+<script src="orden.js?v=25"></script>
 </body>
 </html>

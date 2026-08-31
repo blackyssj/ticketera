@@ -3,9 +3,22 @@
    `/orden/<uuid>`, adonde llega el link del correo.
 
    El payload del QR es `EVT:<evento>:<code>`, el mismo de Bowie y BurTown, así
-   que el escáner de la puerta lo lee sin cambiarle una línea. */
-window.dibujarTicket = (function () {
+   que el escáner de la puerta lo lee sin cambiarle una línea.
+
+   Acá adentro está todo lo que las dos páginas hacen igual con una entrada:
+   dibujarla, apilarla en pantalla, guardarla en el teléfono y mostrarla
+   grande en la puerta. Estaba duplicado en app.js y en orden.js, que es la
+   forma más segura de que dentro de un mes digan cosas distintas. */
+(function () {
 "use strict";
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+
+/* El payload del QR en un solo lugar. El del arte y el que se muestra en la
+   puerta tienen que ser el mismo string: si se separan, el escáner lee una
+   entrada distinta de la que el comprador cree estar mostrando. */
+const payload = (evento, t) => `EVT:${evento.id}:${t.code}`;
 
 /* Carga una imagen y espera a que esté lista. crossOrigin porque el arte
    vive en el storage de Supabase, otro origen: sin esto el canvas queda
@@ -37,7 +50,7 @@ async function sobreArte(t, evento, fase, arte) {
   x.beginPath(); x.roundRect(bx, by, caja, caja, rad); x.fill();
 
   const q = qrcode(0, "M");
-  q.addData(`EVT:${evento.id}:${t.code}`);
+  q.addData(payload(evento, t));
   q.make();
   const n = q.getModuleCount(), pad = caja * 0.06, celda = (caja - 2 * pad) / n;
   x.fillStyle = "#000";
@@ -99,7 +112,7 @@ async function dibujarTicket(t, evento, fase) {
   x.beginPath(); x.roundRect(bx, by, box, box, rad); x.fill();
 
   const q = qrcode(0, "M");
-  q.addData(`EVT:${evento.id}:${t.code}`);
+  q.addData(payload(evento, t));
   q.make();
   const n = q.getModuleCount(), pad = box * .07, cell = (box - 2 * pad) / n;
   x.fillStyle = "#000";
@@ -132,5 +145,107 @@ async function dibujarTicket(t, evento, fase) {
   return c.toDataURL("image/png");
 }
 
-return dibujarTicket;
+/* ── el QR solo, para la puerta ──────────────────────────────────
+   El QR del arte ocupa el 52% del ancho del flyer porque ahí manda el diseño
+   del organizador. Este manda él: se dibuja lo más grande que entre en la
+   pantalla y con la zona muda entera —cuatro módulos, lo que pide la norma—,
+   que es lo que hace que un lector de mano lo enganche a la primera contra
+   una pantalla de celular, de noche y con la fila atrás.
+
+   La celda va en píxeles enteros a propósito: medio píxel de más por módulo
+   se acumula fila a fila y deja un código que el lector duda en leer. */
+function dibujarQR(texto, ladoObjetivo) {
+  const q = qrcode(0, "M");
+  q.addData(texto);
+  q.make();
+  const n = q.getModuleCount(), muda = 4;
+  const celda = Math.max(3, Math.round(ladoObjetivo / (n + muda * 2)));
+  const lado = celda * (n + muda * 2);
+  const c = document.createElement("canvas");
+  c.width = c.height = lado;
+  const x = c.getContext("2d");
+  x.fillStyle = "#fff"; x.fillRect(0, 0, lado, lado);
+  x.fillStyle = "#000";
+  for (let r = 0; r < n; r++)
+    for (let k = 0; k < n; k++)
+      if (q.isDark(r, k)) x.fillRect((muda + k) * celda, (muda + r) * celda, celda, celda);
+  return c.toDataURL("image/png");
+}
+
+/* ── la tira de pases ────────────────────────────────────────────
+   Antes era una fila que scrolleaba de costado, y eso daba por hecho que
+   siempre hay varias: con una sola entrada quedaba pegada a la izquierda y
+   con media pantalla vacía al lado. Peor en un teléfono, donde nadie
+   descubre que hay que arrastrar de costado si no se ve el borde de la
+   siguiente.
+
+   Apilados, cada pase entra entero en pantalla — que es como se le saca la
+   captura, como se mantiene apretado para guardarlo y como se muestra en la
+   puerta. Que la página se haga larga con seis entradas es el precio, y es
+   barato: nadie mira seis a la vez, se muestran de a una. */
+/* Sin loading="lazy": el PNG ya está entero en memoria, así que diferirlo no
+   ahorra un solo byte y sí deja la página sin altura hasta que la imagen
+   aparece. Con seis entradas eso era el pie saltando mientras uno lee. */
+function tira(entradas, opciones) {
+  const o = opciones || {};
+  const n = entradas.length;
+  return entradas.map((e, i) => {
+    const usada = e.estado === "usada";
+    return `<figure class="pase"${usada ? ' data-usada="1"' : ""}>
+      <div class="pase-arte">
+        <img style="--i:${Math.min(i, 8)}" src="${e.png}"
+             alt="Entrada ${esc(e.etiqueta)}, código ${esc(e.code)}">
+        ${usada ? '<figcaption class="ticket-usada">Ya ingresó</figcaption>' : ""}
+      </div>
+      <div class="pase-pie">
+        <span class="pase-tipo">${esc(e.etiqueta)}</span>
+        <span class="pase-code">#${esc(e.code)}</span>
+        ${n > 1 ? `<span class="pase-n">${i + 1} de ${n}</span>` : ""}
+        ${o.puerta ? `<button type="button" class="btn pase-puerta" data-pase="${i}">Mostrar en la puerta</button>` : ""}
+      </div>
+    </figure>`;
+  }).join("");
+}
+
+/* ── guardarla en el teléfono ────────────────────────────────────
+   Guardar no es descargar. En un teléfono la descarga de seis PNG no deja
+   nada a la vista, y el que compró tampoco va a buscar una carpeta: comparte,
+   saca captura o mantiene apretada la imagen. navigator.share con archivos
+   abre esa misma hoja del sistema, con "Guardar imagen" adentro, que es el
+   gesto que la gente ya conoce. La descarga queda de respaldo para
+   escritorio y para el navegador que no la tenga.
+
+   Devuelve qué pasó para que la página avise lo que corresponde: después de
+   compartir, el sistema ya dio su propio acuse y otro cartel sobra. */
+async function guardar(entradas) {
+  const archivos = await Promise.all(entradas.map(async (e, i) => {
+    const b = await (await fetch(e.png)).blob();
+    return new File([b], `entrada-${i + 1}-${e.code}.png`, { type: "image/png" });
+  }));
+
+  if (navigator.canShare && navigator.canShare({ files: archivos })) {
+    try {
+      await navigator.share({ files: archivos });
+      return "compartida";
+    } catch (err) {
+      if (err.name === "AbortError") return "cancelada";
+      // Cualquier otro fallo cae a la descarga: la entrada se guarda igual.
+    }
+  }
+
+  archivos.forEach(f => {
+    const u = URL.createObjectURL(f);
+    const a = document.createElement("a");
+    a.href = u; a.download = f.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(u), 10000);
+  });
+  return "bajada";
+}
+
+window.dibujarTicket   = dibujarTicket;
+window.dibujarQR       = dibujarQR;
+window.payloadEntrada  = payload;
+window.tiraTickets     = tira;
+window.guardarEntradas = guardar;
 })();

@@ -538,6 +538,16 @@ begin
     (v_org2, v_fase3, v_tipo3, 100, null);
 
   -- ── ventas ──────────────────────────────────────────────
+  -- La siembra se hace SIN sesión, como la hace la Edge Function
+  -- `crear-orden` (service_role, sin JWT). Hay que limpiarla a mano y no
+  -- alcanza con `reset role`: el claim se puso con `set_config(..., true)`,
+  -- que es local a la TRANSACCIÓN, y este archivo entero es una sola. Así
+  -- que el `request.jwt.claim.sub` del último bloque que impersonó a
+  -- alguien sigue puesto acá, `mi_organizador()` devuelve ese organizador,
+  -- y sembrar en el evento del OTRO tenant falla con SIN_FASE —
+  -- fase_vigente() acota por organizador desde 0044.
+  perform set_config('request.jwt.claim.sub', '', true);
+
   -- A: 3 generales (300) + un combo de 2 manillas (200) en el evento A
   v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 3)),
                        '{}'::jsonb, null::uuid, null::text, v_a)->>'orden')::uuid;
@@ -1102,6 +1112,12 @@ begin
     (v_mx, v_org,  v_ev2, 'X1', 10, 10, 5, 1200, 8),
     (v_mz, v_org2, v_ev3, 'Z1', 10, 10, 5, 1200, 8);
 
+  -- Sin sesión, como la hace crear-orden con service_role. `reset role` no
+  -- limpia el claim —es local a la transacción y el archivo es una sola—,
+  -- así que sin esto mi_organizador() todavía devuelve el organizador del
+  -- bloque anterior y sembrar en el otro tenant falla con SIN_FASE.
+  perform set_config('request.jwt.claim.sub', '', true);
+
   -- dos ventas pagadas, cada una de su relacionador, por el camino real
   v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 1)),
                        '{"nombre":"Juan Perez"}'::jsonb, null::uuid, null::text, v_a)->>'orden')::uuid;
@@ -1385,6 +1401,12 @@ begin
 
   -- ── las ventas, por el camino real ──────────────────────
   -- A: un combo (1 unidad, 10 manillas, 1000)
+  -- Sin sesión, como la hace crear-orden con service_role. `reset role`
+  -- no limpia el claim: es local a la transacción y este archivo es una
+  -- sola, así que sin esto mi_organizador() sigue devolviendo el del
+  -- bloque anterior y sembrar en otro tenant falla con SIN_FASE.
+  perform set_config('request.jwt.claim.sub', '', true);
+
   v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_combo, 'cantidad', 1)),
                        jsonb_build_object('nombre', 'Cliente A1', 'telefono', '70000001'),
                        null::uuid, null::text, v_a)->>'orden')::uuid;
@@ -2169,6 +2191,12 @@ begin
   -- 0033: así se prueba que lo que escribe el checkout es lo que después
   -- anula esta migración. Va con el rol de la conexión —emitir_orden no
   -- tiene grant a authenticated, la llaman las Edge Functions.
+  -- Sin sesión, como la hace crear-orden con service_role. `reset role`
+  -- no limpia el claim: es local a la transacción y este archivo es una
+  -- sola, así que sin esto mi_organizador() sigue devolviendo el del
+  -- bloque anterior y sembrar en otro tenant falla con SIN_FASE.
+  perform set_config('request.jwt.claim.sub', '', true);
+
   v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 3)),
                        jsonb_build_object('nombre', 'Cliente Uno', 'telefono', '70000001'),
                        null::uuid, null::text, null::uuid)->>'orden')::uuid;
@@ -2883,6 +2911,12 @@ begin
   -- Tres compras por el camino real. La primera es la del nombre con
   -- fórmula: entra por `crear_orden`, que es por donde entra cualquiera
   -- desde el formulario público.
+  -- Sin sesión, como la hace crear-orden con service_role. `reset role`
+  -- no limpia el claim: es local a la transacción y este archivo es una
+  -- sola, así que sin esto mi_organizador() sigue devolviendo el del
+  -- bloque anterior y sembrar en otro tenant falla con SIN_FASE.
+  perform set_config('request.jwt.claim.sub', '', true);
+
   v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 2)),
                        jsonb_build_object('nombre', v_malo, 'telefono', '+591 700 12345',
                                           'email', 'malo@example.com'),
@@ -3095,6 +3129,477 @@ begin
   reset role;
 
   raise notice 'OK los exportables traen todas las filas, dicen si cortaron, devuelven el nombre crudo para que lo neutralice el CSV, y cada rol baja solo lo suyo';
+end $$;
+
+
+-- ============================================================
+-- 0042 — el resumen de la puerta cuenta bien con dos porteros
+--
+-- El número que esta función existe para mostrar es `deshechas`: deshacer
+-- es el único movimiento de la puerta que devuelve una manilla ya
+-- consumida al estado `valida`, o sea el único con el que alguien de
+-- adentro puede hacer entrar gente de más. Un test que solo contara
+-- "hubo filas" pasaría con las dos columnas cruzadas, así que acá se
+-- siembra una secuencia donde CADA número da distinto de todos los otros
+-- y se comparan uno por uno: si validadas y reingresos se intercambiaran,
+-- o si deshechas contara también las rechazadas, el test cae.
+--
+-- La secuencia sembrada, y por qué cada paso:
+--   p1 valida e1, e2 y e4   → 3 validadas
+--   p1 rechaza e3 en filtro → 1 rechazada (no toca la entrada)
+--   p1 deshace e1           → 1 deshecha PROPIA (él mismo la había marcado)
+--   p2 valida e1 de nuevo   → 1 reingreso, que no es una validada
+--   p2 deshace e4           → 1 deshecha AJENA (la había marcado p1)
+--
+-- Las dos deshechas son la misma acción y tienen que contar distinto en
+-- `deshechas_ajenas`: corregirse a uno mismo y deshacer lo del compañero
+-- no son la misma noticia.
+--
+-- Y quién la puede llamar: solo puede_editar(). El portero rebota aunque
+-- sea el que generó las filas —un resumen de una sola fila no le contesta
+-- nada y la versión completa es auditar a los compañeros—, el rrpp rebota,
+-- y un admin de otro organizador recibe el mismo `{}` que recibiría por un
+-- evento inexistente.
+-- ============================================================
+do $$
+declare v_org   uuid := '04200042-0042-4042-8042-000000000001';
+        v_org2  uuid := '04200042-0042-4042-8042-000000000002';
+        v_p1    uuid := '04200042-0042-4042-8042-000000000003';
+        v_p2    uuid := '04200042-0042-4042-8042-000000000004';
+        v_staff uuid := '04200042-0042-4042-8042-000000000005';
+        v_rrpp  uuid := '04200042-0042-4042-8042-000000000006';
+        v_adm2  uuid := '04200042-0042-4042-8042-000000000007';
+        v_ev    uuid := '04200042-0042-4042-8042-000000000008';
+        v_tipo  uuid := '04200042-0042-4042-8042-000000000009';
+        v_fase  uuid := '04200042-0042-4042-8042-00000000000a';
+        v_e1    uuid := '04200042-0042-4042-8042-00000000000b';
+        v_e2    uuid := '04200042-0042-4042-8042-00000000000c';
+        v_e3    uuid := '04200042-0042-4042-8042-00000000000d';
+        v_e4    uuid := '04200042-0042-4042-8042-00000000000e';
+        c1 text := 'BCDFGH420042';
+        c2 text := 'JKLMNP420042';
+        c3 text := 'QRSTVW420042';
+        c4 text := 'WXZBCD420042';
+        v_r jsonb; v_a jsonb; v_b jsonb;
+begin
+  insert into organizadores (id, slug, nombre) values
+    (v_org,  'prueba-0042',  'Prueba 0042'),
+    (v_org2, 'prueba-0042b', 'Prueba 0042 otro');
+  insert into auth.users (id, email) values
+    (v_p1,    'portero1-0042@ticketera.local'),
+    (v_p2,    'portero2-0042@ticketera.local'),
+    (v_staff, 'staff-0042@ticketera.local'),
+    (v_rrpp,  'rrpp-0042@ticketera.local'),
+    (v_adm2,  'admin-0042b@ticketera.local');
+  insert into perfiles (id, organizador_id, nombre, rol) values
+    (v_p1,    v_org,  'Portero Uno', 'portero'),
+    (v_p2,    v_org,  'Portero Dos', 'portero'),
+    (v_staff, v_org,  'Staff 0042',  'staff'),
+    (v_rrpp,  v_org,  'Rrpp 0042',   'rrpp'),
+    (v_adm2,  v_org2, 'Admin Ajeno', 'admin');
+  insert into eventos (id, organizador_id, slug, nombre, fecha, estado) values
+    (v_ev, v_org, 'evento-0042', 'Evento 0042', current_date + 10, 'publicado');
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre) values
+    (v_tipo, v_org, v_ev, 'General');
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta) values
+    (v_fase, v_org, v_ev, 'F1', now() - interval '1 hour', now() + interval '10 days');
+  insert into entradas (id, organizador_id, evento_id, code, canal, tipo_id, fase_id,
+                        cliente, precio, estado) values
+    (v_e1, v_org, v_ev, c1, 'publico', v_tipo, v_fase, 'Ana',  100, 'valida'),
+    (v_e2, v_org, v_ev, c2, 'publico', v_tipo, v_fase, 'Beto', 100, 'valida'),
+    (v_e3, v_org, v_ev, c3, 'publico', v_tipo, v_fase, 'Cami', 100, 'valida'),
+    (v_e4, v_org, v_ev, c4, 'publico', v_tipo, v_fase, 'Dani', 100, 'valida');
+
+  -- ── el turno del portero uno ────────────────────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_p1::text, true);
+  perform validar_entrada(v_ev, c1);
+  perform validar_entrada(v_ev, c2);
+  perform validar_entrada(v_ev, c4);
+  perform marcar_filtro_entrada(v_ev, c3);
+  perform descheckin_entrada(v_ev, c1);
+  reset role;
+
+  -- ── el turno del portero dos ────────────────────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_p2::text, true);
+  perform validar_entrada(v_ev, c1);   -- reingreso: e1 ya había entrado
+  perform descheckin_entrada(v_ev, c4);  -- deshace lo que marcó el uno
+  reset role;
+
+  -- ── lo lee el staff ─────────────────────────────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  v_r := resumen_puerta(v_ev);
+  reset role;
+
+  if jsonb_array_length(v_r->'porteros') <> 2 then
+    raise exception 'TEST_FAIL: tenian que aparecer los dos porteros, aparecieron %: %',
+      jsonb_array_length(v_r->'porteros'), v_r->'porteros';
+  end if;
+
+  -- El orden es por ingresos desc: el uno hizo 3 y el dos 1.
+  v_a := v_r->'porteros'->0;
+  v_b := v_r->'porteros'->1;
+  if v_a->>'actor_id' <> v_p1::text or v_b->>'actor_id' <> v_p2::text then
+    raise exception 'TEST_FAIL: el orden por ingresos no puso primero al que mas valido: %', v_r->'porteros';
+  end if;
+  if v_a->>'portero' <> 'Portero Uno' then
+    raise exception 'TEST_FAIL: no trajo el nombre del portero, trajo %', v_a->>'portero';
+  end if;
+
+  -- ── portero uno: 3 validadas, 0 reingresos, 1 rechazada, 1 deshecha propia
+  if (v_a->>'validadas')::int <> 3 then
+    raise exception 'TEST_FAIL: el uno valido 3, el resumen dice %', v_a->>'validadas';
+  end if;
+  if (v_a->>'reingresos')::int <> 0 then
+    raise exception 'TEST_FAIL: el uno no hizo ningun reingreso, el resumen dice %', v_a->>'reingresos';
+  end if;
+  if (v_a->>'ingresos')::int <> 3 then
+    raise exception 'TEST_FAIL: ingresos del uno tenia que ser 3, dice %', v_a->>'ingresos';
+  end if;
+  if (v_a->>'rechazadas')::int <> 1 then
+    raise exception 'TEST_FAIL: el uno rechazo 1 en filtro, el resumen dice %', v_a->>'rechazadas';
+  end if;
+  if (v_a->>'deshechas')::int <> 1 then
+    raise exception 'TEST_FAIL: el uno deshizo 1, el resumen dice %', v_a->>'deshechas';
+  end if;
+  if (v_a->>'deshechas_ajenas')::int <> 0 then
+    raise exception 'TEST_FAIL: la del uno era propia, el resumen la cuenta como ajena: %', v_a->>'deshechas_ajenas';
+  end if;
+  if (v_a->>'movimientos')::int <> 5 then
+    raise exception 'TEST_FAIL: el uno hizo 5 movimientos, el resumen dice %', v_a->>'movimientos';
+  end if;
+
+  -- ── portero dos: 0 validadas, 1 reingreso, 1 deshecha AJENA
+  if (v_b->>'validadas')::int <> 0 then
+    raise exception 'TEST_FAIL: el dos no valido ninguna nueva, el resumen dice %', v_b->>'validadas';
+  end if;
+  if (v_b->>'reingresos')::int <> 1 then
+    raise exception 'TEST_FAIL: el dos hizo 1 reingreso, el resumen dice %', v_b->>'reingresos';
+  end if;
+  if (v_b->>'ingresos')::int <> 1 then
+    raise exception 'TEST_FAIL: ingresos del dos tenia que ser 1, dice %', v_b->>'ingresos';
+  end if;
+  if (v_b->>'rechazadas')::int <> 0 then
+    raise exception 'TEST_FAIL: el dos no rechazo nada, el resumen dice %', v_b->>'rechazadas';
+  end if;
+  if (v_b->>'deshechas')::int <> 1 then
+    raise exception 'TEST_FAIL: el dos deshizo 1, el resumen dice %', v_b->>'deshechas';
+  end if;
+  if (v_b->>'deshechas_ajenas')::int <> 1 then
+    raise exception 'TEST_FAIL: el dos deshizo lo que marco el uno y no quedo como ajena: %', v_b->>'deshechas_ajenas';
+  end if;
+
+  -- Primer y ultimo escaneo: existen y no estan al reves.
+  if v_a->>'primero_at' is null or v_a->>'ultimo_at' is null then
+    raise exception 'TEST_FAIL: falta el primer o el ultimo escaneo del uno: %', v_a;
+  end if;
+  if (v_a->>'primero_at')::timestamptz > (v_a->>'ultimo_at')::timestamptz then
+    raise exception 'TEST_FAIL: el primer escaneo quedo despues del ultimo';
+  end if;
+
+  -- ── los totales son la suma de las filas, no otra cuenta ──
+  if (v_r->'total'->>'porteros')::int <> 2
+     or (v_r->'total'->>'movimientos')::int <> 7
+     or (v_r->'total'->>'ingresos')::int <> 4
+     or (v_r->'total'->>'validadas')::int <> 3
+     or (v_r->'total'->>'reingresos')::int <> 1
+     or (v_r->'total'->>'rechazadas')::int <> 1
+     or (v_r->'total'->>'deshechas')::int <> 2
+     or (v_r->'total'->>'deshechas_ajenas')::int <> 1 then
+    raise exception 'TEST_FAIL: los totales no son la suma de las filas: %', v_r->'total';
+  end if;
+
+  -- ── quien NO la puede llamar ─────────────────────────────
+  -- El rrpp: no tiene nada que hacer en la puerta.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_rrpp::text, true);
+  begin
+    v_r := resumen_puerta(v_ev);
+    raise exception 'TEST_FAIL: un rrpp leyo el resumen de la puerta';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  reset role;
+
+  -- El portero, aunque sea el que generó las filas: auditar a los
+  -- companeros no es su trabajo, y lo suyo ya lo tiene en bitacora_puerta.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_p1::text, true);
+  begin
+    v_r := resumen_puerta(v_ev);
+    raise exception 'TEST_FAIL: un portero leyo el resumen de todos los porteros';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  reset role;
+
+  -- El admin de otro organizador: el mismo vacio que por un evento que no
+  -- existe, para que la funcion no sirva de oraculo de que uuids hay en la
+  -- base del vecino.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_adm2::text, true);
+  if resumen_puerta(v_ev) <> '{}'::jsonb then
+    raise exception 'TEST_FAIL: un admin ajeno vio el resumen de puerta de otro organizador';
+  end if;
+  if resumen_puerta(gen_random_uuid()) <> '{}'::jsonb then
+    raise exception 'TEST_FAIL: un evento inexistente contesto distinto que uno ajeno';
+  end if;
+  reset role;
+
+  raise notice 'OK el resumen de puerta cuenta validadas, reingresos, rechazadas y deshechas por portero, separa las deshechas ajenas, y solo lo ve quien puede_editar()';
+end $$;
+
+
+-- ============================================================
+-- 0043 — las fases se editan y se programan; borrarlas tiene condición
+--
+-- Lo que se prueba, y por qué cada cosa:
+--
+-- 1) Una fase con `desde` mañana NO es la vigente hoy. Es la razón de ser
+--    de toda la tarea: hasta ahora toda fase nacía abierta y la general no
+--    se podía dejar programada.
+--
+-- 2) El `hasta` se puede mover y queda guardado. Trivial de suponer y no
+--    de verificar: la policy "fases escribir" (0012) filtra por rol, y un
+--    update que RLS filtra vuelve sin error y con cero filas. Se lee el
+--    valor después.
+--
+-- 3) La zona horaria. Una fase que cierra "el 5" cierra el 5 a las 23:59
+--    DE BOLIVIA, o sea el 6 a las 03:59 UTC. Se compara el timestamptz
+--    guardado, no lo que muestra una pantalla: si el navegador y la base
+--    discreparan, la que vende es la base.
+--
+-- 4) El solapamiento, que es la trampa que la pantalla tiene que hacer
+--    imposible de no ver. Con "Preventa hasta el 5" y "General desde el
+--    1", fase_vigente() elige por `orden` y devuelve la Preventa: del 1 al
+--    5 se sigue vendiendo al precio viejo y la General no vende nada. Acá
+--    se DEMUESTRA ese comportamiento en vez de arreglarlo — hay ventas
+--    hechas con esa lógica y no se toca; lo que cambia es que ahora la
+--    pantalla lo dice antes de guardar.
+--
+-- 5) borrar_fase(): una fase sin ventas se borra con sus precios; una con
+--    una cortesía detrás NO, aunque ningún FK la frene (entradas.fase_id
+--    es `on delete set null`) — ése es el agujero por el que existe la
+--    función. Y una con un item de orden tampoco.
+--
+-- 6) Los roles: un rrpp no edita fases ni las borra, y un admin de otro
+--    organizador recibe 'Sin permiso' y la fase sigue viva.
+-- ============================================================
+do $$
+declare v_org   uuid := '04300043-0043-4043-8043-000000000001';
+        v_org2  uuid := '04300043-0043-4043-8043-000000000002';
+        v_staff uuid := '04300043-0043-4043-8043-000000000003';
+        v_rrpp  uuid := '04300043-0043-4043-8043-000000000004';
+        v_adm2  uuid := '04300043-0043-4043-8043-000000000005';
+        v_ev    uuid := '04300043-0043-4043-8043-000000000006';
+        v_tipo  uuid := '04300043-0043-4043-8043-000000000007';
+        v_hoy   uuid := '04300043-0043-4043-8043-000000000008';  -- abierta hoy
+        v_man   uuid := '04300043-0043-4043-8043-000000000009';  -- programada para manana
+        v_sola  uuid := '04300043-0043-4043-8043-00000000000a';  -- sin ventas, se borra
+        v_cort  uuid := '04300043-0043-4043-8043-00000000000b';  -- con una cortesia
+        v_item  uuid := '04300043-0043-4043-8043-00000000000c';  -- con un item de orden
+        v_ord   uuid := '04300043-0043-4043-8043-00000000000d';
+        v_ent   uuid := '04300043-0043-4043-8043-00000000000e';
+        v_r jsonb; v_n int; v_hasta timestamptz;
+begin
+  insert into organizadores (id, slug, nombre) values
+    (v_org,  'prueba-0043',  'Prueba 0043'),
+    (v_org2, 'prueba-0043b', 'Prueba 0043 otro');
+  insert into auth.users (id, email) values
+    (v_staff, 'staff-0043@ticketera.local'),
+    (v_rrpp,  'rrpp-0043@ticketera.local'),
+    (v_adm2,  'admin-0043b@ticketera.local');
+  insert into perfiles (id, organizador_id, nombre, rol) values
+    (v_staff, v_org,  'Staff 0043',  'staff'),
+    (v_rrpp,  v_org,  'Rrpp 0043',   'rrpp'),
+    (v_adm2,  v_org2, 'Admin Ajeno', 'admin');
+  insert into eventos (id, organizador_id, slug, nombre, fecha, estado) values
+    (v_ev, v_org, 'evento-0043', 'Evento 0043', current_date + 30, 'publicado');
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre) values
+    (v_tipo, v_org, v_ev, 'General');
+
+  -- ── 1) una fase programada para manana no vende hoy ──────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta, orden) values
+    (v_hoy, v_org, v_ev, 'Preventa', now() - interval '1 hour', now() + interval '2 days', 0),
+    (v_man, v_org, v_ev, 'General',  now() + interval '1 day',  null, 1);
+
+  if fase_vigente(v_ev) <> v_hoy then
+    raise exception 'TEST_FAIL: la vigente de hoy tenia que ser la Preventa, es %', fase_vigente(v_ev);
+  end if;
+  if fase_vigente(v_ev) = v_man then
+    raise exception 'TEST_FAIL: una fase con desde manana esta vendiendo hoy';
+  end if;
+
+  -- ── 2) el hasta se mueve y queda guardado ────────────────
+  -- Con .select() implicito: el update devuelve las filas que toco, y cero
+  -- filas es el fallo silencioso que este proyecto ya se comio dos veces.
+  update evento_fase set hasta = now() + interval '9 days' where id = v_hoy;
+  get diagnostics v_n = row_count;
+  if v_n <> 1 then
+    raise exception 'TEST_FAIL: el staff no pudo mover el hasta de su propia fase (toco % filas)', v_n;
+  end if;
+  reset role;
+  select hasta into v_hasta from evento_fase where id = v_hoy;
+  if v_hasta < now() + interval '8 days' then
+    raise exception 'TEST_FAIL: el hasta no quedo guardado, dice %', v_hasta;
+  end if;
+
+  -- ── 3) "cierra el 5" es el 5 a las 23:59 de Bolivia ──────
+  -- Lo que escribe la pantalla es exactamente este literal. El 5 a las
+  -- 23:59 en UTC-4 es el 6 a las 03:59 UTC: si algun dia alguien arma el
+  -- timestamp sin la zona, este test cae con un dia de diferencia, que es
+  -- justo el error que nadie mira hasta que la preventa cerro un dia antes.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  update evento_fase set hasta = '2026-09-05T23:59:00-04:00'::timestamptz where id = v_hoy;
+  reset role;
+  select hasta into v_hasta from evento_fase where id = v_hoy;
+  if v_hasta <> '2026-09-06 03:59:00+00'::timestamptz then
+    raise exception 'TEST_FAIL: cerrar "el 5" de Bolivia tenia que guardar 2026-09-06 03:59 UTC, guardo %', v_hasta;
+  end if;
+  if to_char(v_hasta at time zone 'America/La_Paz', 'YYYY-MM-DD HH24:MI') <> '2026-09-05 23:59' then
+    raise exception 'TEST_FAIL: leido en hora de Bolivia no da el 5 a las 23:59, da %',
+      to_char(v_hasta at time zone 'America/La_Paz', 'YYYY-MM-DD HH24:MI');
+  end if;
+
+  -- ── 4) el solapamiento: gana el orden mas chico ──────────
+  -- "Preventa hasta el 5" (orden 0) y "General desde el 1" (orden 1). El
+  -- 3 de septiembre las dos estan en ventana y fase_vigente() devuelve la
+  -- Preventa: la General no vende un solo peso y nada avisa. Esto no se
+  -- arregla acá —hay ventas hechas con esta logica— se DEJA ESCRITO, para
+  -- que si algun dia cambia se rompa este test y no una noche de venta.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  update evento_fase set desde = '2026-09-01T00:00:00-04:00'::timestamptz,
+                         hasta = null
+   where id = v_man;
+  reset role;
+  if (select f.id from evento_fase f
+       where f.evento_id = v_ev and f.activo
+         and (f.desde is null or f.desde <= '2026-09-03T20:00:00-04:00'::timestamptz)
+         and (f.hasta is null or f.hasta >  '2026-09-03T20:00:00-04:00'::timestamptz)
+       order by f.orden, f.id limit 1) <> v_hoy then
+    raise exception 'TEST_FAIL: con dos fases pisadas tendria que ganar la de orden menor (la Preventa)';
+  end if;
+
+  -- ── 5) borrar: sin ventas si, con ventas no ──────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta, orden) values
+    (v_sola, v_org, v_ev, 'Sobra',    now() + interval '20 days', null, 2),
+    (v_cort, v_org, v_ev, 'Cortesia', now() + interval '21 days', null, 3),
+    (v_item, v_org, v_ev, 'Vendida',  now() + interval '22 days', null, 4);
+  insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo) values
+    (v_org, v_sola, v_tipo, 100, 10),
+    (v_org, v_cort, v_tipo, 100, 10),
+    (v_org, v_item, v_tipo, 100, 10);
+
+  -- sin ventas: se borra, y se lleva su precio
+  v_r := borrar_fase(v_sola);
+  if (v_r->>'ok')::boolean is not true then
+    raise exception 'TEST_FAIL: una fase sin ventas tenia que borrarse: %', v_r;
+  end if;
+  if (v_r->>'precios')::int <> 1 then
+    raise exception 'TEST_FAIL: tenia que reportar el precio que se llevo, dijo %', v_r->>'precios';
+  end if;
+  reset role;
+  if exists (select 1 from evento_fase where id = v_sola) then
+    raise exception 'TEST_FAIL: la fase sin ventas sigue ahi';
+  end if;
+  if exists (select 1 from fase_precio where fase_id = v_sola) then
+    raise exception 'TEST_FAIL: el precio de la fase borrada quedo colgado';
+  end if;
+
+  -- con una cortesia detras: NO. Es el caso que ningun FK frena, porque la
+  -- cortesia va sin orden_id y entradas.fase_id es on delete set null.
+  insert into entradas (id, organizador_id, evento_id, orden_id, code, canal,
+                        tipo_id, fase_id, cliente, precio, estado) values
+    (v_ent, v_org, v_ev, null, 'BCDFGH430043', 'cortesia', v_tipo, v_cort, 'La Prensa', 0, 'valida');
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  begin
+    v_r := borrar_fase(v_cort);
+    raise exception 'TEST_FAIL: borro una fase que tenia una cortesia emitida — esas entradas quedan sin fase y su cupo vuelve a estar libre';
+  exception when others then
+    if sqlerrm not like 'FASE_CON_VENTAS:%' then raise; end if;
+  end;
+  reset role;
+  if not exists (select 1 from evento_fase where id = v_cort) then
+    raise exception 'TEST_FAIL: la fase con cortesia desaparecio igual';
+  end if;
+  if (select fase_id from entradas where id = v_ent) is distinct from v_cort then
+    raise exception 'TEST_FAIL: la cortesia perdio su fase';
+  end if;
+
+  -- con un item de orden detras: tampoco
+  insert into ordenes (id, organizador_id, evento_id, estado, expira_at,
+                       subtotal, fee, total) values
+    (v_ord, v_org, v_ev, 'pagada', now() + interval '1 hour', 100, 10, 110);
+  insert into orden_items (organizador_id, orden_id, tipo_id, fase_id,
+                           cantidad, precio_unitario) values
+    (v_org, v_ord, v_tipo, v_item, 1, 100);
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  begin
+    v_r := borrar_fase(v_item);
+    raise exception 'TEST_FAIL: borro una fase con una compra detras';
+  exception when others then
+    if sqlerrm not like 'FASE_CON_VENTAS:%' then raise; end if;
+  end;
+  reset role;
+  if not exists (select 1 from evento_fase where id = v_item) then
+    raise exception 'TEST_FAIL: la fase con compra desaparecio igual';
+  end if;
+
+  -- ── 6) los roles ─────────────────────────────────────────
+  -- El rrpp no edita fases. Es la misma policy de 0012 que ya se prueba
+  -- para tipo_entrada, pero la pantalla nueva le agrega un formulario y
+  -- conviene que el test nombre a evento_fase.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_rrpp::text, true);
+  begin
+    update evento_fase set nombre = 'Hackeada' where id = v_hoy;
+  exception when others then null;
+  end;
+  begin
+    v_r := borrar_fase(v_cort);
+    raise exception 'TEST_FAIL: un rrpp borro una fase';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  reset role;
+  if exists (select 1 from evento_fase where id = v_hoy and nombre = 'Hackeada') then
+    raise exception 'TEST_FAIL: un rrpp le cambio el nombre a una fase';
+  end if;
+
+  -- El admin de otro organizador: mismo 'Sin permiso' que por una fase que
+  -- no existe, para no ser un oraculo de que uuids hay en la base ajena.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_adm2::text, true);
+  begin
+    v_r := borrar_fase(v_hoy);
+    raise exception 'TEST_FAIL: un admin ajeno borro la fase de otro organizador';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  begin
+    v_r := borrar_fase(gen_random_uuid());
+    raise exception 'TEST_FAIL: una fase inexistente contesto distinto que una ajena';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  reset role;
+  if not exists (select 1 from evento_fase where id = v_hoy) then
+    raise exception 'TEST_FAIL: la fase del organizador de al lado desaparecio';
+  end if;
+
+  raise notice 'OK una fase se programa a futuro sin vender hoy, el hasta se mueve y guarda la hora de Bolivia, dos fases pisadas las gana la de orden menor, y borrar_fase() frena la que tiene una cortesia detras';
 end $$;
 
 rollback;
