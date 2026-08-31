@@ -186,7 +186,8 @@ async function abrirEvento(id) {
       </div>
       <p class="error" id="fError"></p>
     </form>
-    ${id && puedeEditar() ? `<section class="tarjeta arte" id="zonaArte"></section>` : ""}`;
+    ${id && puedeEditar() ? `<section class="tarjeta arte" id="zonaFlyer"></section>
+                            <section class="tarjeta arte" id="zonaArte"></section>` : ""}`;
 
   $("#btnVolver").onclick = () => mostrar("eventos");
   $("#fSlug").oninput = ev => $("#vistaSlug").textContent = ev.target.value || "…";
@@ -197,7 +198,9 @@ async function abrirEvento(id) {
     $("#btnRrpp").onclick = () => pantallaRelacionadores(id);
     $("#btnCierre").onclick = () => pantallaCierre(id);
     $("#btnBitacora").onclick = () => pantallaBitacora(id);
-    cablearArte(e);   // solo con evento guardado: sin slug no hay carpeta donde subir
+    // Solo con evento guardado: sin slug no hay carpeta donde subir.
+    cablearImagen(e, IMAGENES.flyer);
+    cablearImagen(e, IMAGENES.arte);
   }
 
   $("#formEvento").onsubmit = async ev => {
@@ -228,20 +231,64 @@ async function abrirEvento(id) {
   };
 }
 
-/* ══ el arte de la entrada ════════════════════════════════════════
-   El organizador sube UNA imagen y todas las entradas del evento se dibujan
-   encima, con el QR sobre el arte — igual que en Bowie y BurTown. Hasta acá
-   eso solo salía por `scripts/subir-arte.py`, o sea por una terminal que el
-   organizador no tiene: el arte de su propia fiesta dependía de que alguien
-   del equipo estuviera libre.
+/* ══ las dos imágenes de un evento ════════════════════════════════
+   Un evento tiene dos imágenes y hacen dos trabajos distintos:
 
-   Sube el navegador directo al bucket. Las policies de 0014 ya atan cada
-   archivo a la carpeta de su organizador, así que no hace falta service_role
-   ni una Edge Function en el medio. Y el bucket es de lectura pública pero
-   NO listable: nadie enumera lo que subió otro. */
+   · el FLYER es la cara del evento en la cartelera de TICKETAZO. Es el
+     afiche que el organizador ya publicó en Instagram, el que la gente
+     reconoce de un vistazo. No se le dibuja nada encima.
+   · el ARTE es el modelo de la ENTRADA: todas las entradas del evento se
+     dibujan sobre él y el QR va encima, igual que en Bowie y BurTown.
+
+   Confundirlas cuesta caro en las dos direcciones: el arte tiene la marca
+   arriba y un hueco al medio para el QR, así que recortado en una tarjeta
+   de cartelera lo que se luce es el hueco; y un flyer usado como arte deja
+   el QR tapando la cara del DJ.
+
+   El mecanismo es uno solo: el navegador sube directo al bucket. Las
+   policies de 0014 ya atan cada archivo a la carpeta de su organizador, así
+   que no hace falta service_role ni una Edge Function en el medio. Y el
+   bucket es de lectura pública pero NO listable de par en par: 0036 dejó el
+   `select` solo para el staff de la propia carpeta. */
 
 const ARTE_EXT  = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 const ARTE_TOPE = 5 * 1024 * 1024;
+
+/* Todo lo que cambia entre una imagen y la otra, junto y en un solo lugar:
+   qué columna guarda la URL, con qué prefijo se nombra el archivo y qué
+   dice la pantalla. El resto del código no vuelve a distinguirlas. */
+const IMAGENES = {
+  flyer: {
+    caja: "zonaFlyer", col: "flyer_url", prefijo: "flyer", lienzo: "flyer",
+    titulo: "Flyer del evento",
+    ayuda: `La cara del evento en la cartelera de TICKETAZO. Va la imagen que
+      ya publicaste en redes: acá no se dibuja nada encima. Se recorta a lo
+      alto (4:5), así que el nombre y la fecha conviene tenerlos al centro.`,
+    alt: ev => `Flyer de ${ev.nombre}`,
+    sin: `Sin flyer. En la cartelera el evento sale con un afiche tipográfico:
+      el nombre a tamaño de cartel. Se lee bien, pero nadie lo reconoce de
+      lejos como reconoce el suyo.`,
+    listo: "Listo. Así se va a ver el evento en la cartelera.",
+    quitar: "Quitar el flyer",
+    confirmar: "¿Quitar el flyer? En la cartelera el evento vuelve al afiche tipográfico.",
+    quitado: "En la cartelera el evento vuelve al afiche tipográfico.",
+    aviso_ok: "Flyer actualizado.", aviso_no: "Flyer quitado.",
+  },
+  arte: {
+    caja: "zonaArte", col: "arte_url", prefijo: "evento", lienzo: "arte",
+    titulo: "Arte de la entrada",
+    ayuda: `Una sola imagen y todas las entradas del evento se dibujan encima.
+      El recuadro marca dónde cae el QR: dejá esa zona despejada o va a tapar
+      lo que haya debajo.`,
+    alt: ev => `Arte actual de las entradas de ${ev.nombre}`,
+    sin: "Sin arte propio. Las entradas salen con el diseño de la ticketera.",
+    listo: "Listo. Esto es lo que va a salir en las entradas.",
+    quitar: "Quitar el arte",
+    confirmar: "¿Quitar el arte? Las entradas vuelven al diseño propio de la ticketera.",
+    quitado: "Las entradas vuelven al diseño de la ticketera.",
+    aviso_ok: "Arte actualizado.", aviso_no: "Arte quitado.",
+  },
+};
 
 /* Comodidad de interfaz, no seguridad: la policy del bucket exige
    puede_editar() igual, y un rrpp ni siquiera tiene la pestaña de eventos. */
@@ -276,7 +323,7 @@ const rutaDeArte = u => {
   return m ? decodeURIComponent(m[1].split("?")[0]) : null;
 };
 
-async function subirArte(archivo, ev, ext) {
+async function subirImagen(archivo, ev, ext, def) {
   const org = await miOrganizadorSlug();
   /* El nombre del archivo lo armamos nosotros, con el slug GUARDADO del
      evento: ni el del input (que puede estar editado sin guardar y mandaría
@@ -286,22 +333,18 @@ async function subirArte(archivo, ev, ext) {
      ruta no necesita escaparse.
 
      Y cada subida estrena archivo, con la hora en el nombre, en vez de pisar
-     siempre `evento.<ext>` como hace el script. No es preferencia: el bucket
-     no tiene policy de select a propósito — es lo que lo vuelve no listable —
-     y sin poder LEER la fila, el storage no deja reemplazar (`upsert` es un
-     `insert ... on conflict`, y para resolver el conflicto necesita ver la
-     fila que pisa) ni borrar. Probado contra la base: con `upsert: true` toda
-     subida vuelve "new row violates row-level security policy", incluso a una
-     ruta que no existe. Escribir uno nuevo es lo único que el navegador puede
-     hacer sin service_role, y no hay por qué aflojar el bucket para esto: la
-     entrada mira `eventos.arte_url`, no el nombre del archivo.
+     siempre `evento.<ext>` como hace el script. No es preferencia: para
+     reemplazar o borrar hace falta LEER la fila del storage, y hasta 0036
+     eso no se podía; ahora se puede, pero el nombre nuevo se queda igual —
+     es lo que hace que la vista previa no muestre la imagen vieja del caché
+     y que una subida a medias no pise la que está funcionando.
      El anterior queda en el bucket sin que nada lo apunte. */
   const t = new Date();
   const dosDig = n => String(n).padStart(2, "0");
   const marca = `${t.getFullYear()}${dosDig(t.getMonth() + 1)}${dosDig(t.getDate())}` +
                 `-${dosDig(t.getHours())}${dosDig(t.getMinutes())}${dosDig(t.getSeconds())}` +
                 `-${String(t.getMilliseconds()).padStart(3, "0")}`;
-  const ruta = `${org}/${ev.slug}/evento-${marca}.${ext}`;
+  const ruta = `${org}/${ev.slug}/${def.prefijo}-${marca}.${ext}`;
 
   const { error: eSubida } = await sb.storage.from("arte")
     .upload(ruta, archivo, { contentType: archivo.type });
@@ -313,66 +356,67 @@ async function subirArte(archivo, ev, ext) {
      silencioso — el que no puede editar — vería "listo" con la imagen ya
      subida y el evento sin tocar. */
   const { data: filas, error: eFila } = await sb.from("eventos")
-    .update({ arte_url: url }).eq("id", ev.id).select("id");
+    .update({ [def.col]: url }).eq("id", ev.id).select("id");
   /* La imagen quedó arriba pero el evento no la apunta: hay un archivo
-     huérfano en el bucket y las entradas siguen saliendo como antes. Decirlo
-     es lo único que evita que el organizador se vaya tranquilo con un arte
-     que nadie va a ver. */
+     huérfano en el bucket y el evento sigue como antes. Decirlo es lo único
+     que evita que el organizador se vaya tranquilo con una imagen que nadie
+     va a ver. */
   if (eFila || !filas || !filas.length) throw new Error(
     "La imagen se subió pero NO quedó guardada en el evento" +
     (eFila ? " (" + eFila.message + ")" : " (la base no lo permitió)") +
-    ". Las entradas siguen saliendo como antes: volvé a intentarlo.");
+    ". Todo sigue como antes: volvé a intentarlo.");
   return url;
 }
 
 /* La vista previa manda sobre la URL: el organizador reconoce su imagen de un
-   vistazo y una dirección larga no le dice nada. Encima va marcada la caja
-   del QR, que es el dato que hace que el arte salga bien a la primera en vez
-   de con el código tapando el logo. */
-function cablearArte(ev) {
-  const caja = $("#zonaArte");
+   vistazo y una dirección larga no le dice nada. En el arte va marcada encima
+   la caja del QR; en el flyer, el recorte 4:5 de la cartelera. Los dos por el
+   mismo motivo: que salga bien a la primera y no con el código tapando el
+   logo o con la fecha cortada. */
+function cablearImagen(ev, def) {
+  const caja = $("#" + def.caja);
   if (!caja) return;
 
   const estado = (txt, cls) => {
-    const n = $("#arteEstado");
+    const n = caja.querySelector(".arte-estado");
     if (!n) return;
     n.textContent = txt;
     n.className = "arte-estado" + (cls ? " " + cls : "");
   };
 
   const pintar = () => {
+    const url = ev[def.col];
     caja.innerHTML = `
-      <h3>Arte de la entrada</h3>
-      <p class="ayuda">Una sola imagen y todas las entradas del evento se
-        dibujan encima. El recuadro marca dónde cae el QR: dejá esa zona
-        despejada o va a tapar lo que haya debajo.</p>
+      <h3>${esc(def.titulo)}</h3>
+      <p class="ayuda">${esc(def.ayuda)}</p>
       <div class="arte-cuerpo">
-        ${ev.arte_url ? `
-          <div class="arte-lienzo">
-            <img src="${esc(conVersion(ev.arte_url))}" alt="Arte actual de las entradas de ${esc(ev.nombre)}">
-            <span class="arte-qr" aria-hidden="true"><i>QR</i></span>
+        ${url ? `
+          <div class="arte-lienzo ${esc(def.lienzo)}">
+            <img src="${esc(conVersion(url))}" alt="${esc(def.alt(ev))}">
+            ${def.lienzo === "arte" ? `<span class="arte-qr" aria-hidden="true"><i>QR</i></span>` : ""}
           </div>`
-        : `<div class="arte-lienzo sin-arte">
-            <span class="arte-qr" aria-hidden="true"><i>QR</i></span>
-            <p>Sin arte propio. Las entradas salen con el diseño de la ticketera.</p>
+        : `<div class="arte-lienzo ${esc(def.lienzo)} sin-arte">
+            ${def.lienzo === "arte" ? `<span class="arte-qr" aria-hidden="true"><i>QR</i></span>` : ""}
+            <p>${esc(def.sin)}</p>
           </div>`}
         <div class="arte-controles">
-          <label><span>${ev.arte_url ? "Reemplazar imagen" : "Subir imagen"}</span>
-            <input type="file" id="fArte" accept="image/png,image/jpeg,image/webp"></label>
+          <label><span>${url ? "Reemplazar imagen" : "Subir imagen"}</span>
+            <input type="file" class="arte-archivo" accept="image/png,image/jpeg,image/webp"></label>
           <p class="ayuda">PNG, JPG o WEBP, hasta 5 MB. Se sube apenas la elegís.</p>
-          ${ev.arte_url ? `<button type="button" class="btn plano chico" id="btnQuitarArte">Quitar el arte</button>` : ""}
-          <p class="arte-estado" id="arteEstado" role="status" aria-live="polite"></p>
+          ${url ? `<button type="button" class="btn plano chico arte-quitar">${esc(def.quitar)}</button>` : ""}
+          <p class="arte-estado" role="status" aria-live="polite"></p>
         </div>
       </div>`;
     cablearControles();
   };
 
   const trabajando = si => {
-    ["#fArte", "#btnQuitarArte"].forEach(s => { const n = $(s); if (n) n.disabled = si; });
+    caja.querySelectorAll(".arte-archivo, .arte-quitar")
+        .forEach(n => { n.disabled = si; });
   };
 
   function cablearControles() {
-    $("#fArte").onchange = async e => {
+    caja.querySelector(".arte-archivo").onchange = async e => {
       const f = e.target.files && e.target.files[0];
       e.target.value = "";   // elegir el mismo archivo dos veces tiene que volver a disparar
       if (!f) return;
@@ -393,10 +437,10 @@ function cablearArte(ev) {
       trabajando(true);
       estado("Subiendo la imagen…", "trabajando");
       try {
-        ev.arte_url = await subirArte(f, ev, ext);
+        ev[def.col] = await subirImagen(f, ev, ext, def);
         pintar();                      // se redibuja con ?v= nuevo: se ve la que acaba de subir
-        estado("Listo. Esto es lo que va a salir en las entradas.", "ok");
-        avisar("Arte actualizado.");
+        estado(def.listo, "ok");
+        avisar(def.aviso_ok);
       } catch (err) {
         estado(err.message, "mal");
       } finally {
@@ -404,35 +448,32 @@ function cablearArte(ev) {
       }
     };
 
-    const btnQuitar = $("#btnQuitarArte");
+    const btnQuitar = caja.querySelector(".arte-quitar");
     if (btnQuitar) btnQuitar.onclick = async () => {
-      if (!confirm("¿Quitar el arte? Las entradas vuelven al diseño propio de la ticketera.")) return;
+      if (!confirm(def.confirmar)) return;
       trabajando(true);
       estado("Quitando…", "trabajando");
-      /* Primero se desata del evento, que es lo que cambia las entradas, y
+      /* Primero se desata del evento, que es lo que cambia lo que se ve, y
          recién después se intenta borrar el archivo. Al revés quedaría el
          evento apuntando a una URL muerta. */
-      const ruta = rutaDeArte(ev.arte_url);
+      const ruta = rutaDeArte(ev[def.col]);
       const { data: filas, error } = await sb.from("eventos")
-        .update({ arte_url: null }).eq("id", ev.id).select("id");
+        .update({ [def.col]: null }).eq("id", ev.id).select("id");
       if (error || !filas || !filas.length) {
         estado("No se pudo quitar" + (error ? ": " + error.message : ": la base no lo permitió."), "mal");
         trabajando(false);
         return;
       }
-      /* El borrado desde el navegador no borra nada y tampoco falla: es el
-         mismo motivo de arriba — sin policy de select, el storage no ve la
-         fila que tiene que borrar. Se intenta igual (por si algún día la hay)
-         pero no se promete lo que no pasó: la imagen queda en su dirección y
-         lo que cambia es que ninguna entrada la usa. */
       const borrado = ruta ? await sb.storage.from("arte").remove([ruta]) : null;
       const quedo = !borrado || borrado.error || !(borrado.data || []).length;
-      ev.arte_url = null;
+      ev[def.col] = null;
       pintar();
+      /* No se promete lo que no pasó: si el archivo no se borró, sigue en su
+         dirección y lo que cambió es que ya no lo usa nadie. */
       estado(quedo
-        ? "Las entradas vuelven al diseño de la ticketera. La imagen sigue guardada en su dirección, pero ya no la usa nadie."
-        : "Listo: el arte se quitó y el archivo se borró.", "ok");
-      avisar("Arte quitado.");
+        ? def.quitado + " La imagen sigue guardada en su dirección, pero ya no la usa nadie."
+        : def.quitado + " El archivo se borró.", "ok");
+      avisar(def.aviso_no);
     };
   }
 
@@ -496,7 +537,11 @@ async function pantallaEntradas(eventoId) {
         </tr></thead>
         <tbody>
           ${T.map(t => `<tr data-tipo="${t.id}">
-            <th>${esc(t.nombre)}<em>${esc(t.descripcion || "")}</em></th>
+            <th>${esc(t.nombre)}<em>${esc(t.descripcion || "")}</em>
+              <label class="marca-cartelera">
+                <input type="checkbox" class="chk-cartelera" data-t="${t.id}"
+                       ${t.en_cartelera === false ? "" : "checked"}>
+                <span>Cuenta en la cartelera</span></label></th>
             ${F.map(f => {
               const p = P.get(`${f.id}|${t.id}`);
               return `<td>
@@ -526,6 +571,11 @@ async function pantallaEntradas(eventoId) {
       <button class="btn primario" id="btnGuardarGrilla">Guardar precios</button>
     </div>
     <p class="ayuda">Precio vacío = ese tipo no se vende en esa fase. Cupo vacío = sin tope.</p>
+    <p class="ayuda">«Cuenta en la cartelera» decide si ese producto entra en el
+       «desde» y en el «agotado» que la portada muestra del evento. Destildalo
+       para lo que no es una oferta al público —una prueba de cobro, un
+       producto interno—: se sigue vendiendo igual, solo deja de fijar el
+       precio con el que se anuncia la fiesta.</p>
     <div id="zonaPublicar"></div>`;
 
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
@@ -546,6 +596,28 @@ async function pantallaEntradas(eventoId) {
       const eco = document.querySelector(
         `#main .celda-paga[data-f="${inp.dataset.f}"][data-t="${inp.dataset.t}"]`);
       if (eco) eco.textContent = textoPaga(Number(inp.value));
+    };
+  });
+
+  /* Se guarda al tildar y no con «Guardar precios»: es una sola casilla y
+     su efecto está en otra pantalla (la portada), así que un tilde que espera
+     a un botón que dice «precios» es un tilde que alguien va a dar por
+     guardado. El .select() de vuelta por lo de siempre — un update que RLS
+     filtra contesta 204 y cero filas, sin error. */
+  document.querySelectorAll("#main .chk-cartelera").forEach(chk => {
+    chk.onchange = async () => {
+      const valor = chk.checked;
+      chk.disabled = true;
+      const { data, error } = await sb.from("tipo_entrada")
+        .update({ en_cartelera: valor }).eq("id", chk.dataset.t).select("id");
+      chk.disabled = false;
+      if (error || !data || !data.length) {
+        chk.checked = !valor;
+        avisar("No se pudo guardar" + (error ? ": " + error.message : ": la base no lo permitió."));
+        return;
+      }
+      avisar(valor ? "Ese producto vuelve a contar en la cartelera."
+                   : "Ese producto ya no cuenta en la cartelera.");
     };
   });
 

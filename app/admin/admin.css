@@ -194,6 +194,17 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 }
 /* La columna del tipo queda fija al hacer scroll lateral: sin eso no se sabe
    de qué fila es el precio que se está mirando. */
+/* La casilla vive en la celda del nombre porque es una propiedad del
+   producto, no de un precio: vale para todas las fases de la fila. */
+.marca-cartelera{
+  display:flex;align-items:center;gap:7px;margin-top:8px;
+  min-height:44px;          /* el tilde se toca con el pulgar, no con la uña */
+  font-family:var(--dato);font-size:10.5px;letter-spacing:.04em;
+  text-transform:none;color:var(--txt-3);cursor:pointer;
+}
+.marca-cartelera input{width:15px;height:15px;accent-color:var(--dorado);cursor:pointer;flex:0 0 auto}
+.marca-cartelera input:disabled{cursor:progress;opacity:.5}
+
 .grilla tbody th{position:sticky;left:0;z-index:2}
 .grilla thead th:first-child{position:sticky;left:0;z-index:3}
 .grilla td{background:var(--sup)}
@@ -385,6 +396,12 @@ input[type="date"],input[type="time"]{color-scheme:dark}
   border-radius:var(--r-chico);overflow:hidden;
 }
 .arte-lienzo img{display:block;width:100%;height:auto}
+/* El flyer se mira en el recorte en que va a salir, no entero: la cartelera
+   lo encaja en 4:5 y el organizador tiene que poder ver ACÁ que la fecha le
+   quedó fuera del corte, no descubrirlo en la portada. */
+.arte-lienzo.flyer{aspect-ratio:4/5}
+.arte-lienzo.flyer img{height:100%;object-fit:cover;object-position:50% 50%}
+.arte-lienzo.flyer.sin-arte{aspect-ratio:4/5}
 /* Sin arte todavía: el mismo marco en la proporción del ticket propio (3:5)
    para que la zona del QR se pueda mirar ANTES de diseñar nada. */
 .arte-lienzo.sin-arte{

@@ -15,9 +15,23 @@
 
    El amarillo y no el rojo porque el rojo ya es de un cliente, y porque
    un flyer de neón rojo y un acento rojo nuestro pelean por el mismo ojo.
+
+   ── La idea ──────────────────────────────────────────────────────
+   El flyer manda: cada evento ES su imagen. Eso es la convención local y
+   discutirla sería pedirle a la gente que aprenda a leer una cartelera de
+   nuevo. Lo que sí se discute es lo que la convención dejó a medias: en
+   las carteleras de acá la tarjeta es el flyer y un botón que dice "ver
+   más", así que hay que abrir el evento para enterarse de qué día es.
+
+   Acá la pieza es una ENTRADA: flyer arriba, troquel al medio, talón
+   abajo con la fecha, el lugar y el precio. El flyer sigue ocupando la
+   tarjeta y el dato viaja en el talón, que es donde en una entrada de
+   papel va impreso. Una firma sola, repetida en dos tamaños: la entrada
+   grande de arriba y la tira de entradas de abajo son el mismo objeto.
    ══════════════════════════════════════════════════════════════════ */
 
 :root{
+  --tinta-0:#120A2C;    /* la noche detrás de la pared: barra y pie */
   --tinta:#180E3A;      /* la pared */
   --tinta-2:#231550;    /* el talón de la entrada */
   --tinta-3:#3A2478;    /* filos, perforación */
@@ -27,6 +41,7 @@
   --hueso-64:rgba(243,239,226,.64);
   --hueso-40:rgba(243,239,226,.40);
   --filo:rgba(243,239,226,.13);
+  --canto:rgba(243,239,226,.09);
 
   /* Dos familias, tres papeles. Archivo (Omnibus-Type) tiene eje de ancho,
      así que el logotipo puede ir ensanchado y los nombres de evento no, sin
@@ -36,11 +51,19 @@
   --display:"Archivo","Helvetica Neue",Arial,system-ui,sans-serif;
   --mono:"Azeret Mono","SFMono-Regular",ui-monospace,Menlo,monospace;
 
-  --carril:1080px;
+  --carril:1200px;
+  /* El margen izquierdo del contenido: la mitad del sobrante hasta el carril
+     MÁS los 20px de aire que el carril lleva adentro. El riel lo usa para
+     empezar exactamente donde empieza el rótulo que tiene encima; con sólo
+     la mitad del sobrante quedaba 20px corrido a la izquierda, que es la
+     clase de desprolijidad que se ve sin poder nombrarla. */
+  --margen:max(20px, calc((100% - var(--carril)) / 2 + 20px));
   --muesca:20px;        /* el diámetro del troquel de la perforación */
+  --curva:cubic-bezier(.2,.75,.3,1);
 }
 
 *{box-sizing:border-box}
+[hidden]{display:none !important}
 html{-webkit-text-size-adjust:100%;overflow-x:hidden}
 body{
   margin:0;background:var(--tinta);color:var(--hueso);
@@ -58,7 +81,7 @@ img{max-width:100%;display:block}
 
 .saltar{
   position:absolute;left:-9999px;top:0;z-index:200;
-  background:var(--fluor);color:var(--tinta);padding:10px 16px;
+  background:var(--fluor);color:var(--tinta);padding:12px 16px;
   font-family:var(--mono);font-size:13px;
 }
 .saltar:focus{left:12px;top:12px}
@@ -69,25 +92,36 @@ img{max-width:100%;display:block}
   font-weight:900;font-stretch:118%;
   font-size:26px;letter-spacing:-.012em;text-transform:uppercase;
   line-height:1;display:inline-block;
+  /* El relleno vertical no se ve: existe para que el único link de la barra
+     mida 44px de alto y se pueda tocar con el pulgar y no con la uña. */
+  padding:9px 0;
 }
 .logo span{color:var(--fluor)}
-.logo.chico{font-size:19px}
+.logo.chico{font-size:19px;padding:0}
 
 /* ─── barra ───────────────────────────────────────────────────── */
 .barra{
   position:sticky;top:0;z-index:60;
-  background:rgba(24,14,58,.88);backdrop-filter:blur(12px);
+  background:rgba(18,10,44,.86);backdrop-filter:blur(14px);
   border-bottom:1px solid var(--filo);
 }
-.barra-in{display:flex;align-items:center;height:58px}
+.barra-in{display:flex;align-items:center;justify-content:space-between;height:58px}
+/* Debajo de 560px el nombre ya llena la barra y la ciudad pasa a ser un
+   renglón que hay que esquivar. En el pie sigue estando. */
+.barra-lugar{display:none}
+@media (min-width:560px){
+  .barra-lugar{
+    display:block;font-family:var(--mono);font-size:10.5px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--hueso-40);
+  }
+}
 
 /* ─── hero ────────────────────────────────────────────────────── */
-/* Corto a propósito. Esto se abre desde el teléfono, casi siempre por un
-   link de WhatsApp, y la portada existe para el que llega sin saber qué
-   hay: la primera tarjeta tiene que estar a un pulgar de distancia. Un hero
-   a pantalla completa acá sería la empresa hablando de sí misma delante de
-   lo único que el visitante vino a ver. */
-.hero{padding:clamp(38px,8vw,72px) 0 clamp(30px,5vw,44px)}
+/* Corto a propósito, y más corto que antes. Esto se abre desde el teléfono,
+   casi siempre por un link de WhatsApp, y la portada existe para el que
+   llega sin saber qué hay: ahora que la primera pieza es un flyer a tamaño
+   de afiche, cada píxel del encabezado es un píxel que el flyer no ocupa. */
+.hero{padding:clamp(26px,6vw,58px) 0 clamp(22px,3.4vw,32px)}
 /* Los tres renglones están cortados a mano, así que el cuerpo se ata al
    ancho de la ventana y no a un piso fijo: con un piso, abajo de 400px el
    renglón más largo se parte y el título pasa a cuatro líneas mal cortadas.
@@ -95,20 +129,19 @@ img{max-width:100%;display:block}
    decididos y balance sólo puede desarmarlos. */
 .titulo{
   font-weight:900;font-stretch:105%;
-  font-size:clamp(28px,calc(10vw - 4px),74px);
+  font-size:clamp(28px,calc(9.4vw - 4px),68px);
   letter-spacing:-.035em;line-height:.9;text-transform:uppercase;
   text-wrap:initial;
 }
 .titulo .l{display:block}
 .titulo .fluor{color:var(--fluor)}
 .bajada{
-  margin-top:20px;max-width:38ch;
-  font-size:clamp(15.5px,2.1vw,20px);color:var(--hueso-64);
+  margin-top:16px;max-width:38ch;
+  font-size:clamp(15px,2vw,19px);color:var(--hueso-64);
 }
 
-/* ─── rótulo de la cartelera ──────────────────────────────────── */
-.cartelera{padding-bottom:clamp(56px,9vw,96px)}
-.rotulo{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+/* ─── rótulos de sección ──────────────────────────────────────── */
+.rotulo{display:flex;align-items:center;gap:14px;margin-bottom:20px}
 .rotulo h2{
   font-family:var(--mono);font-weight:500;
   font-size:12px;letter-spacing:.18em;text-transform:uppercase;
@@ -120,58 +153,77 @@ img{max-width:100%;display:block}
   text-transform:uppercase;color:var(--hueso-40);flex:0 0 auto;
 }
 
-/* ─── la pared ────────────────────────────────────────────────── */
-/* auto-fit con tope de 360px: dos eventos ocupan dos pistas centradas y no
-   dos medias páginas. El día que haya nueve, la pared se llena sola sin
-   tocar nada. El min() del minmax es lo que evita el scroll horizontal en
-   un teléfono angosto: sin él la pista se planta en 300px y desborda. */
-.grilla{
-  display:grid;gap:30px 22px;
-  grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),360px));
-  justify-content:center;
-}
-
-/* ─── la tarjeta es una entrada ───────────────────────────────── */
-/* La firma de la portada: afiche arriba, perforación troquelada al medio,
-   talón abajo. No es decoración — es la forma del producto, y hace que una
-   lista de eventos se lea como una tira de entradas. */
-.evento{
-  position:relative;overflow:hidden;
+/* ═══ LA ENTRADA ══════════════════════════════════════════════════
+   La firma de la portada y la pieza que comparten las dos zonas: afiche,
+   troquel, talón. No es decoración — es la forma del producto, y hace que
+   una cartelera se lea como una tira de entradas. */
+.evento,.destacado{
+  position:relative;overflow:hidden;isolation:isolate;
   display:flex;flex-direction:column;
-  background:var(--tinta-2);border-radius:12px;
-  container-type:inline-size;
-  transition:transform .18s ease,box-shadow .18s ease;
+  background:var(--tinta-2);border-radius:14px;
+  box-shadow:inset 0 0 0 1px var(--canto);
+  transition:transform .22s var(--curva),box-shadow .22s var(--curva);
 }
-.evento:hover{transform:translateY(-3px);box-shadow:0 16px 40px rgba(0,0,0,.34)}
-.evento:focus-visible{outline-offset:4px}
+.evento:hover,.destacado:hover{
+  transform:translateY(-5px);
+  box-shadow:inset 0 0 0 1px rgba(255,226,75,.28),0 22px 46px rgba(0,0,0,.42);
+}
+.evento:focus-visible,.destacado:focus-visible{outline-offset:4px}
 
 /* ── el afiche ── */
-.afiche{position:relative;aspect-ratio:4/5;background:var(--tinta-3);overflow:hidden}
-/* Arriba y no al centro: el arte que sube el organizador es el modelo de la
-   entrada, con la marca en la cabeza y un hueco en el medio para el QR.
-   Centrado, la tarjeta mostraría el hueco. */
-.afiche img{width:100%;height:100%;object-fit:cover;object-position:50% 8%}
+/* El contenedor de consulta va acá y no en la tarjeta: en la entrada grande
+   el afiche es una fracción del ancho, y un tamaño atado al ancho de la
+   pieza dejaría el nombre del papel gigante sobre un afiche angosto. */
+.afiche{
+  position:relative;overflow:hidden;
+  aspect-ratio:4/5;background:var(--tinta-3);
+  container-type:inline-size;
+}
+.afiche img{
+  position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;object-position:50% 50%;
+  transition:transform .5s var(--curva),filter .3s ease;
+}
+.evento:hover .afiche img,.destacado:hover .afiche img{transform:scale(1.045)}
 
-/* Sin flyer no queda un hueco: queda otro afiche. Fondo rayado como el
-   papel de un afiche sin imprimir y el nombre del evento a tamaño de
-   cartel. Es la razón por la que el talón de estas tarjetas no repite el
-   nombre — ya está acá, cuatro veces más grande. */
-.afiche-tipo{
-  display:flex;flex-direction:column;justify-content:center;
-  padding:26px 20px;
+/* ── el papel ──
+   Debajo del flyer, siempre. Mientras la imagen viaja es el fondo que se ve
+   (y no un rectángulo gris); si la imagen no llega nunca, es lo que queda;
+   y si el evento no tiene flyer, es el afiche entero. Papel rayado, como el
+   pliego sin imprimir, y el día del mes de tamaño cartel: sin imagen, la
+   fecha es lo único que este evento tiene para mostrar de lejos. */
+.papel{
+  position:absolute;inset:0;overflow:hidden;
+  display:flex;flex-direction:column;justify-content:flex-end;
+  padding:24px 20px;
   background:
     repeating-linear-gradient(128deg,
       transparent 0 13px, rgba(255,226,75,.055) 13px 26px),
     linear-gradient(200deg,var(--tinta-3),var(--tinta-2) 78%);
 }
-.afiche-nombre{
+/* Arriba a la derecha y entero. Abajo chocaba con el nombre y con la raya
+   fluor; y sangrado fuera del borde, el recorte dejaba a la vista media
+   panza de cada cifra — que no se lee como una fecha, se lee como una
+   impresión fallada. */
+.papel-dia{
+  position:absolute;right:14px;top:6px;
+  font-weight:900;font-stretch:112%;
+  font-size:120px;                    /* respaldo si no hay unidades de contenedor */
+  font-size:clamp(78px,44cqi,210px);
+  line-height:.78;letter-spacing:-.06em;
+  color:rgba(255,226,75,.12);
+  pointer-events:none;
+}
+.papel-nombre{
+  position:relative;
   font-weight:900;font-stretch:96%;
   font-size:40px;                     /* respaldo si no hay unidades de contenedor */
-  font-size:clamp(32px,16.5cqi,62px);
+  font-size:clamp(30px,15.5cqi,58px);
   line-height:.88;letter-spacing:-.032em;text-transform:uppercase;
   color:var(--hueso);
 }
-.afiche-org{
+.papel-org{
+  position:relative;
   margin-top:14px;padding-top:12px;border-top:2px solid var(--fluor);
   font-family:var(--mono);font-size:11px;letter-spacing:.14em;
   text-transform:uppercase;color:var(--hueso-64);
@@ -183,60 +235,251 @@ img{max-width:100%;display:block}
   position:absolute;top:14px;left:-4px;transform:rotate(-3.5deg);
   font-family:var(--mono);font-weight:500;
   font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
-  padding:6px 12px 5px;
+  padding:6px 12px 5px;z-index:2;
 }
 .sello-pocas{background:var(--fluor);color:var(--tinta)}
 .sello-agotado{background:var(--tinta);color:var(--hueso);border:1px solid var(--hueso-40)}
-.evento.agotado .afiche img{filter:grayscale(.8) brightness(.52)}
-.evento.agotado .afiche-tipo{opacity:.5}
+.agotado .afiche img{filter:grayscale(.85) brightness(.5)}
+.agotado .papel{opacity:.55}
 
-/* ── la perforación ── */
-/* Alto cero: es una línea, no una banda. Las muescas son círculos del color
-   de la pared centrados en los bordes; el overflow:hidden de la tarjeta les
-   corta la mitad de afuera y lo que queda es un troquel. */
-.perf{position:relative;height:0}
+/* ── el troquel ──
+   Alto cero: es una línea, no una banda. Las muescas son círculos del color
+   de la pared centrados en los bordes; el overflow:hidden de la pieza les
+   corta la mitad de afuera y lo que queda es un troquel. Al pasar el mouse
+   se enciende en fluor: la entrada está por rasgarse. */
+.perf{position:relative;height:0;z-index:1}
 .perf::before{
   content:"";position:absolute;left:16px;right:16px;top:-1px;
-  border-top:1.5px dashed rgba(243,239,226,.24);
-  transition:border-color .18s ease;
+  border-top:1.5px dashed rgba(243,239,226,.22);
+  transition:border-color .22s ease;
 }
-.evento:hover .perf::before{border-color:rgba(255,226,75,.5)}
+.evento:hover .perf::before,.destacado:hover .perf::before{
+  border-color:rgba(255,226,75,.55);
+}
 .perf i{
   position:absolute;top:0;width:var(--muesca);height:var(--muesca);
   border-radius:50%;background:var(--tinta);transform:translateY(-50%);
 }
-.perf .izq{left:calc(var(--muesca) / -2)}
-.perf .der{right:calc(var(--muesca) / -2)}
+.perf .p1{left:calc(var(--muesca) / -2)}
+.perf .p2{right:calc(var(--muesca) / -2)}
 
 /* ── el talón ── */
-.talon{display:flex;flex-direction:column;padding:22px 20px 20px;flex:1}
+.talon{display:flex;flex-direction:column;padding:18px 18px 17px;flex:1}
 .cuando{
+  display:flex;align-items:center;gap:10px;
   font-family:var(--mono);font-weight:500;
   font-size:12.5px;letter-spacing:.05em;color:var(--fluor);
 }
-.nombre{
-  margin-top:9px;
-  font-weight:800;font-stretch:98%;
-  font-size:26px;line-height:.96;letter-spacing:-.024em;text-transform:uppercase;
+.cuando span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* La punta de flecha: la única señal de "esto se abre". No dice "VER MÁS"
+   encima del flyer, que es lo que en las otras carteleras tapa justo la
+   parte del afiche que la gente vino a mirar. */
+.flecha{
+  flex:0 0 auto;width:7px;height:7px;
+  border-top:1.7px solid currentColor;border-right:1.7px solid currentColor;
+  transform:rotate(45deg);
+  transition:translate .22s var(--curva);
 }
-.donde{margin-top:9px;font-size:14px;color:var(--hueso-64);line-height:1.35}
+.evento:hover .flecha,.destacado:hover .flecha{translate:4px 0}
+
+.nombre{
+  margin-top:8px;
+  font-weight:800;font-stretch:98%;
+  font-size:23px;line-height:.96;letter-spacing:-.024em;text-transform:uppercase;
+}
+.donde{color:var(--hueso-64);line-height:1.35}
 /* margin-top:auto — el pie del talón se planta abajo, así una tarjeta sin
    flyer (que no repite el nombre) queda de la misma altura que una con. */
 .pie-talon{
   display:flex;align-items:baseline;gap:12px;
-  margin-top:auto;padding-top:18px;
-  font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;
+  margin-top:auto;padding-top:14px;
 }
-.quien{color:var(--hueso-40);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.desde{margin-left:auto;color:var(--hueso);flex:0 0 auto;font-variant-numeric:tabular-nums}
-.desde b{font-weight:500;color:var(--fluor)}
+.evento .pie-talon{
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
+}
+.evento .donde{
+  flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* margin-left:auto y no sólo el flex:1 del vecino: cuando el talón de la
+   entrada grande no lleva organizador —porque ya está en el papel— el
+   precio se quedaba pegado a la izquierda, que no es donde se lo busca. */
+.desde{
+  flex:0 0 auto;margin-left:auto;color:var(--hueso-40);
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
+  font-variant-numeric:tabular-nums;
+}
+.desde b{font-weight:500;color:var(--hueso)}
+
+/* ─── la pared ────────────────────────────────────────────────── */
+/* Columnas contadas a mano y no `auto-fit`. auto-fit con un tope duro se
+   plantaba en dos columnas de 360px en una pantalla de escritorio: veinte
+   eventos eran cinco metros de scroll y un flyer del tamaño de un póster.
+   Y auto-fit con `1fr` arregla eso pero rompe el otro extremo — con dos
+   eventos colapsa las pistas vacías y quedan dos tarjetas de media página.
+   Contadas, la tarjeta mide lo mismo haya dos o haya veinte. */
+.cartelera{padding-bottom:clamp(56px,9vw,96px)}
+.grilla{display:grid;gap:30px 22px;grid-template-columns:1fr}
+@media (min-width:540px){ .grilla{grid-template-columns:repeat(2,1fr)} }
+@media (min-width:840px){ .grilla{grid-template-columns:repeat(3,1fr)} }
+@media (min-width:1120px){ .grilla{grid-template-columns:repeat(4,1fr)} }
+
+/* El corte de mes sólo aparece si la cartelera cruza más de uno (lo decide
+   portada.js). Con veinte eventos es lo que hace que se pueda buscar "el
+   finde de octubre" en vez de contar tarjetas. */
+.mes{
+  grid-column:1 / -1;
+  display:flex;align-items:center;gap:14px;
+  margin:14px 0 -6px;
+  font-family:var(--mono);font-weight:500;
+  font-size:11.5px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--hueso-40);
+}
+.mes::after{content:"";flex:1;height:1px;background:var(--filo)}
+
+/* ─── lo próximo ──────────────────────────────────────────────── */
+.proximos{padding-bottom:clamp(40px,6vw,62px)}
+/* El riel sangra hasta el borde de la ventana pero arranca alineado con el
+   carril: así la entrada que asoma a la derecha se ve cortada por la
+   pantalla —que es la señal de "hay más"— y no por una caja invisible.
+   El padding se calcula sobre el ancho del padre y no sobre 100vw, que en
+   escritorio incluye la barra de scroll y desbordaría la página. */
+.rail{
+  /* Posicionado a propósito: portada.js ubica cada entrada con offsetLeft, y
+     sin esto el offsetParent sería el body y los botones saltarían a
+     cualquier lado. */
+  position:relative;
+  display:flex;gap:16px;
+  overflow-x:auto;overscroll-behavior-x:contain;
+  scroll-snap-type:x mandatory;
+  padding-inline:var(--margen);
+  scroll-padding-inline-start:var(--margen);
+  /* La barra de scroll del riel es ruido: el dedo y los botones ya lo
+     mueven, y en escritorio aparecería una barra gris cruzando el diseño. */
+  scrollbar-width:none;
+}
+.rail::-webkit-scrollbar{display:none}
+.destacado{
+  flex:0 0 calc(100% - clamp(30px,9vw,54px));
+  scroll-snap-align:start;
+}
+/* Con una sola entrada no hay nada que asome ni a dónde deslizarse: ocupa
+   el carril entero y deja de parecer una lista a la que le falta el resto.
+   La clase la pone portada.js, que ya sabe cuántas hay. */
+.rail.solo .destacado{flex-basis:100%}
+
+/* En la entrada grande el día ya está impreso en el talón a 64px y en
+   fluor. Repetirlo de marca de agua sobre el afiche deja dos veces el mismo
+   número, del mismo tamaño, a un palmo. En la tarjeta chica se queda: ahí
+   el del talón mide 12px y el papel necesita un ancla. */
+.destacado .papel-dia{display:none}
+/* Y el nombre al medio del papel, no abajo. En la tarjeta chica el nombre
+   apoyado en el pie se lee como el título de un afiche; en la pieza grande,
+   con el doble de alto, deja media hoja de rayas vacías arriba y lo que
+   parece es que la imagen no terminó de cargar. */
+.destacado .papel{justify-content:center}
+
+.destacado .talon{padding:22px 20px 20px}
+.destacado .cuando{
+  font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--hueso-40);
+}
+/* El día en grande: en una entrada de papel el talón lleva la fecha impresa
+   más grande que el resto, porque es el dato con el que se la guarda en el
+   bolsillo hasta el día que sirve. */
+.fechon{display:flex;align-items:baseline;gap:10px;margin-top:6px}
+.fechon b{
+  font-weight:900;font-stretch:112%;
+  font-size:clamp(46px,11vw,64px);line-height:.8;letter-spacing:-.045em;
+  color:var(--fluor);
+}
+.fechon span{
+  font-family:var(--mono);font-size:12px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--hueso-64);
+}
+.destacado .nombre{
+  margin-top:14px;max-width:18ch;
+  font-weight:900;font-stretch:100%;
+  font-size:clamp(26px,5.2vw,50px);line-height:.94;letter-spacing:-.03em;
+}
+.destacado .donde{margin-top:10px;font-size:15px}
+.destacado .pie-talon{
+  padding-top:16px;
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
+}
+.destacado .quien{
+  flex:1;min-width:0;color:var(--hueso-40);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* Parece un botón y no lo es: la pieza entera es el link, así que un botón
+   de verdad acá sería un control dentro de otro. Mide 46px igual — nada de
+   lo que se toca en esta página baja de 44. */
+.ver{
+  display:inline-flex;align-items:center;gap:10px;align-self:flex-start;
+  margin-top:18px;min-height:46px;padding:0 20px;
+  border:1.5px solid var(--fluor);border-radius:4px;
+  font-family:var(--mono);font-weight:500;
+  font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--fluor);
+  transition:background-color .22s ease,color .22s ease;
+}
+.destacado:hover .ver{background:var(--fluor);color:var(--tinta)}
+
+/* De 860px para arriba la entrada se acuesta: flyer a la izquierda, troquel
+   vertical, talón a la derecha. Es la misma pieza girada, no otra tarjeta.
+   El alto manda y el ancho del afiche sale de él (×0,8 = el mismo 4:5 de la
+   grilla), para que una entrada apaisada no se coma la pantalla de alto. */
+@media (min-width:860px){
+  .destacado{--alto:440px;flex-direction:row;min-height:var(--alto)}
+  .destacado .afiche{
+    flex:0 0 calc(var(--alto) * .8);aspect-ratio:auto;align-self:stretch;
+  }
+  /* Todo junto y centrado, en vez de estirado con el pie clavado abajo: en
+     una pieza de 480px de alto, "margin-top:auto" abría un vacío de la
+     altura de una mano entre el lugar y el precio. Un talón en blanco es
+     una decisión de diseño; medio talón en blanco es un olvido. */
+  .destacado .talon{flex:1;padding:34px 34px 30px;justify-content:center}
+  .destacado .pie-talon{margin-top:18px}
+  .destacado .nombre{margin-top:16px}
+  .destacado .perf{width:0;height:auto;align-self:stretch}
+  .destacado .perf::before{
+    left:-1px;right:auto;top:18px;bottom:18px;
+    border-top:0;border-left:1.5px dashed rgba(243,239,226,.22);
+    transition:border-color .22s ease;
+  }
+  .destacado:hover .perf::before{border-left-color:rgba(255,226,75,.55)}
+  .destacado .perf i{left:0;top:auto;transform:translateX(-50%)}
+  .destacado .perf .p1{top:calc(var(--muesca) / -2)}
+  .destacado .perf .p2{bottom:calc(var(--muesca) / -2)}
+}
+@media (min-width:1180px){ .destacado{--alto:510px} }
+
+/* ── el mando del riel ──
+   Vive en el rótulo, nunca encima del flyer. Un control flotando sobre el
+   afiche tapa justo lo que la persona vino a mirar. */
+.rail-mando{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.rail-cuenta{
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;
+  color:var(--hueso-40);font-variant-numeric:tabular-nums;
+  margin-right:4px;
+}
+.rail-btn{
+  width:44px;height:44px;display:grid;place-items:center;
+  background:transparent;color:var(--hueso);
+  border:1px solid var(--filo);border-radius:50%;
+  cursor:pointer;
+  transition:background-color .2s ease,color .2s ease,border-color .2s ease,opacity .2s ease;
+}
+.rail-btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.rail-btn:hover:not(:disabled){background:var(--fluor);color:var(--tinta);border-color:var(--fluor)}
+.rail-btn:disabled{opacity:.28;cursor:default}
 
 /* ─── cartel de vacío / error ─────────────────────────────────── */
 /* Un talón en blanco: la portada sin nada a la venta sigue pareciendo una
    ticketera, no una página que no cargó. */
 .cartel{
   grid-column:1 / -1;justify-self:stretch;
-  border:1.5px dashed var(--tinta-3);border-radius:12px;
+  border:1.5px dashed var(--tinta-3);border-radius:14px;
   padding:clamp(34px,7vw,58px) clamp(22px,5vw,44px);
   max-width:600px;margin:0 auto;text-align:center;
 }
@@ -247,33 +490,66 @@ img{max-width:100%;display:block}
 }
 .cartel p{margin-top:14px;color:var(--hueso-64);font-size:15.5px;max-width:44ch;margin-inline:auto}
 .cartel .btn{
-  margin-top:22px;display:inline-block;
+  margin-top:22px;display:inline-flex;align-items:center;min-height:46px;
   background:var(--fluor);color:var(--tinta);
   font-family:var(--mono);font-weight:500;font-size:13px;letter-spacing:.08em;
-  text-transform:uppercase;padding:12px 22px;border:0;border-radius:4px;cursor:pointer;
+  text-transform:uppercase;padding:0 22px;border:0;border-radius:4px;cursor:pointer;
+  transition:background-color .2s ease;
 }
 .cartel .btn:hover{background:#FFF08C}
 
 /* ─── pie ─────────────────────────────────────────────────────── */
-.pie{border-top:1px solid var(--filo);padding:34px 0 calc(38px + env(safe-area-inset-bottom))}
+.pie{
+  background:var(--tinta-0);border-top:1px solid var(--filo);
+  padding:34px 0 calc(38px + env(safe-area-inset-bottom));
+}
 .pie-in{display:flex;flex-direction:column;gap:12px}
 .pie p{max-width:56ch;font-size:13.5px;color:var(--hueso-40);line-height:1.55}
 .pie-lugar{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase}
 
-/* ─── movimiento ──────────────────────────────────────────────── */
-/* Una sola idea, la de la página cargando: el título se imprime renglón por
-   renglón y detrás salen las entradas, como de una impresora. Nada más se
-   mueve solo. */
+/* ═══ MOVIMIENTO ══════════════════════════════════════════════════
+   Una sola idea y sus consecuencias: la página se IMPRIME. El título sale
+   renglón por renglón, detrás salen las entradas — la de arriba primero y
+   la tira de abajo escalonada— y al elegir una, esa se despega y se lleva
+   la página con ella. Nada se mueve solo después de eso: no hay carrusel
+   que avance ni nada que lata. Que se sienta vivo, no que tiemble. */
 @keyframes sube{
-  from{opacity:0;transform:translateY(14px)}
+  from{opacity:0;transform:translateY(16px)}
   to{opacity:1;transform:none}
 }
-.titulo .l{animation:sube .5s cubic-bezier(.2,.75,.3,1) both}
+.titulo .l{animation:sube .5s var(--curva) both}
 .titulo .l:nth-child(2){animation-delay:.07s}
 .titulo .l:nth-child(3){animation-delay:.14s}
-.evento{animation:sube .42s cubic-bezier(.2,.75,.3,1) both;
-  animation-delay:calc(var(--i,0) * 65ms + .18s)}
+
+/* `backwards` y no `both`: con `both` el estado final de la animación
+   —transform:none— se queda pegado y le gana al translateY del hover, así
+   que la tarjeta dejaría de levantarse apenas termina de aparecer. */
+html.js .destacado{animation:sube .55s var(--curva) backwards;animation-delay:.18s}
+
+/* Las de la grilla nacen invisibles y las enciende el observador cuando
+   entran en pantalla (portada.js). Cuelga de html.js: si el script no
+   corre, esta regla no existe y la cartelera se ve igual, sin animación. */
+html.js .evento{opacity:0}
+html.js .evento.vista{
+  opacity:1;
+  animation:sube .5s var(--curva) backwards;
+  animation-delay:calc(var(--i,0) * 55ms);
+}
+
+/* Al abrir un evento: la elegida se despega mientras la página se apaga.
+   El apagado va en el body entero —y no en todo menos la tarjeta— porque
+   una opacidad en el padre agrupa a los hijos y ningún hijo puede volver a
+   ser opaco. Lo que distingue a la elegida es que se mueve. */
+.saliendo{transform:translateY(-10px) scale(1.012) !important;
+  box-shadow:0 30px 60px rgba(0,0,0,.5) !important;z-index:5}
+body.yendo{opacity:.35;transition:opacity .19s ease}
 
 @media (prefers-reduced-motion:reduce){
+  /* Se apaga todo el movimiento, y además se deshace el estado inicial del
+     que dependía la aparición: sin esto las tarjetas de la grilla quedarían
+     en opacity:0 para siempre — la animación que las encendía ya no corre. */
+  html.js .evento{opacity:1}
   *{animation:none !important;transition-duration:.001ms !important}
+  .rail{scroll-behavior:auto}
+  body.yendo{opacity:1}
 }

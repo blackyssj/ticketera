@@ -9,7 +9,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Azeret+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/portada.css?v=13">
+<link rel="stylesheet" href="/portada.css?v=26">
+<!-- La clase `js` la pone el propio script, en línea y antes de pintar nada:
+     de ella cuelga el estado inicial invisible de las tarjetas. Si el script
+     no llega a correr, la clase no está, las tarjetas nunca se esconden y la
+     cartelera se ve igual — sin animación, pero se ve. -->
+<script>document.documentElement.className="js"</script>
 </head>
 <body>
 
@@ -20,6 +25,7 @@
     <!-- El "-azo" es el aumentativo que hace el nombre: un ticketazo no es un
          ticket. Marcarlo en fluor es toda la identidad que se necesita acá. -->
     <a class="logo" href="/" aria-label="TICKETAZO, inicio">TICKET<span>AZO</span></a>
+    <span class="barra-lugar">Santa Cruz de la Sierra</span>
   </div>
 </header>
 
@@ -33,6 +39,31 @@
       </h1>
       <p class="bajada">Elegís el evento, pagás con QR y la entrada te llega al toque.</p>
     </div>
+  </section>
+
+  <!-- Lo próximo: el evento más cercano, grande. Con muchos en venta se
+       vuelve un carrusel; con uno solo es una entrada sola a tamaño de
+       afiche y la página no parece a medio cargar. Nace oculta y la
+       descubre el script cuando sabe cuántos eventos hay. -->
+  <section class="proximos" id="proximos" hidden>
+    <div class="carril">
+      <div class="rotulo">
+        <h2>Lo próximo</h2>
+        <span class="rotulo-linea" aria-hidden="true"></span>
+        <!-- Los controles viven acá y no encima del flyer: un botón flotando
+             sobre el afiche tapa justo lo que la gente vino a mirar. -->
+        <div class="rail-mando" id="railMando" hidden>
+          <span class="rail-cuenta" id="railCuenta" aria-live="polite"></span>
+          <button type="button" class="rail-btn" id="railAnt" aria-label="Ver el evento anterior">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4 7 12l8 8"/></svg>
+          </button>
+          <button type="button" class="rail-btn" id="railSig" aria-label="Ver el evento siguiente">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4l8 8-8 8"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="rail" id="rail" role="group" aria-label="Los eventos más próximos"></div>
   </section>
 
   <section class="cartelera" id="cartelera">
@@ -57,6 +88,6 @@
 </footer>
 
 <script src="/config.js"></script>
-<script src="/portada.js?v=13"></script>
+<script src="/portada.js?v=26"></script>
 </body>
 </html>
