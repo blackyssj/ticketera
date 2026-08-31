@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
        uno. El embebido filtra por el padre — de ahí el `!inner`. */
     const eventos = await rest(
       `eventos?estado=eq.publicado&fecha=gte.${hoy}` +
-      `&select=id,slug,nombre,lugar,fecha,hora_inicio,arte_url,organizadores!inner(slug,nombre)` +
+      `&select=id,slug,nombre,lugar,fecha,hora_inicio,flyer_url,organizadores!inner(slug,nombre)` +
       `&organizadores.activo=is.true` +
       `&order=fecha.asc,hora_inicio.asc`);
 
@@ -82,11 +82,19 @@ Deno.serve(async (req) => {
       const faseId = await rpc("fase_vigente", { p_evento: e.id });
       if (!faseId) return null;   // publicado pero sin venta abierta: no es cartelera
 
-      const fase = (await rest(`evento_fase?id=eq.${faseId}&select=arte_url`))?.[0] ?? null;
       const precios = await rest(
-        `fase_precio?fase_id=eq.${faseId}&select=precio,cupo,tipo_id,tipo_entrada(activo)`);
+        `fase_precio?fase_id=eq.${faseId}&select=precio,cupo,tipo_id,tipo_entrada(activo,en_cartelera)`);
 
-      const vivos = (precios ?? []).filter((p: any) => p.tipo_entrada?.activo);
+      /* Dos filtros y no uno. `activo` es el que decide si el producto se
+         vende; `en_cartelera` es el que decide si CUENTA para lo que la
+         portada dice del evento. La «Prueba de cobro» de Bs 1 está activa a
+         propósito —es lo que verifica la pasarela por el mismo camino que
+         usa un comprador— y por eso la tarjeta anunciaba "desde 1 Bs": un
+         instrumento de prueba fijando el precio de la fiesta. Tampoco entra
+         en la cuenta de cupo: tres unidades de prueba no pueden inclinar un
+         evento a "últimas entradas" ni taparle el "agotado". */
+      const vivos = (precios ?? []).filter(
+        (p: any) => p.tipo_entrada?.activo && p.tipo_entrada?.en_cartelera !== false);
       const disp = await Promise.all(vivos.map((p: any) =>
         p.cupo === null ? Promise.resolve(null)     // sin tope: corta por fecha, no por stock
                         : rpc("disponibilidad_tipo", { p_fase: faseId, p_tipo: p.tipo_id })
@@ -127,10 +135,14 @@ Deno.serve(async (req) => {
         ...p,
         hora,
         fecha_txt: `${p.dia_semana} ${p.dia} ${p.mes} · ${hora}`,
-        /* Gana el arte de la fase, igual que en la entrada: si el organizador
-           le puso cara propia a la preventa, la preventa es lo que se está
-           vendiendo y es lo que tiene que verse en la cartelera. */
-        arte_url: fase?.arte_url ?? e.arte_url ?? null,
+        /* El flyer y NO `arte_url`: son dos imágenes con dos trabajos. El
+           arte es el modelo sobre el que se dibuja la entrada —marca arriba,
+           hueco al medio para el QR—, y recortado en una tarjeta lo que se
+           luce es el hueco. Acá va el afiche que el organizador ya publicó
+           en redes, que es por el que la gente reconoce el evento. Sin flyer
+           viaja null y la portada dibuja un afiche tipográfico: no hay
+           imagen de repuesto que valga la pena mostrar. */
+        flyer_url: e.flyer_url ?? null,
         desde,
         venta,
       };
