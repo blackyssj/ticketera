@@ -75,11 +75,22 @@ function afiche(e, prioridad) {
 
   /* El día en grande es el ancla gráfica del papel. Es un dato, no un
      adorno: sin flyer, la fecha es lo único que este evento tiene para
-     mostrar de lejos. */
-  const papel = `<div class="papel">
+     mostrar de lejos.
+
+     El papel nombra al evento SIEMPRE, tenga flyer o no. Con flyer queda
+     tapado por la imagen y no se ve nunca — salvo en los dos momentos en
+     que hace falta: mientras el PNG viaja por el 4G, y si no llega. Antes
+     esos dos momentos dejaban un rectángulo rayado sin una palabra, y en la
+     entrada grande —donde el día no se dibuja— un rectángulo entero vacío.
+     Un evento anónimo justo cuando lo único que se puede hacer es leer.
+
+     Tapado sigue estando en el árbol de accesibilidad, así que cuando hay
+     imagen el papel se marca como decoración: el `alt` y el talón ya dicen
+     el nombre, y no hace falta oírlo tres veces. */
+  const papel = `<div class="papel"${e.flyer_url ? ' aria-hidden="true"' : ""}>
       <span class="papel-dia" aria-hidden="true">${esc(e.dia)}</span>
-      ${e.flyer_url ? "" : `<h3 class="papel-nombre">${esc(e.nombre)}</h3>
-        <span class="papel-org">${esc(e.organizador_nombre)}</span>`}
+      <h3 class="papel-nombre">${esc(e.nombre)}</h3>
+      <span class="papel-org">${esc(e.organizador_nombre)}</span>
     </div>`;
 
   /* width/height con la proporción del recorte (4:5): el hueco queda
@@ -105,14 +116,22 @@ const perf = `<div class="perf" aria-hidden="true"><i class="p1"></i><i class="p
 
    El nombre se repite en el talón sólo cuando arriba hay una imagen. Sin
    flyer ya está en el papel, cuatro veces más grande, y repetirlo sesenta
-   píxeles más abajo es un tartamudeo, no una jerarquía. */
+   píxeles más abajo es un tartamudeo, no una jerarquía.
+
+   La fecha se arma acá con las mismas partes que la función usa para su
+   `fecha_txt` —da la misma cadena— y no con `fecha_txt` mismo, para poder
+   marcar la hora aparte. En una tarjeta de 134px (dos columnas en un
+   teléfono chico) el renglón entero no entra y se cortaba justo en la hora:
+   "SÁB 12 SEP · 2…". Marcada, el CSS la saca a ese ancho y queda la fecha
+   completa, que es la que decide si el evento te sirve; la hora está a un
+   toque de distancia y casi siempre impresa en el flyer. */
 function tarjeta(e, i) {
   const conFlyer = !!e.flyer_url;
   return `<a class="evento${e.venta === "agotado" ? " agotado" : ""}" href="${esc(e.url)}">
     ${afiche(e, i < 2)}
     ${perf}
     <div class="talon">
-      <div class="cuando"><span>${esc(e.fecha_txt)}</span>
+      <div class="cuando"><span>${esc(e.dia_semana)} ${esc(e.dia)} ${esc(e.mes)}<i class="hora"> · ${esc(e.hora)}</i></span>
         <i class="flecha" aria-hidden="true"></i></div>
       ${conFlyer ? `<h3 class="nombre">${esc(e.nombre)}</h3>` : ""}
       <div class="pie-talon">
@@ -133,7 +152,20 @@ function tarjeta(e, i) {
    más: sin flyer, el papel ya grita RED CIRCLE a media pieza de distancia
    y repetirlo en el talón deja el mismo nombre dos veces en la misma
    entrada, en dos tamaños, a veinte centímetros. Con el organizador pasa
-   igual: lo que el papel ya dice, el talón no lo repite. */
+   igual: lo que el papel ya dice, el talón no lo repite.
+
+   La última fila es la que cambió de idea con el primer flyer real adentro.
+   Un flyer boliviano imprime la fecha, la hora y el lugar en una banda
+   abajo — o sea que el talón, tal como estaba, transcribía la banda del
+   afiche a cuatro centímetros de distancia y encima en cuerpo de titular.
+   Lo único que el flyer nunca dice es cuánto sale, y eso estaba escrito en
+   11,5px gris al lado del organizador: el dato que todo el mundo pregunta
+   primero, más chico que cualquier otra cosa de la pieza.
+
+   Así que el precio se muda a la fila de la acción, al lado de la manera de
+   entrar, que es donde en una entrada de papel se imprime lo que se pagó.
+   La fecha sigue siendo el número grande y no se lo cede: es la convención
+   del talón, y el que compra guarda la entrada por la fecha. */
 function destacado(e, i) {
   return `<a class="destacado${e.venta === "agotado" ? " agotado" : ""}" href="${esc(e.url)}">
     ${afiche(e, i === 0)}
@@ -143,11 +175,11 @@ function destacado(e, i) {
       <div class="fechon"><b>${esc(e.dia)}</b><span>${esc(MESES[Number(e.fecha.slice(5, 7)) - 1] || e.mes)}</span></div>
       ${e.flyer_url ? `<h3 class="nombre">${esc(e.nombre)}</h3>` : ""}
       <p class="donde">${esc(e.lugar)}</p>
-      <div class="pie-talon">
-        ${e.flyer_url ? `<span class="quien">${esc(e.organizador_nombre)}</span>` : ""}
+      ${e.flyer_url ? `<span class="quien">${esc(e.organizador_nombre)}</span>` : ""}
+      <div class="accion">
+        <span class="ver" aria-hidden="true">Ver entradas<i class="flecha"></i></span>
         ${e.desde != null ? `<span class="desde">desde <b>${esc(bs(e.desde))}</b></span>` : ""}
       </div>
-      <span class="ver" aria-hidden="true">Ver entradas<i class="flecha"></i></span>
     </div>
   </a>`;
 }
@@ -182,17 +214,24 @@ function cartel(titulo, texto, accion) {
   </div>`;
 }
 
-/* ── que una imagen rota no rompa la tarjeta ──
+/* ── que una imagen rota no rompa la tarjeta, y que la buena se note ──
    El papel ya está dibujado debajo, así que alcanza con sacar la imagen que
    no llegó: la tarjeta queda como la de un evento sin flyer, que es un
-   estado que la página sabe dibujar bien. Se revisa también `complete` por
-   la imagen que ya falló antes de que llegáramos a escuchar — el caso del
-   que vuelve a la portada con el 404 cacheado. */
+   estado que la página sabe dibujar bien.
+
+   La que sí llega se marca, y el CSS la hace aparecer. Un flyer pesa un par
+   de megas y en 4G tarda; sin esto el afiche salta de golpe cuando termina
+   de bajar, y ese salto es lo que hace que la portada parezca rota el
+   segundo anterior. Se revisa `complete` para los dos casos ya resueltos
+   antes de que llegáramos a escuchar: el 404 cacheado (naturalWidth 0) y la
+   imagen que ya estaba en memoria del que vuelve con el botón "atrás". */
 function vigilarImagenes(zona) {
   zona.querySelectorAll("img").forEach(img => {
-    const caer = () => { img.remove(); };
+    const caer   = () => { img.remove(); };
+    const llegar = () => { img.classList.add("cargada"); };
     img.addEventListener("error", caer, { once: true });
-    if (img.complete && img.naturalWidth === 0) caer();
+    img.addEventListener("load", llegar, { once: true });
+    if (img.complete) (img.naturalWidth === 0 ? caer : llegar)();
   });
 }
 
@@ -371,6 +410,13 @@ async function pintar() {
   const rail = $("#rail");
   rail.innerHTML = arriba.map(destacado).join("");
   rail.classList.toggle("solo", arriba.length === 1);
+  /* Con un solo evento en venta, "Lo próximo" no separa nada de nada: no hay
+     un "después" con el que contraste. Es un renglón que hay que leer y
+     descartar, y en el teléfono son 40px que le come al afiche justo en la
+     primera pantalla — que es donde casi todos llegan, por WhatsApp. Se
+     calla, no se borra: el h2 sigue en el árbol para quien navega la página
+     por encabezados. */
+  $("#proximosRotulo").classList.toggle("muda", eventos.length === 1);
   vigilarImagenes(rail);
   $("#proximos").hidden = false;
   cablearRail(arriba.length);
@@ -385,6 +431,13 @@ async function pintar() {
 
   $("#rotuloTxt").textContent = muchos ? "Toda la cartelera" : "También a la venta";
   contar(abajo.length);
+  /* Con la cartelera larga, en el teléfono la grilla pasa a dos columnas.
+     Con una sola, veinte eventos son doce mil píxeles de scroll: no se
+     recorre, se sufre. Se usa el mismo umbral que decide el carrusel porque
+     es la misma idea — una cartelera de veinte no es una de tres con más
+     tarjetas—, y con pocas el afiche se merece el ancho entero del teléfono
+     (el CSS ignora la clase de 540px para arriba). */
+  grilla.classList.toggle("densa", muchos);
   grilla.innerHTML = conMeses(abajo);
   vigilarImagenes(grilla);
   revelar(grilla);

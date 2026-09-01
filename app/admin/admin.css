@@ -194,16 +194,43 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 }
 /* La columna del tipo queda fija al hacer scroll lateral: sin eso no se sabe
    de qué fila es el precio que se está mirando. */
-/* La casilla vive en la celda del nombre porque es una propiedad del
-   producto, no de un precio: vale para todas las fases de la fila. */
-.marca-cartelera{
-  display:flex;align-items:center;gap:7px;margin-top:8px;
-  min-height:44px;          /* el tilde se toca con el pulgar, no con la uña */
-  font-family:var(--dato);font-size:10.5px;letter-spacing:.04em;
-  text-transform:none;color:var(--txt-3);cursor:pointer;
+
+/* ─── la marca de cartelera ───
+   Vive en la celda del nombre porque es una propiedad del producto, no de
+   un precio: vale para todas las fases de la fila.
+
+   Antes era una casilla pelada con la etiqueta al lado, y la etiqueta
+   ocupaba el ancho entero de la celda: 230px de superficie invisible que
+   guardaba en la base al primer roce. Así fue como una noche la vitrina
+   pasó a anunciar «desde 1 Bs» por una entrada de prueba.
+
+   Ahora es una pastilla del tamaño de lo que dice, con su zona propia
+   separada por una línea, y el texto NOMBRA el estado en vez de
+   describir la acción: un toque sin querer cambia el color y cambia la
+   palabra, así que se ve. Lo que no hace es pedir confirmación —ver
+   `ofrecerVuelta()` en admin.js para por qué. */
+.zona-cartelera{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin-top:13px;padding-top:11px;border-top:1px solid var(--linea);
 }
-.marca-cartelera input{width:15px;height:15px;accent-color:var(--dorado);cursor:pointer;flex:0 0 auto}
-.marca-cartelera input:disabled{cursor:progress;opacity:.5}
+.cartelera{
+  /* `row` explícito: el `label` general de más arriba es una columna, que
+     acá pondría el tilde arriba del texto y centrado. */
+  display:inline-flex;flex-direction:row;align-items:center;gap:9px;
+  min-height:44px;padding:0 15px 0 13px;border-radius:999px;
+  border:1px solid var(--linea-2);background:var(--sup-2);
+  font-family:var(--dato);font-size:11px;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--txt-3);cursor:pointer;white-space:nowrap;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+.cartelera input{
+  width:17px;height:17px;margin:0;flex:0 0 auto;
+  accent-color:var(--dorado);cursor:pointer;
+}
+.cartelera[data-on="1"]{
+  background:rgba(233,180,76,.12);border-color:rgba(233,180,76,.42);color:var(--dorado);
+}
+.cartelera:has(input:disabled){cursor:progress;opacity:.55}
 
 .grilla tbody th{position:sticky;left:0;z-index:2}
 .grilla thead th:first-child{position:sticky;left:0;z-index:3}
@@ -291,7 +318,11 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 }
 .publicar.vivo{border-color:rgba(61,214,140,.35);background:linear-gradient(var(--sup),rgba(61,214,140,.05))}
 .publicar h3{font-size:21px}
-.publicar>div{min-width:0}
+/* En columna —que es como cae en el teléfono— `align-items:flex-start`
+   deja que este bloque crezca hasta su contenido, y adentro hay un link
+   público que mide más que la pantalla. Con el ancho fijado, el link
+   vuelve a recortarse con puntos suspensivos como fue diseñado. */
+.publicar>div{min-width:0;max-width:100%}
 .publicar p{margin:5px 0 0;font-size:13.5px;color:var(--txt-2)}
 .publicar>.btn{margin-left:auto;flex:0 0 auto}
 .faltan{margin:10px 0 0;padding-left:19px;font-size:13px;color:var(--aviso)}
@@ -548,7 +579,12 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 .tabla .tenue{color:var(--txt-3)}
 .tabla .detalle{max-width:270px;font-size:13.5px;color:var(--txt-2)}
 
+/* `min-width:0` y no `auto`: una celda de grilla se mide por su contenido,
+   así que la tabla de adentro —que ya scrollea sola— empujaba la celda
+   hasta su ancho natural y sacaba la PÁGINA de cuadro. El scroll tiene que
+   quedarse adentro de la caja de la tabla, que es donde se lo espera. */
 .dos-tablas{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start;margin-top:8px}
+.dos-tablas>div{min-width:0}
 .ayuda.bajo-titulo{display:block;margin:-6px 0 10px;max-width:640px}
 
 /* ─── cabecera de bloque ───
@@ -1032,14 +1068,10 @@ body[data-filtro="1"] .puerta-visor::before{
 .puerta-mano input::placeholder{letter-spacing:.06em;text-transform:none}
 .puerta-mano .btn{flex:0 0 auto}
 .puerta>.ayuda{display:block;margin-top:10px}
-  /* En el teléfono el selector de evento no comparte línea con el título:
-     el nombre del evento es lo que confirma que se está en la puerta
-     correcta y recortado a la mitad no confirma nada. */
-  .puerta-evento{margin-left:0;width:100%}
-  .puerta-evento select{max-width:100%;width:100%}
-  /* El botón debajo del campo: al lado deja ocho caracteres visibles de un
-     código de doce. */
-  .puerta-mano{flex-direction:column;align-items:stretch}
+/* Acá había cuatro reglas del teléfono —lo dicen sus comentarios— que se
+   habían quedado sin su `@media` alrededor: le estaban cambiando la forma
+   también al escritorio. Se fueron enteras al bloque del teléfono, al
+   final del archivo, con las demás. */
 
 /* ══ cierre y liquidación ═════════════════════════════════════════
    Dos bloques de cifras que hay que poder comparar de un vistazo: la
@@ -1160,3 +1192,402 @@ body[data-filtro="1"] .puerta-visor::before{
 .bit-que b{color:var(--txt);font-weight:600}
 .bit-motivo{font-size:14px;line-height:1.45;color:var(--txt);max-width:74ch}
 .bit-nota,.bit-quien{font-family:var(--dato);font-size:11.5px;color:var(--txt-3)}
+
+
+/* ══ el teléfono ══════════════════════════════════════════════════
+   El panel se diseñó sentado. Se usa parado: el organizador en la puerta,
+   el relacionador en la vereda mirando sus ventas, el portero con el
+   teléfono en una mano y la fila encima.
+
+   Todo lo de acá abajo vive al FINAL del archivo y adentro de una consulta
+   de medios, a propósito. `admin.css` ya tiene reglas que se pisan entre
+   sí; poner los arreglos del teléfono desperdigados al lado de cada bloque
+   obligaba a subir la especificidad de cada uno para ganarle a lo que
+   viniera después. Acá abajo alcanza con nombrar lo mismo: gana por
+   orden, no por peso.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ─── lo que se toca ───
+   44px de alto, igual que en la landing (0f6a5c3), y por `pointer:coarse`
+   además de por ancho: lo que fija la medida es el dedo y no la pantalla.
+   Una tablet apaisada entra en 1024px y se toca igual.
+
+   Los `input` van con `:not(checkbox)` porque una casilla de 44px no es
+   un objetivo más grande, es una casilla deforme: su zona de toque es la
+   etiqueta que la envuelve, y eso se resuelve etiqueta por etiqueta. */
+@media (max-width:900px), (pointer:coarse){
+  .btn,
+  .tabs button,
+  select,
+  input:not([type="checkbox"]):not([type="radio"]){min-height:44px}
+  /* El chico deja de ser chico de alto y sigue siendo chico de ancho: lo
+     que lo distingue del botón normal es el peso tipográfico, no la
+     superficie que ocupa el dedo. */
+  .btn.chico{padding-top:10px;padding-bottom:10px}
+  .arte-controles input[type="file"]::file-selector-button{min-height:36px}
+}
+
+/* ─── la cabecera ───
+   A 375px la marca, tres pestañas y «Salir» sumaban 393px: la página
+   entera scrolleaba de costado en las nueve pantallas, y lo que se salía
+   por la derecha era justo el botón de salir.
+
+   Ceder ancho lo hace la tira de pestañas, que es la única que puede
+   scrollear sola sin perder nada: con dos pestañas no scrollea, con
+   cuatro sí, y en los dos casos «Salir» sigue estando donde estaba. */
+@media (max-width:760px){
+  .cab{gap:10px;padding:0 12px}
+  .marca{font-size:16px;letter-spacing:.04em;flex:0 0 auto}
+  .tabs{
+    flex:1 1 auto;min-width:0;overflow-x:auto;
+    scrollbar-width:none;-ms-overflow-style:none;
+  }
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs button{flex:0 0 auto;padding:7px 12px;font-size:11px}
+  #btnSalir{flex:0 0 auto;margin-left:0}
+}
+
+/* En columna el bloque tiene que ocupar el ancho, no encogerse a su
+   contenido: encogido, el link largo de adentro es el que decide cuánto
+   mide, y decide mal. */
+@media (max-width:760px){
+  .publicar>div{width:100%}
+}
+
+/* ─── entradas y precios: la tabla se abre en fichas ───
+   Es el defecto que reportaron. La grilla es tipos × fases y en 375px
+   entra una columna y media: se veía la del tipo, media de la primera
+   fase, y nada que dijera que había más a la derecha. Con dos fases —el
+   caso normal de una preventa— la pantalla mentía.
+
+   Ensanchar el scroll y ponerle una sombra no alcanzaba: una tabla que
+   hay que empujar de costado para editar una celda a la vez no es una
+   tabla, es un rompecabezas. Así que en el teléfono la grilla se abre:
+   una ficha por tipo de entrada, y adentro un renglón por fase con el
+   nombre de la fase pegado al precio. El cruce sigue estando —es lo que
+   la pantalla vino a mostrar—, pero se lee de arriba abajo, que es como
+   se lee un teléfono.
+
+   Las fases se van arriba, a su propio bloque: ahí es donde se las edita
+   y donde dicen qué están haciendo ahora. En la tabla eran encabezados de
+   columna; sin columnas, son una lista. */
+@media (max-width:760px){
+  .grilla-envoltorio{
+    overflow-x:visible;border:0;background:transparent;border-radius:0;
+  }
+  .grilla,.grilla thead,.grilla tbody,.grilla tr,
+  .grilla thead th,.grilla tbody th,.grilla td{display:block}
+  /* Las tres columnas fijas de la versión de escritorio: sin ellas la
+     ficha hereda 230px de ancho y un `position:sticky` que no tiene
+     scroll del que pegarse. */
+  .grilla thead th,.grilla tbody th,.grilla td{
+    position:static;width:auto;min-width:0;max-width:none;border-right:0;
+  }
+
+  /* ── el bloque de fases ── */
+  .grilla thead tr{display:grid;gap:8px;margin-bottom:16px}
+  /* «Tipo» era el rótulo de una columna que ya no existe. */
+  .grilla thead th:first-child{display:none}
+  /* Cuatro cosas apiladas ocupaban media pantalla antes del primer
+     precio. En la ficha el estado y el botón comparten renglón: se leen
+     igual y la fase entra entera arriba de lo que se vino a editar. */
+  .grilla thead th.th-fase{
+    display:grid;grid-template-columns:minmax(0,1fr) auto;
+    align-items:center;gap:5px 12px;
+    background:var(--sup);border:1px solid var(--linea);
+    border-radius:var(--r);padding:14px 16px;
+  }
+  .fase-titulo,.th-fase em{grid-column:1/-1}
+  .fase-estado{grid-column:1;justify-self:start;margin-top:4px}
+  .fase-editar{grid-column:2;margin-top:4px}
+  .grilla thead th.col-accion{background:transparent !important;padding:0}
+  .grilla thead th.col-accion .btn{width:100%}
+
+  /* ── una ficha por tipo ── */
+  .grilla tbody{display:grid;gap:10px}
+  .grilla tbody tr{
+    background:var(--sup);border:1px solid var(--linea);
+    border-radius:var(--r);overflow:hidden;
+  }
+  .grilla tbody tr:hover td{background:var(--sup)}
+  .grilla tbody th{padding:15px 16px 0;border-bottom:0}
+  .grilla tbody th em{-webkit-line-clamp:3}
+  /* La línea llega a los dos bordes de la ficha: media línea flotando en
+     el medio se lee como un subrayado del texto de arriba y no como la
+     separación que es. Y el aire de abajo aleja la pastilla del primer
+     campo de precio, que es de lo que había que alejarla. */
+  .zona-cartelera{margin:14px -16px 0;padding:12px 16px 15px}
+
+  /* El renglón de una fase: el nombre a la izquierda, el precio a la
+     derecha y grande, y abajo lo que paga el comprador. El cupo va en la
+     tercera línea con su rótulo, porque es el único de los tres números
+     que sin nombre no se distingue de un precio. */
+  .grilla tbody td{
+    display:grid;grid-template-columns:minmax(0,1fr) auto;
+    align-items:center;gap:4px 12px;
+    padding:13px 16px;border-top:1px solid var(--linea);border-bottom:0;
+  }
+  .grilla tbody td::before{
+    content:attr(data-fase);grid-area:1/1;
+    font-family:var(--display);font-size:18px;text-transform:uppercase;
+    letter-spacing:.01em;line-height:1;overflow-wrap:anywhere;
+  }
+  .grilla tbody td::after{
+    content:"cupo";grid-area:3/1;
+    font-family:var(--dato);font-size:10.5px;letter-spacing:.11em;
+    text-transform:uppercase;color:var(--txt-3);
+  }
+  .grilla td .celda-precio{grid-area:1/2;width:116px}
+  .celda-paga{grid-area:2/1/2/3;margin-top:0;min-height:0}
+  .grilla td .celda-cupo{grid-area:3/2;width:116px;margin-top:0}
+  /* Una columna de acciones vacía deja un renglón de aire abajo de cada
+     ficha que se lee como un error de dibujo. */
+  .grilla tbody td.col-accion{display:none}
+}
+
+/* ─── las tablas que se leen ───
+   Una tabla de datos en 375px no es una tabla: la fila se corta contra el
+   borde y la última columna hay que ir a buscarla empujando. Pero no
+   todas tienen el mismo problema, así que no llevan todas la misma cura.
+
+   Estas cuatro —por producto, porteros, cortesías y las manillas de una
+   compra— tienen la misma forma: un nombre, y detrás una hilera de
+   números que solo significan algo con el rótulo puesto. Se abren en
+   fichas y el rótulo va ARRIBA del número: sin encabezado de columna, el
+   rótulo es lo único que dice qué es ese 377, y tiene que llegar antes.
+   (En las cifras del resto del panel el rótulo va abajo, porque ahí ya se
+   sabe qué se está mirando.)
+
+   Las de canal y estado no entran acá: cuatro columnas cortas caben
+   enteras, y una tabla que cabe se lee más rápido que cuatro fichas de un
+   renglón. Y la grilla de precios tampoco, que se edita y tiene su propia
+   forma más arriba. */
+@media (max-width:760px){
+  .ficha-tabla,.ficha-tabla tbody,.ficha-tabla tfoot,
+  .ficha-tabla tr,.ficha-tabla td{display:block}
+  .ficha-tabla thead{display:none}
+  .ficha-tabla{background:transparent}
+  .ficha-tabla tbody tr,.ficha-tabla tfoot tr{
+    display:flex;flex-wrap:wrap;gap:10px 20px;align-items:baseline;
+    padding:14px 16px;margin-bottom:8px;
+    background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
+  }
+  .ficha-tabla tbody tr:hover td,.ficha-tabla tr.apagada:hover td{background:transparent}
+  .ficha-tabla td{padding:0;border:0;background:transparent;vertical-align:baseline}
+  /* El nombre —o el código— se lleva el primer renglón entero: es por lo
+     que se busca la fila. */
+  .ficha-tabla td:first-child{flex:1 1 100%}
+  .ficha-tabla td[data-rot]{flex:0 0 auto;text-align:left}
+  .ficha-tabla td[data-rot]::before{
+    content:attr(data-rot);display:block;margin-bottom:3px;
+    font-family:var(--dato);font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--txt-3);font-weight:400;
+  }
+  /* El `!important` de la columna de acciones pinta una banda más clara
+     al costado del botón, que en la ficha no separa nada: era el fondo de
+     una columna. */
+  .ficha-tabla td.col-accion{
+    flex:1 1 100%;width:auto;white-space:normal;text-align:left;
+    background:transparent !important;
+  }
+  /* Una fila desplegada —el formulario de anular una manilla— no es una
+     ficha: es lo que se abre debajo de una, y pintarla como tarjeta la
+     desprende de la manilla que la abrió. */
+  .ficha-tabla tr:has(>td[colspan]){
+    display:block;padding:0;margin:-8px 0 8px;background:transparent;border:0;
+  }
+  .ficha-tabla td[colspan]{padding:0}
+  .ficha-tabla .sin-nada{padding:24px 14px;text-align:center}
+
+  /* Canal y estado: siguen siendo tabla, con el aire justo para entrar. */
+  .dos-tablas .tabla th,.dos-tablas .tabla td{padding:9px 8px}
+  .dos-tablas .tabla thead th{white-space:normal;font-size:9.5px;letter-spacing:.05em}
+}
+
+/* ─── los compradores ───
+   La lista que se busca: alguien escribe «compré y no me llegó nada» y
+   hay que encontrarlo por nombre o por teléfono y hacerle algo. Siete
+   columnas no entran, pero tampoco sirve la receta de arriba: una ficha
+   con siete renglones rotulados obliga a leerlos todos, y acá lo que se
+   mira es el nombre, enseguida cuánto pagó, y qué botón apretar.
+
+   Así que esta ficha tiene su propia forma: la plata enfrentada al
+   nombre, el detalle y las manillas en el medio, y los botones abajo a lo
+   ancho, que es donde llega el pulgar.
+
+   Todo con `>` y no con descendencia: adentro de la fila desplegada de
+   una compra vive OTRA tabla —las manillas—, y con selectores sueltos sus
+   filas agarraban esta grilla y salían con las celdas repartidas en las
+   áreas equivocadas. */
+@media (max-width:760px){
+  .tabla-compras,.tabla-compras>tbody{display:block;background:transparent}
+  .tabla-compras>thead{display:none}
+  .tabla-compras>tbody>tr:not(.fila-detalle){
+    display:grid;grid-template-columns:minmax(0,1fr) auto;
+    grid-template-areas:
+      "quien    pago"
+      "compro   manillas"
+      "contacto rrpp"
+      "acc      acc";
+    gap:11px 14px;padding:14px 16px;margin-bottom:8px;
+    background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
+  }
+  .tabla-compras>tbody>tr:not(.fila-detalle):hover>td{background:transparent}
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td{
+    display:block;padding:0;border:0;background:transparent;
+  }
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(1){grid-area:quien}
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(2){grid-area:contacto}
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(3){grid-area:compro;max-width:none}
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(4){grid-area:manillas;text-align:right}
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(5){
+    grid-area:pago;text-align:right;font-size:16px;color:var(--txt);
+  }
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(6){grid-area:rrpp;text-align:right}
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(7){grid-area:acc}
+  .tabla-compras>tbody>tr>td[data-rot]::before{
+    content:attr(data-rot);display:block;margin-bottom:3px;
+    font-family:var(--dato);font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--txt-3);
+  }
+
+  /* `width:auto` porque la columna de acciones de escritorio mide 1% —lo
+     que en una tabla significa «lo mínimo»— y en la ficha eso son tres
+     píxeles con tres botones adentro. */
+  .tabla-compras>tbody>tr>td.col-accion{
+    display:flex;flex-wrap:wrap;gap:8px;width:auto;white-space:normal;
+    background:transparent !important;
+  }
+  /* Los tres se reparten el ancho: en escritorio son tres botones chicos
+     al final de la fila, acá son tres objetivos de un tercio de pantalla
+     cada uno. «Anular» queda al lado de los otros a propósito —mandarlo a
+     un renglón propio agrega 52px por ficha en una lista de doce— y lo que
+     lo protege no es la distancia sino que abre un formulario con motivo
+     obligatorio, no una anulación de un toque. */
+  .tabla-compras>tbody>tr>td.col-accion>.btn{flex:1 1 auto;margin-left:0}
+
+  /* Lo que se despliega —el link, las manillas, la anulación— se pega a
+     la ficha que lo abrió en vez de flotar como una tarjeta suelta. */
+  .tabla-compras>tbody>tr:not(.fila-detalle):has(+.fila-detalle){
+    margin-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0;
+  }
+  .tabla-compras>tbody>tr.fila-detalle{
+    display:block;margin-bottom:8px;overflow:hidden;
+    border:1px solid var(--linea);border-top:0;
+    border-radius:0 0 var(--r) var(--r);
+  }
+  .tabla-compras>tbody>tr.fila-detalle>td{display:block}
+}
+
+
+/* ─── el tablero: primero lo que hay que ir a hacer ───
+   Tres cifras apiladas medían 393px: las alertas —lo único de esta
+   pantalla que pide una acción— arrancaban abajo de la primera pantalla,
+   y en el teléfono lo que no se ve al abrir no existe.
+
+   Las cifras no se achican ni se esconden: se acuestan. El número a la
+   izquierda y su rótulo al lado en vez de abajo ocupa la mitad del alto y
+   se lee igual de rápido, porque un número grande con un rótulo pegado
+   sigue siendo un número grande. */
+@media (max-width:760px){
+  .cifra-grande{
+    display:grid;grid-template-columns:auto minmax(0,1fr);
+    align-items:center;gap:1px 14px;padding:14px 16px;
+  }
+  .cifra-grande .valor{grid-row:1/3;font-size:34px}
+  .cifra-grande.plata .valor{font-size:26px}
+  .cifra-grande .valor i{font-size:.55em}
+  .cifra-grande .rotulo{grid-column:2;align-self:end}
+  .cifra-grande .pie{grid-column:2;align-self:start}
+  .cifra-grande .avance{grid-column:1/-1;margin-top:9px}
+}
+
+/* ─── la puerta, en una mano ───
+   Es la pantalla que más importa y la que peor estaba: el campo de código
+   a mano terminaba 57px abajo del pliegue. O sea que para tipear un
+   código había que scrollear —de noche, con una mano, con la fila
+   esperando— y al scrollear el visor se iba para arriba, así que el
+   resultado aparecía en un lugar que ya no se estaba mirando. Se tipeaba
+   a ciegas.
+
+   Tres movimientos y ninguno achica la cámara, que es lo que se apunta:
+
+   1. El título «Puerta» se va de la vista. La pestaña de arriba ya lo
+      dice y está marcada; eran 50px de la pantalla que más escasea
+      gastados en repetirlo. Sigue en el documento para quien lo lea con
+      un lector.
+   2. El interruptor del filtro baja abajo del campo. Se pone una vez en
+      la noche; el código a mano se usa cada vez que la pantalla de un
+      cliente no ilumina, que pasa seguido. Arriba del visor le estaba
+      robando 95px al que se usa cien veces más.
+   3. El cartel del resultado toma la pantalla entera. Adentro del visor
+      servía mientras se escaneaba mirando el visor; escrito a mano, el
+      resultado quedaba arriba y fuera de cuadro. Verde o rojo en toda la
+      pantalla no se puede perder desde ningún lado.
+
+   Con eso «Buscar» queda arriba del pliegue en un teléfono de 812px de
+   alto y a un empujón corto en uno de 667. */
+@media (max-width:760px){
+  .puerta{display:flex;flex-direction:column}
+
+  .puerta-cab{margin-bottom:12px}
+  .puerta-cab h2,.puerta-evento>span{
+    position:absolute;width:1px;height:1px;overflow:hidden;
+    clip-path:inset(50%);white-space:nowrap;
+  }
+  /* El nombre del evento es lo que confirma que se está en la puerta
+     correcta, y recortado a la mitad no confirma nada. */
+  .puerta-evento{margin-left:0;width:100%}
+  .puerta-evento select{max-width:100%;width:100%}
+
+  .puerta-conteo{padding:11px 15px;margin-bottom:10px}
+
+  /* El botón debajo del campo: al lado deja ocho caracteres visibles de
+     un código de doce. */
+  .puerta-mano{flex-direction:column;align-items:stretch;margin-top:12px}
+
+  .puerta-filtro{order:1;margin:18px 0 0}
+  .puerta>.acciones{order:2;margin-top:20px}
+  .puerta>.acciones~.ayuda{order:2}
+
+  .puerta-cartel{position:fixed;z-index:60}
+  .puerta-cartel .puerta-titulo{font-size:clamp(56px,19vw,104px)}
+  /* Lo que tapa la pantalla entera se tiene que poder sacar: la fila
+     avanza más rápido que los 3,8 segundos que el cartel dura solo, y
+     abajo hay una cámara que el portero necesita volver a ver. */
+  .puerta-cartel[data-on="1"]::after{
+    content:"tocá para seguir";
+    position:absolute;left:0;right:0;
+    bottom:calc(20px + env(safe-area-inset-bottom));
+    font-family:var(--dato);font-size:11px;letter-spacing:.16em;
+    text-transform:uppercase;opacity:.6;
+  }
+}
+
+/* El formulario de la fase se había quedado afuera del corte a una
+   columna que sí tienen el del evento, el de la persona y el de las
+   cortesías. En dos columnas de 166px, el par fecha+hora sacaba la página
+   81px de cuadro: un `input[type="date"]` no encoge abajo de su ancho
+   intrínseco salvo que se le diga. */
+@media (max-width:760px){
+  .form-fase{grid-template-columns:1fr}
+  .form-fase input{min-width:0}
+}
+
+/* Dos párrafos de ayuda seguidos, sin margen entre ellos, en escritorio
+   son dos renglones y en el teléfono son diez: se leen como uno solo y
+   largo, y nadie lee el segundo. */
+@media (max-width:760px){
+  .ayuda+.ayuda{margin-top:10px}
+}
+
+/* El foco de teclado tiene que verse en la pastilla entera y no en el
+   tilde de 17px que lleva adentro: lo que se aprieta es la pastilla. */
+.cartelera:has(input:focus-visible){outline:2px solid var(--dorado);outline-offset:2px}
+
+/* La regla general de arriba apaga transiciones, no animaciones. Con el
+   cartel a pantalla completa, entrar con un `scale` es toda la pantalla
+   moviéndose: aparece y ya está. */
+@media (prefers-reduced-motion:reduce){
+  .puerta-cartel[data-on="1"]{animation:none}
+}

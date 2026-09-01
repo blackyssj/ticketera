@@ -538,13 +538,15 @@ async function pantallaEntradas(eventoId) {
         <tbody>
           ${T.map(t => `<tr data-tipo="${t.id}">
             <th>${esc(t.nombre)}<em>${esc(t.descripcion || "")}</em>
-              <label class="marca-cartelera">
-                <input type="checkbox" class="chk-cartelera" data-t="${t.id}"
-                       ${t.en_cartelera === false ? "" : "checked"}>
-                <span>Cuenta en la cartelera</span></label></th>
+              ${marcaCartelera(t)}</th>
             ${F.map(f => {
               const p = P.get(`${f.id}|${t.id}`);
-              return `<td>
+              /* El nombre de la fase viaja repetido en cada celda porque en
+                 el teléfono la tabla se despliega en fichas y el encabezado
+                 de columna deja de existir: sin esto, el precio queda
+                 flotando sin decir de qué fase es. En escritorio el
+                 atributo no se lee y la columna sigue siendo la etiqueta. */
+              return `<td data-fase="${esc(f.nombre)}">
                 <input class="celda-precio" data-f="${f.id}" data-t="${t.id}"
                        type="number" min="0" step="1" placeholder="—"
                        value="${p ? Number(p.precio) : ""}" aria-label="Precio">
@@ -571,9 +573,9 @@ async function pantallaEntradas(eventoId) {
       <button class="btn primario" id="btnGuardarGrilla">Guardar precios</button>
     </div>
     <p class="ayuda">Precio vacío = ese tipo no se vende en esa fase. Cupo vacío = sin tope.</p>
-    <p class="ayuda">«Cuenta en la cartelera» decide si ese producto entra en el
-       «desde» y en el «agotado» que la portada muestra del evento. Destildalo
-       para lo que no es una oferta al público —una prueba de cobro, un
+    <p class="ayuda">«En la cartelera» decide si ese producto entra en el
+       «desde» y en el «agotado» que la portada muestra del evento. Sacá de la
+       cartelera lo que no es una oferta al público —una prueba de cobro, un
        producto interno—: se sigue vendiendo igual, solo deja de fijar el
        precio con el que se anuncia la fiesta.</p>
     <div id="zonaPublicar"></div>`;
@@ -602,27 +604,81 @@ async function pantallaEntradas(eventoId) {
   /* Se guarda al tildar y no con «Guardar precios»: es una sola casilla y
      su efecto está en otra pantalla (la portada), así que un tilde que espera
      a un botón que dice «precios» es un tilde que alguien va a dar por
-     guardado. El .select() de vuelta por lo de siempre — un update que RLS
-     filtra contesta 204 y cero filas, sin error. */
+     guardado. */
   document.querySelectorAll("#main .chk-cartelera").forEach(chk => {
-    chk.onchange = async () => {
-      const valor = chk.checked;
-      chk.disabled = true;
-      const { data, error } = await sb.from("tipo_entrada")
-        .update({ en_cartelera: valor }).eq("id", chk.dataset.t).select("id");
-      chk.disabled = false;
-      if (error || !data || !data.length) {
-        chk.checked = !valor;
-        avisar("No se pudo guardar" + (error ? ": " + error.message : ": la base no lo permitió."));
-        return;
-      }
-      avisar(valor ? "Ese producto vuelve a contar en la cartelera."
-                   : "Ese producto ya no cuenta en la cartelera.");
-    };
+    chk.onchange = () => guardarCartelera(chk, chk.checked, true);
   });
 
   $("#btnGuardarGrilla").onclick = () => guardarGrilla(eventoId);
   zonaPublicar(eventoId, ev.data.estado, ev.data.slug);
+}
+
+/* ── la marca de cartelera ──
+   El texto dice el ESTADO, no la acción. Con «Cuenta en la cartelera»
+   fijo, lo único que separaba prendido de apagado era un tilde de 15px;
+   con dos frases distintas, un toque sin querer se lee sin buscar dónde
+   mirar. Corto a propósito: la celda del tipo mide 230px en escritorio y
+   una pastilla que no entra se parte en dos renglones. */
+const CARTELERA_TXT = { si: "En la cartelera", no: "Fuera de la cartelera" };
+
+function marcaCartelera(t) {
+  const on = t.en_cartelera !== false;
+  return `<div class="zona-cartelera">
+    <label class="cartelera" data-on="${on ? 1 : 0}">
+      <input type="checkbox" class="chk-cartelera" data-t="${esc(t.id)}"${on ? " checked" : ""}>
+      <span>${on ? CARTELERA_TXT.si : CARTELERA_TXT.no}</span>
+    </label>
+    <span class="cartelera-vuelta"></span>
+  </div>`;
+}
+
+function pintarCartelera(chk) {
+  const lbl = chk.closest(".cartelera");
+  if (!lbl) return;
+  lbl.dataset.on = chk.checked ? "1" : "0";
+  lbl.querySelector("span").textContent = chk.checked ? CARTELERA_TXT.si : CARTELERA_TXT.no;
+}
+
+/* El .select() de vuelta por lo de siempre: un update que RLS filtra
+   contesta 204 y cero filas, sin error. */
+async function guardarCartelera(chk, valor, ofrecer) {
+  chk.disabled = true;
+  const { data, error } = await sb.from("tipo_entrada")
+    .update({ en_cartelera: valor }).eq("id", chk.dataset.t).select("id");
+  chk.disabled = false;
+  const guardo = !error && data && data.length > 0;
+  chk.checked = guardo ? valor : !valor;
+  pintarCartelera(chk);
+  if (!guardo) {
+    avisar("No se pudo guardar" + (error ? ": " + error.message : ": la base no lo permitió."));
+    return;
+  }
+  avisar(valor ? "Ese producto vuelve a contar en la cartelera."
+               : "Ese producto ya no cuenta en la cartelera.");
+  if (ofrecer) ofrecerVuelta(chk, valor);
+}
+
+/* ── deshacer, no confirmar ──
+   Pedir confirmación cobra un toque las cien veces que el cambio fue a
+   propósito, y a la décima nadie lee lo que confirma: se convierte en un
+   paso que se aprieta de memoria y deja de proteger. Deshacer no cuesta
+   nada cuando estuvo bien y arregla el otro caso con un solo toque, en el
+   lugar donde el ojo ya está.
+
+   Quince segundos: lo que tarda alguien en darse cuenta. Más que eso es
+   un botón viejo al lado de una casilla nueva, y ahí deshacer deshace lo
+   que no era. */
+const VUELTAS = new WeakMap();
+
+function ofrecerVuelta(chk, valor) {
+  const caja = chk.closest(".zona-cartelera").querySelector(".cartelera-vuelta");
+  clearTimeout(VUELTAS.get(caja));
+  caja.innerHTML = `<button type="button" class="btn plano chico">Deshacer</button>`;
+  caja.firstElementChild.onclick = () => {
+    caja.innerHTML = "";
+    guardarCartelera(chk, !valor, false);
+  };
+  VUELTAS.set(caja, setTimeout(() => { caja.innerHTML = ""; }, 15000));
 }
 
 
@@ -1737,7 +1793,7 @@ async function refrescarPorteros(eventoId) {
         es el único movimiento con el que se puede hacer entrar a alguien de más.
         Unos pocos en la noche son escaneos corregidos; muchos son otra cosa.</p>
       <div class="grilla-envoltorio">
-        <table class="tabla tabla-porteros">
+        <table class="tabla ficha-tabla tabla-porteros">
           <thead><tr>
             <th>Portero</th><th>Turno</th>
             <th class="n">Dejó pasar</th><th class="n">Rechazó</th><th class="n">Deshizo</th>
@@ -1745,10 +1801,11 @@ async function refrescarPorteros(eventoId) {
           <tbody>${filas.map(filaPortero).join("")}</tbody>
           ${filas.length > 1 ? `<tfoot><tr>
             <td class="dato">Los ${num(filas.length)}</td>
-            <td class="dato">${esc(turnoTxt(t.primero_at, t.ultimo_at))}</td>
-            <td class="n">${num(t.ingresos)}</td>
-            <td class="n">${num(t.rechazadas)}</td>
-            <td class="n${Number(t.deshechas) ? " deshechos" : ""}">${num(t.deshechas)}</td>
+            <td class="dato" data-rot="Turno">${esc(turnoTxt(t.primero_at, t.ultimo_at))}</td>
+            <td class="n" data-rot="Dejó pasar">${num(t.ingresos)}</td>
+            <td class="n" data-rot="Rechazó">${num(t.rechazadas)}</td>
+            <td class="n${Number(t.deshechas) ? " deshechos" : ""}"
+                data-rot="Deshizo">${num(t.deshechas)}</td>
           </tr></tfoot>` : ""}
         </table>
       </div>`
@@ -1763,11 +1820,11 @@ function filaPortero(f) {
   return `<tr>
     <td><span class="prod-nombre">${esc(f.portero)}</span>
       <i>${esc(f.rol || "")}${f.activo === false ? " · desactivado" : ""}</i></td>
-    <td class="dato">${esc(turnoTxt(f.primero_at, f.ultimo_at))}</td>
-    <td class="n">${num(f.ingresos)}${rei
+    <td class="dato" data-rot="Turno">${esc(turnoTxt(f.primero_at, f.ultimo_at))}</td>
+    <td class="n" data-rot="Dejó pasar">${num(f.ingresos)}${rei
       ? `<em>${num(rei)} ${rei === 1 ? "reingreso" : "reingresos"}</em>` : ""}</td>
-    <td class="n">${num(f.rechazadas)}</td>
-    <td class="n${des ? " deshechos" : ""}">${num(des)}${aj
+    <td class="n" data-rot="Rechazó">${num(f.rechazadas)}</td>
+    <td class="n${des ? " deshechos" : ""}" data-rot="Deshizo">${num(des)}${aj
       ? `<em>${num(aj)} de otro portero</em>` : ""}</td>
   </tr>`;
 }
@@ -1903,7 +1960,7 @@ function bloqueDesgloses(r) {
   <p class="ayuda bajo-titulo">Las unidades son lo que compró el cliente y miden el cupo;
     las manillas son la gente que entra. Un combo de 10 vendido una vez es 1 unidad y 10 manillas.</p>
   <div class="grilla-envoltorio">
-    <table class="tabla">
+    <table class="tabla ficha-tabla">
       <thead><tr>
         <th>Producto</th><th class="n">Unidades</th><th class="n">Manillas</th>
         <th class="n">Cupo</th><th class="n">Quedan</th>
@@ -1915,13 +1972,13 @@ function bloqueDesgloses(r) {
             <em>${esc(p.categoria)}${p.manillas_por_unidad > 1
                   ? ` · ${num(p.manillas_por_unidad)} manillas por unidad` : ""}${
                   p.activo ? "" : " · inactivo"}</em></td>
-          <td class="n">${num(p.unidades)}</td>
-          <td class="n">${num(p.manillas)}${p.manillas_anuladas
+          <td class="n" data-rot="Unidades">${num(p.unidades)}</td>
+          <td class="n" data-rot="Manillas">${num(p.manillas)}${p.manillas_anuladas
               ? `<em>${num(p.manillas_anuladas)} anuladas</em>` : ""}</td>
-          <td class="n">${p.cupo == null ? `<i>sin tope</i>` : num(p.cupo)}</td>
-          <td class="n">${quedanTxt(p)}</td>
-          <td class="n">${p.precio == null ? `<i>—</i>` : bs(p.precio)}</td>
-          <td class="n">${bs(p.recaudado)}</td>
+          <td class="n" data-rot="Cupo">${p.cupo == null ? `<i>sin tope</i>` : num(p.cupo)}</td>
+          <td class="n" data-rot="Quedan">${quedanTxt(p)}</td>
+          <td class="n" data-rot="Precio">${p.precio == null ? `<i>—</i>` : bs(p.precio)}</td>
+          <td class="n" data-rot="Recaudado">${bs(p.recaudado)}</td>
         </tr>`).join("")}</tbody>
     </table>
   </div>
@@ -2160,9 +2217,9 @@ function filaCompraFila(c) {
       <em>${esc(fmtFH(c.fecha))}</em></td>
     <td class="dato">${esc(c.telefono || "—")}${c.email ? `<em>${esc(c.email)}</em>` : ""}</td>
     <td class="detalle">${esc(c.detalle || "—")}</td>
-    <td class="n">${num(c.manillas)}${c.manillas_usadas
+    <td class="n" data-rot="Manillas">${num(c.manillas)}${c.manillas_usadas
         ? `<em>${num(c.manillas_usadas)} usadas</em>` : ""}</td>
-    <td class="n">${bs(c.pagado)}</td>
+    <td class="n" data-rot="Pagó">${bs(c.pagado)}</td>
     <td class="dato">${esc(c.rrpp_nombre || (c.canal === "rrpp" ? "sin nombre" : "Público"))}</td>
     <td class="col-accion">${accionesCompra(c)}</td>
   </tr>`;
@@ -2307,16 +2364,16 @@ function listaManillas(c) {
   const filas = SALON.manillas[c.orden_id];
   if (!filas) return `<p class="cargando">Cargando las manillas…</p>`;
   if (!filas.length) return `<p class="vacio">Esta compra no tiene manillas emitidas.</p>`;
-  return `<table class="tabla tabla-manillas">
+  return `<table class="tabla ficha-tabla tabla-manillas">
     <thead><tr><th>Código</th><th>Producto</th><th>A nombre de</th>
       <th>Estado</th><th class="col-accion"></th></tr></thead>
     <tbody>${filas.map(en => {
       const e = ESTADO_MANILLA[en.estado] || { txt: en.estado, cls: "gris" };
       return `<tr>
         <td class="dato"><code>${esc(en.code)}</code></td>
-        <td>${esc((en.tipo_entrada && en.tipo_entrada.nombre) || "—")}</td>
-        <td class="dato">${esc(en.cliente || "—")}</td>
-        <td><span class="pastilla ${e.cls}">${e.txt}</span>${
+        <td data-rot="Producto">${esc((en.tipo_entrada && en.tipo_entrada.nombre) || "—")}</td>
+        <td class="dato" data-rot="A nombre de">${esc(en.cliente || "—")}</td>
+        <td data-rot="Estado"><span class="pastilla ${e.cls}">${e.txt}</span>${
           en.used_at ? `<em>${esc(fmtFH(en.used_at))}</em>` : ""}</td>
         <td class="col-accion">${en.estado === "anulada" ? ""
           : `<button type="button" class="btn plano chico peligrosa"
@@ -2862,17 +2919,17 @@ function pintarCortesias(tope) {
       CORT.total > tope ? ` Se muestran las últimas ${num(tope)} de ${num(CORT.total)}.` : ""}</p>
     ${CORT.lista.length ? `
       <div class="grilla-envoltorio">
-        <table class="tabla tabla-manillas">
+        <table class="tabla ficha-tabla tabla-manillas">
           <thead><tr><th>Código</th><th>Producto</th><th>A nombre de</th>
             <th>Cuándo</th><th>Estado</th><th class="col-accion"></th></tr></thead>
           <tbody>${CORT.lista.map(en => {
             const e = ESTADO_MANILLA[en.estado] || { txt: en.estado, cls: "gris" };
             return `<tr>
               <td class="dato"><code>${esc(en.code)}</code></td>
-              <td>${esc((en.tipo_entrada && en.tipo_entrada.nombre) || "—")}</td>
-              <td class="dato">${esc(en.cliente || "—")}</td>
-              <td class="dato">${esc(fmtFH(en.created_at))}</td>
-              <td><span class="pastilla ${e.cls}">${e.txt}</span></td>
+              <td data-rot="Producto">${esc((en.tipo_entrada && en.tipo_entrada.nombre) || "—")}</td>
+              <td class="dato" data-rot="A nombre de">${esc(en.cliente || "—")}</td>
+              <td class="dato" data-rot="Cuándo">${esc(fmtFH(en.created_at))}</td>
+              <td data-rot="Estado"><span class="pastilla ${e.cls}">${e.txt}</span></td>
               <td class="col-accion">${en.estado === "anulada" ? ""
                 : `<button type="button" class="btn plano chico peligrosa"
                      data-anular-cortesia="${esc(en.id)}">Anular</button>`}</td>

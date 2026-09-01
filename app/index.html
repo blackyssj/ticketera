@@ -6,10 +6,28 @@
 <title>TICKETAZO — entradas para las noches de Santa Cruz</title>
 <meta name="description" content="La cartelera de TICKETAZO: qué hay a la venta en Santa Cruz de la Sierra. Elegís el evento, pagás con QR y la entrada te llega al toque.">
 <meta name="theme-color" content="#180E3A">
+<!-- La entrada troquelada, dibujada acá adentro: la misma figura que es la
+     firma de la página, que a 16px se reconoce por la silueta y no por
+     ninguna letra. Va en línea y no como archivo porque un ícono de cuatro
+     formas no justifica un pedido más, y porque sin nada el navegador pide
+     /favicon.ico igual y se lleva un 404 a la consola. -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,
+  %3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E
+  %3Crect width='32' height='32' rx='7' fill='%23180E3A'/%3E
+  %3Crect x='6' y='8' width='20' height='16' rx='2.5' fill='%23FFE24B'/%3E
+  %3Ccircle cx='6' cy='16' r='3' fill='%23180E3A'/%3E
+  %3Ccircle cx='26' cy='16' r='3' fill='%23180E3A'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- El mismo host de config.js, escrito otra vez a mano y a propósito: un
+     preconnect sirve si el navegador lo lee al parsear el <head>, y para
+     entonces config.js todavía no corrió. Abre el DNS y el TLS mientras
+     bajan las fuentes, así el fetch de la cartelera —y el flyer que viene
+     atrás, que es lo único que importa en la primera pantalla— arrancan sin
+     esperar el saludo. En 4G eso es medio segundo. -->
+<link rel="preconnect" href="https://mjotxzcddhqqpuhkcetl.supabase.co" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Azeret+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/portada.css?v=26">
+<link rel="stylesheet" href="/portada.css?v=28">
 <!-- La clase `js` la pone el propio script, en línea y antes de pintar nada:
      de ella cuelga el estado inicial invisible de las tarjetas. Si el script
      no llega a correr, la clase no está, las tarjetas nunca se esconden y la
@@ -47,7 +65,11 @@
        descubre el script cuando sabe cuántos eventos hay. -->
   <section class="proximos" id="proximos" hidden>
     <div class="carril">
-      <div class="rotulo">
+      <!-- Con un solo evento este rótulo no separa nada de nada, así que
+           portada.js lo calla (no lo borra: el h2 sigue estando para quien
+           navega por encabezados). Es la misma regla que ya rige el corte de
+           mes y los sellos: un rótulo que aparece siempre no informa. -->
+      <div class="rotulo" id="proximosRotulo">
         <h2>Lo próximo</h2>
         <span class="rotulo-linea" aria-hidden="true"></span>
         <!-- Los controles viven acá y no encima del flyer: un botón flotando
@@ -88,6 +110,6 @@
 </footer>
 
 <script src="/config.js"></script>
-<script src="/portada.js?v=26"></script>
+<script src="/portada.js?v=28"></script>
 </body>
 </html>

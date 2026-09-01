@@ -65,8 +65,28 @@
 *{box-sizing:border-box}
 [hidden]{display:none !important}
 html{-webkit-text-size-adjust:100%;overflow-x:hidden}
+/* La pared tiene luz. Hasta acá el fondo era un violeta parejo de arriba a
+   abajo, y sobre un plano sin luz un flyer no se lee como un objeto pegado:
+   flota. Dos manchas anchas y muy flojas —el amarillo del farol a la
+   izquierda, el violeta frío que le contesta a la derecha— le dan un arriba
+   y un abajo a la pared, y de paso el fluor de la marca deja de competir
+   contra un fondo plano.
+
+   Anclado al documento y no a la ventana (`no-repeat` con alto fijo): la luz
+   está arriba de la pared y se queda ahí, así bajar por la cartelera es
+   alejarse del farol. Y nada de `background-attachment:fixed`, que en el
+   teléfono repinta en cada scroll y es exactamente el tipo de adorno que se
+   paga en fluidez.
+
+   El pie se queda con su color liso: es donde termina la pared. */
 body{
-  margin:0;background:var(--tinta);color:var(--hueso);
+  margin:0;color:var(--hueso);
+  background:
+    radial-gradient(115% 58% at 18% -6%,
+      rgba(255,226,75,.085), rgba(255,226,75,0) 58%) no-repeat 0 0 / 100% 1100px,
+    radial-gradient(105% 52% at 88% 2%,
+      rgba(126,74,224,.20), rgba(126,74,224,0) 66%) no-repeat 0 0 / 100% 980px,
+    var(--tinta);
   font-family:var(--display);font-size:16px;line-height:1.5;
   overflow-x:hidden;
   -webkit-font-smoothing:antialiased;
@@ -79,9 +99,12 @@ img{max-width:100%;display:block}
 
 .carril{width:100%;max-width:var(--carril);margin:0 auto;padding:0 20px}
 
+/* 44px medidos y no calculados de cabeza: con el relleno solo quedaba en
+   43,5 — medio píxel, pero la regla de la casa no tiene comas. */
 .saltar{
   position:absolute;left:-9999px;top:0;z-index:200;
-  background:var(--fluor);color:var(--tinta);padding:12px 16px;
+  display:inline-flex;align-items:center;min-height:44px;
+  background:var(--fluor);color:var(--tinta);padding:0 16px;
   font-family:var(--mono);font-size:13px;
 }
 .saltar:focus{left:12px;top:12px}
@@ -121,7 +144,13 @@ img{max-width:100%;display:block}
    casi siempre por un link de WhatsApp, y la portada existe para el que
    llega sin saber qué hay: ahora que la primera pieza es un flyer a tamaño
    de afiche, cada píxel del encabezado es un píxel que el flyer no ocupa. */
-.hero{padding:clamp(26px,6vw,58px) 0 clamp(22px,3.4vw,32px)}
+/* Los números de arriba están calculados contra una meta concreta: que el
+   afiche del evento más próximo entre ENTERO en la primera pantalla de un
+   teléfono. Con la barra de Safari comiendo su parte, eso son unos 700px
+   útiles; el afiche mide 419 a 375px de ancho, así que al encabezado le
+   quedan 260 y antes gastaba 315. De ahí salen estos paddings y no de una
+   escala: en escritorio sobra pantalla y el aire vuelve casi entero. */
+.hero{padding:clamp(18px,4.6vw,54px) 0 clamp(16px,3vw,30px)}
 /* Los tres renglones están cortados a mano, así que el cuerpo se ata al
    ancho de la ventana y no a un piso fijo: con un piso, abajo de 400px el
    renglón más largo se parte y el título pasa a cuatro líneas mal cortadas.
@@ -136,12 +165,20 @@ img{max-width:100%;display:block}
 .titulo .l{display:block}
 .titulo .fluor{color:var(--fluor)}
 .bajada{
-  margin-top:16px;max-width:38ch;
+  margin-top:clamp(10px,2.6vw,16px);max-width:38ch;
   font-size:clamp(15px,2vw,19px);color:var(--hueso-64);
 }
 
 /* ─── rótulos de sección ──────────────────────────────────────── */
-.rotulo{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+.rotulo{display:flex;align-items:center;gap:14px;margin-bottom:clamp(14px,2.4vw,20px)}
+/* Mudo, no ausente: el rótulo se va de la pantalla cuando no separa nada
+   (portada.js decide cuándo) pero el h2 se queda para quien navega por
+   encabezados. Es el recorte estándar de "sólo lectores de pantalla" —
+   `display:none` lo sacaría también del árbol, que es lo contrario. */
+.rotulo.muda{
+  position:absolute;width:1px;height:1px;margin:0;padding:0;
+  overflow:hidden;clip-path:inset(50%);white-space:nowrap;
+}
 .rotulo h2{
   font-family:var(--mono);font-weight:500;
   font-size:12px;letter-spacing:.18em;text-transform:uppercase;
@@ -182,7 +219,11 @@ img{max-width:100%;display:block}
 .afiche img{
   position:absolute;inset:0;width:100%;height:100%;
   object-fit:cover;object-position:50% 50%;
-  transition:transform .5s var(--curva),filter .3s ease;
+  /* `scale` y no `transform` para la llegada: son dos propiedades distintas
+     y se multiplican, así que el afiche puede asentarse al cargar sin
+     pelearse con el scale del hover, que sí vive en `transform`. */
+  transition:opacity .42s ease,scale .58s var(--curva),
+             transform .5s var(--curva),filter .3s ease;
 }
 .evento:hover .afiche img,.destacado:hover .afiche img{transform:scale(1.045)}
 
@@ -263,6 +304,14 @@ img{max-width:100%;display:block}
 .perf .p1{left:calc(var(--muesca) / -2)}
 .perf .p2{right:calc(var(--muesca) / -2)}
 
+/* La tarjeta de la grilla se mide a sí misma (ver la consulta de contenedor
+   al final del bloque). Contenedor y no media query porque lo que decide el
+   tamaño del talón no es el ancho de la ventana sino el de la pieza: a
+   900px de ventana la misma tarjeta mide 240 o 390 según cuántas columnas
+   entren, y a 375 mide 335 o 161 según si la cartelera es corta o larga.
+   Sólo la chica: la entrada grande nunca baja del umbral. */
+.evento{container-type:inline-size}
+
 /* ── el talón ── */
 .talon{display:flex;flex-direction:column;padding:18px 18px 17px;flex:1}
 .cuando{
@@ -294,12 +343,23 @@ img{max-width:100%;display:block}
   display:flex;align-items:baseline;gap:12px;
   margin-top:auto;padding-top:14px;
 }
+/* En la grilla el pie va apilado: el lugar en su renglón y el precio en el
+   suyo. Compartiendo renglón, en una columna de 273px el lugar se cortaba
+   en "FEXPO '26 · SAN…" — catorce caracteres no distinguen la Fexpo de la
+   Casa de la Cultura ni del Club Social Norte, así que era un renglón que
+   ocupaba lugar sin decir nada. Y en Santa Cruz el lugar es la mitad de lo
+   que dice qué clase de noche es. */
 .evento .pie-talon{
+  flex-direction:column;align-items:flex-start;gap:5px;
   font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
 }
 .evento .donde{
-  flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  max-width:100%;font-size:10.5px;letter-spacing:.05em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
+/* El `margin-left:auto` que en un renglón mandaba el precio a la derecha,
+   en una columna lo mandaría al canto: acá va alineado con todo lo demás. */
+.evento .desde{margin-left:0}
 /* margin-left:auto y no sólo el flex:1 del vecino: cuando el talón de la
    entrada grande no lleva organizador —porque ya está en el papel— el
    precio se quedaba pegado a la izquierda, que no es donde se lo busca. */
@@ -323,6 +383,20 @@ img{max-width:100%;display:block}
 @media (min-width:840px){ .grilla{grid-template-columns:repeat(3,1fr)} }
 @media (min-width:1120px){ .grilla{grid-template-columns:repeat(4,1fr)} }
 
+/* Dos columnas en el teléfono, pero sólo cuando la cartelera es larga. Con
+   una sola columna veinte eventos son doce mil píxeles de scroll: eso no se
+   recorre, se sufre. Con dos son la mitad, y a 160px un flyer se sigue
+   reconociendo — así se los reconoce en la grilla de Instagram, que es
+   donde la gente ya los vio.
+   Y sólo cuando es larga porque con tres eventos dos columnas dejarían
+   tarjetas chiquitas y media grilla vacía; ahí el afiche se merece el ancho
+   entero del teléfono. La clase la pone portada.js con el mismo umbral que
+   ya decide el carrusel: una cartelera de veinte no es una de tres con más
+   tarjetas. */
+@media (max-width:539px){
+  .grilla.densa{grid-template-columns:repeat(2,1fr);gap:20px 12px}
+}
+
 /* El corte de mes sólo aparece si la cartelera cruza más de uno (lo decide
    portada.js). Con veinte eventos es lo que hace que se pueda buscar "el
    finde de octubre" en vez de contar tarjetas. */
@@ -335,6 +409,46 @@ img{max-width:100%;display:block}
   color:var(--hueso-40);
 }
 .mes::after{content:"";flex:1;height:1px;background:var(--filo)}
+
+/* ── la tarjeta angosta ──
+   Lo que pasa cuando la pieza queda en 160px: dos columnas en un teléfono.
+   No es "la versión móvil" —a 375px de ventana la tarjeta puede medir 335 y
+   entonces nada de esto corre—, es la versión angosta, y la decide la
+   tarjeta midiéndose. */
+@container (max-width:210px){
+  .evento .talon{padding:12px 12px 13px}
+  .evento .cuando{font-size:10.5px;letter-spacing:.01em;gap:6px}
+  /* La flecha se va: a este ancho el renglón no da para las dos cosas, y de
+     las dos la fecha es la que informa. La tarjeta entera sigue siendo el
+     link, así que no se pierde nada de lo que se puede tocar. */
+  .evento .cuando .flecha{display:none}
+  .evento .nombre{margin-top:6px;font-size:16px;letter-spacing:-.02em}
+  .evento .pie-talon{padding-top:10px;gap:4px}
+  .evento .donde{font-size:9.5px}
+  .evento .desde{font-size:10px}
+  /* El papel también achica: a 160px un nombre de 30px son tres renglones
+     partidos, y 20px de aire a cada lado se comen un cuarto de la pieza. */
+  .papel{padding:14px 12px}
+  .papel-nombre{font-size:clamp(19px,15.5cqi,58px)}
+  .papel-dia{font-size:clamp(52px,44cqi,210px)}
+  .papel-org{margin-top:9px;padding-top:8px;font-size:9.5px;letter-spacing:.1em}
+  /* La calcomanía también: "Últimas entradas" a 10,5px cruzaba la tarjeta
+     de lado a lado y se comía el tercio de arriba del afiche. Una
+     calcomanía se pega en una esquina; si tapa el cartel entero deja de
+     avisar algo y pasa a esconderlo. */
+  .sello{font-size:9px;letter-spacing:.07em;padding:5px 9px 4px}
+}
+/* Un escalón más angosto todavía: 134px, que es la tarjeta de dos columnas
+   en un teléfono de 320. Ahí el renglón de la fecha no entra entero y se
+   cortaba justo en la hora — "SÁB 12 SEP · 2…", que es peor que no
+   ponerla—. Se va la hora y queda la fecha completa, que es la que decide
+   si el evento te sirve. */
+@container (max-width:152px){
+  .evento .cuando .hora{display:none}
+}
+/* `<i>` porque es el idioma del archivo para las piezas sin semántica, pero
+   acá lleva texto y no puede salir en cursiva. */
+.hora{font-style:normal}
 
 /* ─── lo próximo ──────────────────────────────────────────────── */
 .proximos{padding-bottom:clamp(40px,6vw,62px)}
@@ -396,26 +510,59 @@ img{max-width:100%;display:block}
   font-family:var(--mono);font-size:12px;letter-spacing:.16em;
   text-transform:uppercase;color:var(--hueso-64);
 }
+/* El nombre bajó de 50px a 32. Con el primer flyer real puesto quedó claro
+   que el talón se había vuelto un segundo afiche al lado del afiche: el
+   flyer ya escribe RED CIRCLE en neón del tamaño de la pieza, y si no hay
+   flyer lo escribe el papel. En los dos casos el nombre del talón es la
+   segunda vez que se lee, así que se comporta como tal. Sigue estando
+   —seleccionable, siempre en el mismo lugar, sin depender de que el flyer
+   sea legible— pero deja de gritar. */
 .destacado .nombre{
-  margin-top:14px;max-width:18ch;
+  margin-top:12px;max-width:22ch;
   font-weight:900;font-stretch:100%;
-  font-size:clamp(26px,5.2vw,50px);line-height:.94;letter-spacing:-.03em;
+  font-size:clamp(22px,3.4vw,32px);line-height:.98;letter-spacing:-.028em;
 }
-.destacado .donde{margin-top:10px;font-size:15px}
-.destacado .pie-talon{
-  padding-top:16px;
+.destacado .donde{margin-top:9px;font-size:15px}
+.destacado .quien{
+  display:block;margin-top:8px;color:var(--hueso-40);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
 }
-.destacado .quien{
-  flex:1;min-width:0;color:var(--hueso-40);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+
+/* ── la fila de abajo: cómo se entra y cuánto sale ──
+   El precio es el único dato que un flyer nunca imprime, y era lo más chico
+   de toda la pieza: 11,5px grises al lado del organizador. Acá se planta en
+   la misma fila que la manera de entrar —que es donde en una entrada de
+   papel va impreso lo que se pagó— y queda legible sin robarle el tamaño de
+   titular a la fecha.
+   `space-between` y no un margen: en escritorio el precio se va al canto
+   derecho del talón y esa fila es lo que le da un borde a un talón que
+   antes terminaba en el aire. */
+/* `wrap-reverse` y no `wrap`: en escritorio los dos entran en un renglón y
+   el precio se va al canto derecho del talón. En un teléfono de 375px se
+   pasan por siete píxeles, y al partirse el renglón invertido deja el
+   precio ARRIBA del botón — que es el orden en que se lee una entrada de
+   papel (cuánto sale, y después la manera de entrar) y no un botón con una
+   sobra colgando abajo. Una propiedad, los dos estados bien. */
+.accion{
+  display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap-reverse;gap:14px 16px;margin-top:20px;
+}
+.destacado .desde{
+  margin-left:0;display:inline-flex;align-items:baseline;gap:8px;
+  font-size:10.5px;letter-spacing:.14em;color:var(--hueso-40);
+}
+/* La cifra sale de la caja alta que gobierna al resto de la fila: a 20px,
+   "60 BS" se lee como una sigla y "60 Bs" como plata. */
+.destacado .desde b{
+  font-size:20px;letter-spacing:-.01em;text-transform:none;color:var(--hueso);
 }
 /* Parece un botón y no lo es: la pieza entera es el link, así que un botón
    de verdad acá sería un control dentro de otro. Mide 46px igual — nada de
    lo que se toca en esta página baja de 44. */
 .ver{
-  display:inline-flex;align-items:center;gap:10px;align-self:flex-start;
-  margin-top:18px;min-height:46px;padding:0 20px;
+  display:inline-flex;align-items:center;gap:10px;
+  min-height:46px;padding:0 20px;
   border:1.5px solid var(--fluor);border-radius:4px;
   font-family:var(--mono);font-weight:500;
   font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;
@@ -428,8 +575,15 @@ img{max-width:100%;display:block}
    vertical, talón a la derecha. Es la misma pieza girada, no otra tarjeta.
    El alto manda y el ancho del afiche sale de él (×0,8 = el mismo 4:5 de la
    grilla), para que una entrada apaisada no se coma la pantalla de alto. */
+/* Acostada, la entrada tiene un ancho propio y no el del carril. Estirada a
+   1200px el afiche ocupaba menos de un tercio y el resto era talón vacío:
+   medio metro de violeta con "AMSTEL" en una punta y "DESDE 120 BS" en la
+   otra. Con tope, el afiche pesa casi la mitad de la pieza y el sobrante
+   pasa a ser margen de página, que es aire decidido y no un olvido.
+   En el riel el tope hace además que la entrada siguiente asome de verdad,
+   en vez de espiar por una rendija. */
 @media (min-width:860px){
-  .destacado{--alto:440px;flex-direction:row;min-height:var(--alto)}
+  .destacado{--alto:440px;flex-direction:row;min-height:var(--alto);max-width:880px}
   .destacado .afiche{
     flex:0 0 calc(var(--alto) * .8);aspect-ratio:auto;align-self:stretch;
   }
@@ -438,8 +592,8 @@ img{max-width:100%;display:block}
      altura de una mano entre el lugar y el precio. Un talón en blanco es
      una decisión de diseño; medio talón en blanco es un olvido. */
   .destacado .talon{flex:1;padding:34px 34px 30px;justify-content:center}
-  .destacado .pie-talon{margin-top:18px}
-  .destacado .nombre{margin-top:16px}
+  .destacado .accion{margin-top:26px}
+  .destacado .nombre{margin-top:14px}
   .destacado .perf{width:0;height:auto;align-self:stretch}
   .destacado .perf::before{
     left:-1px;right:auto;top:18px;bottom:18px;
@@ -521,6 +675,18 @@ img{max-width:100%;display:block}
 .titulo .l:nth-child(2){animation-delay:.07s}
 .titulo .l:nth-child(3){animation-delay:.14s}
 
+/* El afiche se asienta en la pared en vez de aparecer de golpe. Es el único
+   movimiento que le toca al producto y existe por una razón concreta: un
+   flyer pesa un par de megas y en 4G el salto al terminar de bajar es lo que
+   hace que la portada parezca rota el segundo anterior.
+   La clase la pone portada.js al cargar la imagen, y las dos reglas cuelgan
+   de html.js: sin script no hay estado inicial invisible que quede colgado.
+   El `.cargada` lleva html.js adelante a propósito — sin eso el selector de
+   arriba (dos clases y dos elementos) le gana por especificidad al de abajo
+   y el afiche no se enciende nunca. */
+html.js .afiche img{opacity:0;scale:1.03}
+html.js .afiche img.cargada{opacity:1;scale:1}
+
 /* `backwards` y no `both`: con `both` el estado final de la animación
    —transform:none— se queda pegado y le gana al translateY del hover, así
    que la tarjeta dejaría de levantarse apenas termina de aparecer. */
@@ -549,6 +715,7 @@ body.yendo{opacity:.35;transition:opacity .19s ease}
      que dependía la aparición: sin esto las tarjetas de la grilla quedarían
      en opacity:0 para siempre — la animación que las encendía ya no corre. */
   html.js .evento{opacity:1}
+  html.js .afiche img{opacity:1;scale:1}
   *{animation:none !important;transition-duration:.001ms !important}
   .rail{scroll-behavior:auto}
   body.yendo{opacity:1}
