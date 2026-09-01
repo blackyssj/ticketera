@@ -182,7 +182,11 @@ img{max-width:100%;display:block}
 .afiche img{
   position:absolute;inset:0;width:100%;height:100%;
   object-fit:cover;object-position:50% 50%;
-  transition:transform .5s var(--curva),filter .3s ease;
+  /* `scale` y no `transform` para la llegada: son dos propiedades distintas
+     y se multiplican, así que el afiche puede asentarse al cargar sin
+     pelearse con el scale del hover, que sí vive en `transform`. */
+  transition:opacity .42s ease,scale .58s var(--curva),
+             transform .5s var(--curva),filter .3s ease;
 }
 .evento:hover .afiche img,.destacado:hover .afiche img{transform:scale(1.045)}
 
@@ -521,6 +525,18 @@ img{max-width:100%;display:block}
 .titulo .l:nth-child(2){animation-delay:.07s}
 .titulo .l:nth-child(3){animation-delay:.14s}
 
+/* El afiche se asienta en la pared en vez de aparecer de golpe. Es el único
+   movimiento que le toca al producto y existe por una razón concreta: un
+   flyer pesa un par de megas y en 4G el salto al terminar de bajar es lo que
+   hace que la portada parezca rota el segundo anterior.
+   La clase la pone portada.js al cargar la imagen, y las dos reglas cuelgan
+   de html.js: sin script no hay estado inicial invisible que quede colgado.
+   El `.cargada` lleva html.js adelante a propósito — sin eso el selector de
+   arriba (dos clases y dos elementos) le gana por especificidad al de abajo
+   y el afiche no se enciende nunca. */
+html.js .afiche img{opacity:0;scale:1.03}
+html.js .afiche img.cargada{opacity:1;scale:1}
+
 /* `backwards` y no `both`: con `both` el estado final de la animación
    —transform:none— se queda pegado y le gana al translateY del hover, así
    que la tarjeta dejaría de levantarse apenas termina de aparecer. */
@@ -549,6 +565,7 @@ body.yendo{opacity:.35;transition:opacity .19s ease}
      que dependía la aparición: sin esto las tarjetas de la grilla quedarían
      en opacity:0 para siempre — la animación que las encendía ya no corre. */
   html.js .evento{opacity:1}
+  html.js .afiche img{opacity:1;scale:1}
   *{animation:none !important;transition-duration:.001ms !important}
   .rail{scroll-behavior:auto}
   body.yendo{opacity:1}

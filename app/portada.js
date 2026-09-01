@@ -75,11 +75,22 @@ function afiche(e, prioridad) {
 
   /* El día en grande es el ancla gráfica del papel. Es un dato, no un
      adorno: sin flyer, la fecha es lo único que este evento tiene para
-     mostrar de lejos. */
-  const papel = `<div class="papel">
+     mostrar de lejos.
+
+     El papel nombra al evento SIEMPRE, tenga flyer o no. Con flyer queda
+     tapado por la imagen y no se ve nunca — salvo en los dos momentos en
+     que hace falta: mientras el PNG viaja por el 4G, y si no llega. Antes
+     esos dos momentos dejaban un rectángulo rayado sin una palabra, y en la
+     entrada grande —donde el día no se dibuja— un rectángulo entero vacío.
+     Un evento anónimo justo cuando lo único que se puede hacer es leer.
+
+     Tapado sigue estando en el árbol de accesibilidad, así que cuando hay
+     imagen el papel se marca como decoración: el `alt` y el talón ya dicen
+     el nombre, y no hace falta oírlo tres veces. */
+  const papel = `<div class="papel"${e.flyer_url ? ' aria-hidden="true"' : ""}>
       <span class="papel-dia" aria-hidden="true">${esc(e.dia)}</span>
-      ${e.flyer_url ? "" : `<h3 class="papel-nombre">${esc(e.nombre)}</h3>
-        <span class="papel-org">${esc(e.organizador_nombre)}</span>`}
+      <h3 class="papel-nombre">${esc(e.nombre)}</h3>
+      <span class="papel-org">${esc(e.organizador_nombre)}</span>
     </div>`;
 
   /* width/height con la proporción del recorte (4:5): el hueco queda
@@ -182,17 +193,24 @@ function cartel(titulo, texto, accion) {
   </div>`;
 }
 
-/* ── que una imagen rota no rompa la tarjeta ──
+/* ── que una imagen rota no rompa la tarjeta, y que la buena se note ──
    El papel ya está dibujado debajo, así que alcanza con sacar la imagen que
    no llegó: la tarjeta queda como la de un evento sin flyer, que es un
-   estado que la página sabe dibujar bien. Se revisa también `complete` por
-   la imagen que ya falló antes de que llegáramos a escuchar — el caso del
-   que vuelve a la portada con el 404 cacheado. */
+   estado que la página sabe dibujar bien.
+
+   La que sí llega se marca, y el CSS la hace aparecer. Un flyer pesa un par
+   de megas y en 4G tarda; sin esto el afiche salta de golpe cuando termina
+   de bajar, y ese salto es lo que hace que la portada parezca rota el
+   segundo anterior. Se revisa `complete` para los dos casos ya resueltos
+   antes de que llegáramos a escuchar: el 404 cacheado (naturalWidth 0) y la
+   imagen que ya estaba en memoria del que vuelve con el botón "atrás". */
 function vigilarImagenes(zona) {
   zona.querySelectorAll("img").forEach(img => {
-    const caer = () => { img.remove(); };
+    const caer   = () => { img.remove(); };
+    const llegar = () => { img.classList.add("cargada"); };
     img.addEventListener("error", caer, { once: true });
-    if (img.complete && img.naturalWidth === 0) caer();
+    img.addEventListener("load", llegar, { once: true });
+    if (img.complete) (img.naturalWidth === 0 ? caer : llegar)();
   });
 }
 
