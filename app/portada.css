@@ -65,8 +65,28 @@
 *{box-sizing:border-box}
 [hidden]{display:none !important}
 html{-webkit-text-size-adjust:100%;overflow-x:hidden}
+/* La pared tiene luz. Hasta acá el fondo era un violeta parejo de arriba a
+   abajo, y sobre un plano sin luz un flyer no se lee como un objeto pegado:
+   flota. Dos manchas anchas y muy flojas —el amarillo del farol a la
+   izquierda, el violeta frío que le contesta a la derecha— le dan un arriba
+   y un abajo a la pared, y de paso el fluor de la marca deja de competir
+   contra un fondo plano.
+
+   Anclado al documento y no a la ventana (`no-repeat` con alto fijo): la luz
+   está arriba de la pared y se queda ahí, así bajar por la cartelera es
+   alejarse del farol. Y nada de `background-attachment:fixed`, que en el
+   teléfono repinta en cada scroll y es exactamente el tipo de adorno que se
+   paga en fluidez.
+
+   El pie se queda con su color liso: es donde termina la pared. */
 body{
-  margin:0;background:var(--tinta);color:var(--hueso);
+  margin:0;color:var(--hueso);
+  background:
+    radial-gradient(115% 58% at 18% -6%,
+      rgba(255,226,75,.085), rgba(255,226,75,0) 58%) no-repeat 0 0 / 100% 1100px,
+    radial-gradient(105% 52% at 88% 2%,
+      rgba(126,74,224,.20), rgba(126,74,224,0) 66%) no-repeat 0 0 / 100% 980px,
+    var(--tinta);
   font-family:var(--display);font-size:16px;line-height:1.5;
   overflow-x:hidden;
   -webkit-font-smoothing:antialiased;
