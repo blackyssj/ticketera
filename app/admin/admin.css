@@ -1068,14 +1068,10 @@ body[data-filtro="1"] .puerta-visor::before{
 .puerta-mano input::placeholder{letter-spacing:.06em;text-transform:none}
 .puerta-mano .btn{flex:0 0 auto}
 .puerta>.ayuda{display:block;margin-top:10px}
-  /* En el teléfono el selector de evento no comparte línea con el título:
-     el nombre del evento es lo que confirma que se está en la puerta
-     correcta y recortado a la mitad no confirma nada. */
-  .puerta-evento{margin-left:0;width:100%}
-  .puerta-evento select{max-width:100%;width:100%}
-  /* El botón debajo del campo: al lado deja ocho caracteres visibles de un
-     código de doce. */
-  .puerta-mano{flex-direction:column;align-items:stretch}
+/* Acá había cuatro reglas del teléfono —lo dicen sus comentarios— que se
+   habían quedado sin su `@media` alrededor: le estaban cambiando la forma
+   también al escritorio. Se fueron enteras al bloque del teléfono, al
+   final del archivo, con las demás. */
 
 /* ══ cierre y liquidación ═════════════════════════════════════════
    Dos bloques de cifras que hay que poder comparar de un vistazo: la
@@ -1497,4 +1493,66 @@ body[data-filtro="1"] .puerta-visor::before{
   .cifra-grande .rotulo{grid-column:2;align-self:end}
   .cifra-grande .pie{grid-column:2;align-self:start}
   .cifra-grande .avance{grid-column:1/-1;margin-top:9px}
+}
+
+/* ─── la puerta, en una mano ───
+   Es la pantalla que más importa y la que peor estaba: el campo de código
+   a mano terminaba 57px abajo del pliegue. O sea que para tipear un
+   código había que scrollear —de noche, con una mano, con la fila
+   esperando— y al scrollear el visor se iba para arriba, así que el
+   resultado aparecía en un lugar que ya no se estaba mirando. Se tipeaba
+   a ciegas.
+
+   Tres movimientos y ninguno achica la cámara, que es lo que se apunta:
+
+   1. El título «Puerta» se va de la vista. La pestaña de arriba ya lo
+      dice y está marcada; eran 50px de la pantalla que más escasea
+      gastados en repetirlo. Sigue en el documento para quien lo lea con
+      un lector.
+   2. El interruptor del filtro baja abajo del campo. Se pone una vez en
+      la noche; el código a mano se usa cada vez que la pantalla de un
+      cliente no ilumina, que pasa seguido. Arriba del visor le estaba
+      robando 95px al que se usa cien veces más.
+   3. El cartel del resultado toma la pantalla entera. Adentro del visor
+      servía mientras se escaneaba mirando el visor; escrito a mano, el
+      resultado quedaba arriba y fuera de cuadro. Verde o rojo en toda la
+      pantalla no se puede perder desde ningún lado.
+
+   Con eso «Buscar» queda arriba del pliegue en un teléfono de 812px de
+   alto y a un empujón corto en uno de 667. */
+@media (max-width:760px){
+  .puerta{display:flex;flex-direction:column}
+
+  .puerta-cab{margin-bottom:12px}
+  .puerta-cab h2,.puerta-evento>span{
+    position:absolute;width:1px;height:1px;overflow:hidden;
+    clip-path:inset(50%);white-space:nowrap;
+  }
+  /* El nombre del evento es lo que confirma que se está en la puerta
+     correcta, y recortado a la mitad no confirma nada. */
+  .puerta-evento{margin-left:0;width:100%}
+  .puerta-evento select{max-width:100%;width:100%}
+
+  .puerta-conteo{padding:11px 15px;margin-bottom:10px}
+
+  /* El botón debajo del campo: al lado deja ocho caracteres visibles de
+     un código de doce. */
+  .puerta-mano{flex-direction:column;align-items:stretch;margin-top:12px}
+
+  .puerta-filtro{order:1;margin:18px 0 0}
+  .puerta>.acciones{order:2;margin-top:20px}
+  .puerta>.acciones~.ayuda{order:2}
+
+  .puerta-cartel{position:fixed;z-index:60}
+  .puerta-cartel .puerta-titulo{font-size:clamp(56px,19vw,104px)}
+  /* Lo que tapa la pantalla entera se tiene que poder sacar: la fila
+     avanza más rápido que los 3,8 segundos que el cartel dura solo, y
+     abajo hay una cámara que el portero necesita volver a ver. */
+  .puerta-cartel[data-on="1"]::after{
+    content:"tocá para seguir";
+    position:absolute;left:0;right:0;
+    bottom:calc(20px + env(safe-area-inset-bottom));
+    font-family:var(--dato);font-size:11px;letter-spacing:.16em;
+    text-transform:uppercase;opacity:.6;
+  }
 }

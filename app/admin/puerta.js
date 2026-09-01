@@ -288,6 +288,12 @@ function dibujar() {
   clearInterval(P.tConteo);
   P.tConteo = setInterval(refrescarConteo, 60000);
 
+  /* En el teléfono el cartel tapa la pantalla entera, y lo que tapa la
+     pantalla entera se tiene que poder sacar: la fila avanza más rápido
+     que los 3,8 segundos que dura solo, y abajo está la cámara. En
+     escritorio el cartel solo tapa el visor y el toque no molesta. */
+  $("#pCartel").onclick = () => ocultarCartel();
+
   $("#pFiltro").onclick = () => { despertarAudio(); cambiarFiltro(!P.filtro); };
   pintarFiltro();
   refrescarConteo();
