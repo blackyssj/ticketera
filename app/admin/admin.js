@@ -1475,11 +1475,11 @@ async function pantallaMisVentas() {
   const entradas = ventas.reduce((a, v) => a + Number(v.entradas || 0), 0);
   const total = ventas.reduce((a, v) => a + Number(v.comision || 0), 0);
 
-  /* Sus compradores y el plano cuelgan de UN evento, y él puede estar
-     repartiendo links de varios a la vez: sin elegir cuál, el plano sería
-     el de cualquiera. La lista junta los que están a la venta —donde el
-     plano sirve para vender— con aquellos donde ya vendió algo, aunque
-     estén cerrados: por esos le siguen preguntando al día siguiente. */
+  /* Sus compradores cuelgan de UN evento, y él puede estar repartiendo
+     links de varios a la vez: sin elegir cuál, la lista sería la de
+     cualquiera. Junta los que están a la venta —los que está vendiendo
+     hoy— con aquellos donde ya vendió algo, aunque estén cerrados: por
+     esos le siguen preguntando al día siguiente. */
   const evs = [];
   const vistos = new Set();
   (re.data || []).forEach(e => {
@@ -1525,24 +1525,25 @@ async function pantallaMisVentas() {
 
     ${evs.length ? `
       <div class="cab-bloque sep">
-        <h3 class="titulo-bloque">Tu salón</h3>
+        <h3 class="titulo-bloque">Tu evento</h3>
         ${evs.length > 1
-          ? `<select id="selEventoSalon" aria-label="Evento del que ver compradores y mesas">
+          ? `<select id="selEventoSalon" aria-label="Evento del que ver compradores">
                ${evs.map(e => `<option value="${esc(e.id)}">${esc(e.nombre)} · ${fmtF(e.fecha)}</option>`).join("")}
              </select>`
           : `<span class="conteo">${esc(evs[0].nombre)} · ${fmtF(evs[0].fecha)}</span>`}
       </div>
-      <section id="zonaCompradores"></section>
-      <section id="zonaPlano"></section>` : ""}`;
+      <section id="zonaCompradores"></section>` : ""}`;
 
   cablearCopiar();
 
-  /* Los mismos dos componentes del tablero, sin una segunda versión: la
-     lista ya le devuelve solo sus compradores y el plano le muestra las
-     mesas de todos con el nombre únicamente en las que vendió él. Lo
-     único que cambia es `editar`, que acá es false y le saca los botones
-     de repartir — el salón lo acomoda una sola persona (0029), y un botón
-     que la base le va a rebotar solo enseña a desconfiar de los botones. */
+  /* El mismo componente del tablero, sin una segunda versión: la lista ya
+     le devuelve solo sus compradores, así que no hay un solo `if` de rol
+     acá. `editar` decide qué botones se dibujan en la fila; el recorte de
+     qué filas ve quién lo hizo compradores_evento() del lado de la base.
+
+     Este bloque se llamaba «Tu salón» y traía también el plano de mesas.
+     El plano se fue en la limpieza de mesas: acá solo se venden entradas
+     y las reservas de mesa las maneja el local por fuera del sistema. */
   if (evs.length) {
     const sel = $("#selEventoSalon");
     const cual = id => evs.find(e => e.id === id) || evs[0];
@@ -1672,16 +1673,11 @@ async function pantallaTablero(eventoId) {
     </div>
     <div id="zonaResumen"><p class="cargando">Cargando…</p></div>
     <section id="zonaCompradores"></section>
-    <section id="zonaPlano"></section>
     ${puedeEditar() ? `<section id="zonaPorteros"></section>` : ""}
     <section id="zonaRegistro"></section>`;
 
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
 
-  /* El salón se recarga solo cuando se reparte una mesa, y el tablero se
-     entera por acá: la alerta de "mesas sin asignar" es la que se está
-     bajando, y una alerta que sigue diciendo 2 después de asignar la
-     primera enseña a no creerle. */
   await Promise.all([
     refrescarResumen(eventoId),
     /* Anular una compra baja las cifras de arriba Y agrega una fila al
@@ -1800,11 +1796,6 @@ async function refrescarResumen(eventoId) {
     return;
   }
   z.innerHTML = bloqueCifras(data) + bloqueAlertas(data.alertas) + bloqueDesgloses(data);
-  const ir = $("#irAlPlano");
-  if (ir) ir.onclick = () => {
-    const p = $("#zonaPlano");
-    if (p) p.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
   /* La alerta de revisión manual contaba las órdenes desde 0033 y no
      ofrecía nada: el que la leía se enteraba de que había plata cobrada
      sin entrada del otro lado y ahí se terminaba. Este botón es el
@@ -1846,13 +1837,15 @@ function bloqueCifras(r) {
    de "acá no hay dato". Y ninguno de estos montos se suma a lo recaudado:
    son plata que no entró, o que entró mal. */
 function bloqueAlertas(a) {
+  /* Acá arriba iba «Mesas sin asignar». No se muestra más: en esta
+     ticketera solo se venden entradas y las reservas de mesa las maneja
+     el local por fuera del sistema, así que era una tarea que nadie iba a
+     hacer nunca — y una alerta en rojo permanente enseña a no mirar
+     ninguna. resumen_evento() SIGUE devolviendo `alertas.mesas_sin_asignar`
+     y así queda: la función está en producción y cambiarla por un campo
+     de más es mover algo que anda. Un campo que la pantalla ignora no
+     molesta a nadie. */
   const filas = [
-    { cifra: a.mesas_sin_asignar.ordenes,
-      titulo: "Mesas sin asignar",
-      pie: `${num(a.mesas_sin_asignar.manillas)} manillas · ${bs(a.mesas_sin_asignar.monto)} ya cobrados`,
-      viva: "Compras de mesa pagadas a las que todavía nadie les dijo dónde se sientan. Este es el número que va a cero antes de que abra la puerta.",
-      hecha: "Toda compra de mesa tiene su lugar.",
-      nivel: "peligro", boton: { id: "irAlPlano", txt: "Ver el plano" } },
     { cifra: a.revision_manual.ordenes,
       titulo: "En revisión manual",
       pie: `${bs(a.revision_manual.monto)} cobrados`,
@@ -1969,24 +1962,25 @@ function bloqueDesgloses(r) {
   </div>`;
 }
 
-/* ══ el salón: quién compró y dónde se sienta ═════════════════════
-   La lista de compradores y el plano son dos vistas del mismo hecho, así
-   que comparten estado y se recargan juntos: asignar desde el plano tiene
-   que apagar la fila de la lista, y asignar desde la lista tiene que
-   pintar la chapa. Con una copia cada uno, la mitad que no se enteró
-   sigue ofreciendo una mesa que ya tiene dueño — y eso se descubre en la
-   puerta, con los dos grupos parados.
+/* ══ el salón: quién compró ═══════════════════════════════════════
+   Esta es LA pantalla del "compré y no me llegó nada": se busca por
+   nombre o teléfono, se saca el link de la compra y, si hace falta, se
+   anula. Todo lo demás de acá abajo existe para que eso ande.
 
    Es la MISMA pantalla para el administrador y para el relacionador, y no
-   hay un solo `if` de rol acá adentro: compradores_evento() ya devuelve
-   todas las órdenes al que puede editar y solo las suyas al que no, y
-   mesas_evento() manda las 24 mesas a los dos pero con el nombre del
-   comprador únicamente donde corresponde. `editar` decide una cosa sola:
-   si se dibujan los botones de repartir. Mostrarle a un rrpp un botón que
-   la base le va a rebotar es enseñarle a desconfiar de los botones; la
-   guardia de verdad es puede_editar() adentro de asignar_mesa(). */
-const SALON = { evento: null, editar: false, compras: [], mesas: [],
-                busca: "", sel: null, asignando: null, alCambiar: null,
+   hay un solo `if` de rol adentro que decida QUÉ FILAS se ven:
+   compradores_evento() ya devuelve todas las órdenes al que puede editar
+   y solo las suyas al que no. `editar` decide una cosa sola: qué botones
+   se dibujan en la fila. Mostrarle a un rrpp un botón que la base le va a
+   rebotar es enseñarle a desconfiar de los botones; la guardia de verdad
+   está en puede_editar() del lado del SQL.
+
+   Este bloque compartía estado con el plano de mesas —por eso se llama
+   «salón»— y el plano ya no está: acá solo se venden entradas y las
+   reservas de mesa las maneja el local por fuera del sistema. Lo que
+   quedó es la lista, que es lo que se usa todas las noches. */
+const SALON = { evento: null, editar: false, compras: [],
+                busca: "", alCambiar: null,
                 anulando: null, abierta: null, manillas: {}, anulandoEntrada: null };
 
 async function montarSalon(eventoId, opts) {
@@ -1996,12 +1990,12 @@ async function montarSalon(eventoId, opts) {
        lleva el slug y la fecha, y sin eso todos los CSV de la carpeta de
        Descargas se llaman igual. */
     ev: (opts && opts.ev) || { id: eventoId },
-    compras: [], mesas: [], busca: "", sel: null, asignando: null,
+    compras: [], busca: "",
     anulando: null, abierta: null, manillas: {}, anulandoEntrada: null,
     link: null,
     alCambiar: (opts && opts.alCambiar) || null,
   });
-  const c = $("#zonaCompradores"), p = $("#zonaPlano");
+  const c = $("#zonaCompradores");
   if (c) {
     c.innerHTML = `<p class="cargando">Cargando compradores…</p>`;
     c.onclick = clicEnCompradores;
@@ -2011,54 +2005,25 @@ async function montarSalon(eventoId, opts) {
        escuchan acá arriba porque las filas se repintan enteras. */
     c.onsubmit = enviarEnCompradores;
   }
-  if (p) {
-    p.innerHTML = `<p class="cargando">Cargando el plano…</p>`;
-    p.onclick = clicEnPlano;
-  }
   await cargarSalon();
 }
 
-/* Las dos listas llegan enteras, un jsonb cada una: no hay paginado que
-   pueda comerse una fila en silencio como hace PostgREST a las 1000, y el
-   filtro por evento y por rol ya viajó adentro de la función. Es lo que
-   además deja que el buscador de abajo trabaje sin volver a la base. */
+/* La lista llega entera, un jsonb: no hay paginado que pueda comerse una
+   fila en silencio como hace PostgREST a las 1000, y el filtro por evento
+   y por rol ya viajó adentro de la función. Es lo que además deja que el
+   buscador de abajo trabaje sin volver a la base. */
 async function cargarSalon() {
-  const [rc, rm] = await Promise.all([
-    // sin default en todos sus parámetros: se pasan siempre los dos
-    sb.rpc("compradores_evento", { p_evento: SALON.evento, p_solo_mios: false }),
-    sb.rpc("mesas_evento", { p_evento: SALON.evento }),
-  ]);
+  // sin default en todos sus parámetros: se pasan siempre los dos
+  const rc = await sb.rpc("compradores_evento",
+    { p_evento: SALON.evento, p_solo_mios: false });
   SALON.compras = rc.data || [];
-  SALON.mesas = rm.data || [];
   pintarCompradores(rc.error);
-  pintarPlano(rm.error);
 }
 
 async function refrescarSalon() {
   await cargarSalon();
   if (SALON.alCambiar) await SALON.alCambiar();
 }
-
-/* Una compra puede tener mesa por dos caminos: `ordenes.mesa_asignada_id`,
-   que es lo que escribe asignar_mesa(), o `mesas.orden_id`, que es la
-   chapa que el cliente eligió él mismo en la venta. compradores_evento()
-   solo trae el primero, así que mirando esa sola punta una chapa comprada
-   directo figuraría "sin asignar" y volvería a la lista para repartir:
-   dos grupos, la misma mesa. Es el mismo criterio con el que
-   alertas.mesas_sin_asignar descuenta las que ya tienen dueño por el otro
-   lado, y por eso las dos cuentas dan igual. */
-const mesaDeCompra = c => SALON.mesas.find(m =>
-  (c.mesa_id && m.id === c.mesa_id) || (m.orden_id && m.orden_id === c.orden_id));
-
-/* Que una compra sea "de mesa" lo dice el producto, no el precio: a quien
-   compró cuatro generales no le falta ninguna mesa, y marcarle "sin
-   asignar" sería inventarle una tarea. */
-const compraDeMesa = c => (c.productos || []).some(p => p.categoria === "mesa");
-
-/* La compra trae más manillas de las que la mesa aguanta. No lo impide
-   nadie —ver asignarMesa()— pero se muestra siempre, no solo al asignar:
-   el que llega el sábado a mirar el plano tiene que verlo también. */
-const noEntra = (c, m) => !!(c && m && Number(c.manillas) > Number(m.manillas));
 
 /* ── la lista de compradores ── */
 function pintarCompradores(error) {
@@ -2083,7 +2048,7 @@ function pintarCompradores(error) {
           <thead><tr>
             <th>Comprador</th><th>Contacto</th><th>Compró</th>
             <th class="n">Manillas</th><th class="n">Pagó</th>
-            <th>Relacionador</th><th>Mesa</th>
+            <th>Relacionador</th>
             <th class="col-accion"></th>
           </tr></thead>
           <tbody id="filasCompradores"></tbody>
@@ -2129,7 +2094,7 @@ function pintarFilasCompradores() {
     : `${SALON.compras.length} ${SALON.compras.length === 1 ? "compra" : "compras"}`;
   tb.innerHTML = filas.length
     ? filas.map(filaCompra).join("")
-    : `<tr><td class="sin-nada" colspan="8">
+    : `<tr><td class="sin-nada" colspan="7">
          Nadie con ese nombre ni ese teléfono en este evento.</td></tr>`;
 }
 
@@ -2145,22 +2110,20 @@ function pintarFilasCompradores() {
    Un relacionador que aprieta este botón baja SUS compras, porque eso es
    lo que la función le dio; el recorte no lo hace este archivo. */
 function bajarCompradores() {
+  // Sin columna «Mesa»: salía de cruzar la compra contra el plano, que ya
+  // no está. Acá solo se venden entradas.
   const cab = ["Comprador", "Teléfono", "Correo", "Compró", "Unidades", "Manillas",
                "Manillas usadas", "Manillas anuladas", "Pagó (Bs)", "Servicio (Bs)",
-               "Total (Bs)", "Relacionador", "Canal", "Mesa", "Fecha de la compra",
+               "Total (Bs)", "Relacionador", "Canal", "Fecha de la compra",
                "Link de recuperación"];
-  const filas = SALON.compras.map(c => {
-    const m = mesaDeCompra(c);
-    return [
-      c.comprador || "", c.telefono || "", c.email || "", c.detalle || "",
-      CSV.ent(c.unidades), CSV.ent(c.manillas),
-      CSV.ent(c.manillas_usadas), CSV.ent(c.manillas_anuladas),
-      CSV.bs(c.pagado), CSV.bs(c.fee), CSV.bs(c.total),
-      c.rrpp_nombre || "", c.canal === "rrpp" ? "Relacionador" : "Público",
-      m ? `${m.etiqueta} (${PLANTA_TXT[m.planta] || m.planta})` : "",
-      CSV.fh(c.fecha), linkOrden(c.orden_id),
-    ];
-  });
+  const filas = SALON.compras.map(c => [
+    c.comprador || "", c.telefono || "", c.email || "", c.detalle || "",
+    CSV.ent(c.unidades), CSV.ent(c.manillas),
+    CSV.ent(c.manillas_usadas), CSV.ent(c.manillas_anuladas),
+    CSV.bs(c.pagado), CSV.bs(c.fee), CSV.bs(c.total),
+    c.rrpp_nombre || "", c.canal === "rrpp" ? "Relacionador" : "Público",
+    CSV.fh(c.fecha), linkOrden(c.orden_id),
+  ]);
   CSV.bajar(CSV.nombre("compradores", SALON.ev), [cab, ...filas]);
   avisar(`Bajaron ${filas.length} ${filas.length === 1 ? "compra" : "compras"}.`);
 }
@@ -2188,11 +2151,10 @@ const CANAL_UNO = { publico: "Público", rrpp: "Relacionador",
                     puerta: "Puerta", cortesia: "Cortesía" };
 
 function filaCompra(c) {
-  const m = mesaDeCompra(c);
-  return filaCompraFila(c, m) + filaCompraDetalle(c);
+  return filaCompraFila(c) + filaCompraDetalle(c);
 }
 
-function filaCompraFila(c, m) {
+function filaCompraFila(c) {
   return `<tr data-orden="${esc(c.orden_id)}">
     <td><span class="prod-nombre">${esc(c.comprador || "Sin nombre")}</span>
       <em>${esc(fmtFH(c.fecha))}</em></td>
@@ -2202,12 +2164,7 @@ function filaCompraFila(c, m) {
         ? `<em>${num(c.manillas_usadas)} usadas</em>` : ""}</td>
     <td class="n">${bs(c.pagado)}</td>
     <td class="dato">${esc(c.rrpp_nombre || (c.canal === "rrpp" ? "sin nombre" : "Público"))}</td>
-    <td>${m
-      ? `<span class="chip-mesa${noEntra(c, m) ? " chica" : ""}">${esc(m.etiqueta)}<em>${esc(m.planta)}</em></span>${
-          noEntra(c, m) ? `<em class="chica-nota">es de ${num(m.manillas)}</em>` : ""}`
-      : compraDeMesa(c) ? `<span class="chip-mesa falta">sin asignar</span>`
-                        : `<span class="tenue">—</span>`}</td>
-    <td class="col-accion">${accionesCompra(c, m)}</td>
+    <td class="col-accion">${accionesCompra(c)}</td>
   </tr>`;
 }
 
@@ -2215,21 +2172,16 @@ function filaCompraFila(c, m) {
    botón que sobrevive ahí es el del link, y no es una concesión: el
    relacionador es el primero que recibe el "compré y no me llegó nada",
    y hasta hoy lo único que podía hacer era reenviarlo a la oficina. */
-function accionesCompra(c, m) {
+function accionesCompra(c) {
   const link = `<button type="button" class="btn plano chico" data-link="${esc(c.orden_id)}"
       >${SALON.link === c.orden_id ? "Ocultar" : "Link"}</button>`;
   if (!SALON.editar) return link;
-  if (SALON.asignando === c.orden_id) return selectorDeMesas(c, m);
-  const mesa = m
-    ? `<button type="button" class="btn plano chico" data-abrir="${esc(c.orden_id)}">Cambiar</button>
-       <button type="button" class="btn plano chico" data-liberar="${esc(c.orden_id)}">Liberar</button>`
-    : `<button type="button" class="btn plano chico" data-abrir="${esc(c.orden_id)}">Asignar mesa</button>`;
   /* "Link" antes que "Manillas" y "Manillas" antes que "Anular": el link
      es lo que se pide todos los días —"compré y no me llegó nada"—, la
      manilla suelta es lo que pasa a veces, y anular la compra entera es
      lo que no se deshace. El orden de los botones es el orden de la
      frecuencia, no el del código. */
-  return `${mesa}${link}
+  return `${link}
     <button type="button" class="btn plano chico" data-manillas="${esc(c.orden_id)}"
       >${SALON.abierta === c.orden_id ? "Ocultar" : "Manillas"}</button>
     <button type="button" class="btn plano chico peligrosa" data-anular="${esc(c.orden_id)}">Anular</button>`;
@@ -2244,7 +2196,7 @@ function filaCompraDetalle(c) {
   const abre = SALON.anulando === c.orden_id || SALON.abierta === c.orden_id
             || SALON.link === c.orden_id;
   if (!abre) return "";
-  return `<tr class="fila-detalle"><td colspan="8">
+  return `<tr class="fila-detalle"><td colspan="7">
     ${SALON.link === c.orden_id ? bloqueLink(c) : ""}
     ${SALON.anulando === c.orden_id ? formAnularCompra(c) : ""}
     ${SALON.abierta === c.orden_id ? listaManillas(c) : ""}
@@ -2398,28 +2350,8 @@ function formAnularManilla(en, esCortesia) {
   </form>`;
 }
 
-/* Las libres salen del mismo jsonb que pinta el plano, así que esta lista
-   no puede ofrecer una mesa que la chapa de al lado muestra ocupada. La
-   que ya tiene esta compra entra igual: cambiar de opinión no tiene por
-   qué ser liberar y volver a asignar. */
-function selectorDeMesas(c, actual) {
-  const libres = SALON.mesas.filter(m => !m.ocupada || (actual && m.id === actual.id));
-  if (!libres.length) return `<span class="tenue">No queda ninguna mesa libre.</span>
-    <button type="button" class="btn plano chico" data-cerrar="1">Cerrar</button>`;
-  return `<span class="picker">
-    <select id="selMesa" aria-label="Mesa para ${esc(c.comprador || "esta compra")}">
-      ${libres.map(m => `<option value="${esc(m.id)}"${actual && m.id === actual.id ? " selected" : ""}
-        >${esc(m.etiqueta)} · ${esc(m.planta)} · ${manillasTxt(m.manillas)}${
-          noEntra(c, m) ? ` — chica: la compra trae ${num(c.manillas)}` : ""}</option>`).join("")}
-    </select>
-    <button type="button" class="btn primario chico" data-confirmar="${esc(c.orden_id)}">Asignar</button>
-    <button type="button" class="btn plano chico" data-cerrar="1">Cancelar</button>
-  </span>`;
-}
-
 function clicEnCompradores(e) {
-  const b = e.target.closest("button[data-abrir],button[data-liberar],button[data-confirmar]," +
-                             "button[data-cerrar],button[data-anular],button[data-manillas]," +
+  const b = e.target.closest("button[data-cerrar],button[data-anular],button[data-manillas]," +
                              "button[data-anular-manilla],button[data-link]," +
                              "button[data-copiar],button[data-mail]");
   if (!b) return;
@@ -2434,14 +2366,8 @@ function clicEnCompradores(e) {
     pintarFilasCompradores(); return;
   }
   if (d.cerrar) {
-    SALON.asignando = null; SALON.anulando = null; SALON.anulandoEntrada = null;
+    SALON.anulando = null; SALON.anulandoEntrada = null;
     pintarFilasCompradores(); return;
-  }
-  if (d.abrir)  { SALON.asignando = d.abrir; pintarFilasCompradores(); return; }
-  if (d.liberar) return liberarMesa(d.liberar);
-  if (d.confirmar) {
-    const sel = $("#selMesa");
-    if (sel && sel.value) return asignarMesa(d.confirmar, sel.value);
   }
   if (d.anular) {
     SALON.anulando = SALON.anulando === d.anular ? null : d.anular;
@@ -2521,197 +2447,22 @@ async function anularManilla(entradaId, motivo, incluirUsadas) {
   if (abierta) await abrirManillas(abierta);
 }
 
-/* ── el plano ──
-   Una fila por mesa con x, y, w en PORCENTAJE del lienzo, no en píxeles:
-   el mismo salón tiene que caer igual en la pantalla de la oficina y en el
-   teléfono del que reparte. El lienzo pone el sistema de coordenadas
-   (position:relative + aspect-ratio) y cada chapa se centra en su punto
-   con translate(-50%,-50%). Es lo mismo que ya resolvía el plano de la
-   venta antes de que la mesa pasara a venderse como producto; lo que
-   cambia acá es el propósito: allá se elegía una para comprar, acá se
-   mira quién la tiene. */
-const PLANTA_TXT = { baja: "Planta baja", alta: "Planta alta" };
-const CAT_TXT = { mesa: "Mesa", lounge: "Lounge", palco: "Palco" };
-const ORDEN_PLANTA = { baja: 0, alta: 1 };   // la baja primero: es la que se llena
+/* ── el plano de mesas: no está, y no es un olvido ──
+   Acá vivían pintarPlano(), la ficha, asignarMesa() y liberarMesa(): un
+   plano del salón donde se repartían las mesas de a una. Se fue entero
+   porque esta ticketera vende SOLO entradas — las reservas de mesa las
+   arregla el local por fuera del sistema, así que el plano mostraba un
+   trabajo que nadie iba a hacer.
 
-function pintarPlano(error) {
-  const z = $("#zonaPlano");
-  if (!z) return;
-  const plantas = [...new Set(SALON.mesas.map(m => m.planta))].sort((a, b) =>
-    (ORDEN_PLANTA[a] ?? 9) - (ORDEN_PLANTA[b] ?? 9) || String(a).localeCompare(b));
-  const libres = SALON.mesas.filter(m => !m.ocupada).length;
+   La maquinaria de la base SIGUE ENTERA y sin uso a propósito:
+   asignar_mesa(), liberar_mesa(), mesas_evento(), la tabla `mesas` y
+   `ordenes.mesa_asignada_id` quedan donde estaban. Están probadas, son de
+   otro cliente y no de éste, y borrarlas es una puerta de una sola
+   dirección que hoy no gana nada. Si algún día vuelven las mesas, se
+   vuelve a colgar una pantalla de eso; no hay que rehacer el SQL.
 
-  z.innerHTML = `
-    <div class="cab-bloque">
-      <h3 class="titulo-bloque">Plano de mesas</h3>
-      <span class="conteo">${num(libres)} ${libres === 1 ? "libre" : "libres"} de ${num(SALON.mesas.length)}</span>
-      <span class="leyenda">
-        <span><i class="pip libre"></i>libre</span>
-        <span><i class="pip ocupada"></i>ocupada</span>
-      </span>
-    </div>
-    ${error ? `<p class="error">${esc(error.message)}</p>` : ""}
-    ${SALON.mesas.length ? plantas.map(p => {
-      const suyas = SALON.mesas.filter(m => m.planta === p);
-      const l = suyas.filter(m => !m.ocupada).length;
-      return `<section class="planta">
-        <h4>${esc(PLANTA_TXT[p] || "Planta " + p)}
-          <em>${num(l)} de ${num(suyas.length)} libres</em></h4>
-        <div class="lienzo">${suyas.map(chapa).join("")}</div>
-      </section>`;
-    }).join("")
-    : error ? "" : `<p class="vacio">Este evento no tiene mesas cargadas.</p>`}
-    <div id="fichaMesa"></div>`;
-  pintarFicha();
-}
-
-function chapa(m) {
-  const sel = SALON.sel === m.id;
-  return `<button type="button" class="chapa ${esc(m.categoria)}"
-    data-mesa="${esc(m.id)}" data-ocupada="${m.ocupada ? 1 : 0}" data-sel="${sel ? 1 : 0}"
-    aria-pressed="${sel}" aria-label="${esc(rotuloMesa(m))}"
-    style="left:${Number(m.x)}%;top:${Number(m.y)}%;width:${Number(m.w)}%"
-    ><span class="et">${esc(m.etiqueta)}</span></button>`;
-}
-
-function rotuloMesa(m) {
-  const cat = CAT_TXT[m.categoria] || "Mesa";
-  if (!m.ocupada) return `${cat} ${m.etiqueta}, ${manillasTxt(m.manillas)}, libre, ${bs(m.precio)}`;
-  /* Para el relacionador, la mesa de otro llega `ocupada: true` con
-     `comprador: null`. El corte ya lo hizo la base y acá se respeta tal
-     cual: ni un "de otro relacionador" inventado ni el orden_id crudo. Un
-     uuid no es un nombre, pero es un handle, y devolverlo por la pantalla
-     sería deshacer a mano lo que la función se guardó. Ocupada, y ya. */
-  return `${cat} ${m.etiqueta}, ${manillasTxt(m.manillas)}, ocupada` +
-         (m.comprador ? `, la tiene ${m.comprador}` : "");
-}
-
-function marcarSeleccion() {
-  document.querySelectorAll("#zonaPlano .chapa").forEach(b => {
-    const s = b.dataset.mesa === SALON.sel;
-    b.dataset.sel = s ? "1" : "0";
-    b.setAttribute("aria-pressed", String(s));
-  });
-  pintarFicha();
-}
-
-function pintarFicha() {
-  const f = $("#fichaMesa");
-  if (!f) return;
-  const m = SALON.mesas.find(x => x.id === SALON.sel);
-  if (!m) {
-    f.className = "ficha sin-mesa";
-    f.innerHTML = `<p class="ayuda">Tocá una mesa para ver de qué tamaño es,
-      cuánto cuesta y quién la tiene.</p>`;
-    return;
-  }
-  const dueño = SALON.compras.find(c => mesaDeCompra(c) === m);
-  const chica = noEntra(dueño, m);
-
-  f.className = "ficha" + (m.ocupada ? " ocupada" : "");
-  f.innerHTML = `
-    <div class="ficha-cab">
-      <span class="ficha-et">${esc(m.etiqueta)}</span>
-      <div>
-        <h4>${esc(CAT_TXT[m.categoria] || "Mesa")} ${esc(m.etiqueta)}
-          · ${esc((PLANTA_TXT[m.planta] || m.planta)).toLowerCase()}</h4>
-        <p>${manillasTxt(m.manillas)} · ${bs(m.precio)}</p>
-      </div>
-      <span class="pastilla ${m.ocupada ? "gris" : "verde"}">${m.ocupada ? "Ocupada" : "Libre"}</span>
-    </div>
-    ${m.ocupada ? `<p class="ficha-quien">${m.comprador
-        ? `La tiene <b>${esc(m.comprador)}</b>${m.rrpp_nombre ? ` · vendió ${esc(m.rrpp_nombre)}` : ""}`
-        : "Ocupada"}${m.orden_estado && m.orden_estado !== "pagada"
-        ? ` · la orden está <b>${esc(m.orden_estado)}</b>` : ""}</p>` : ""}
-    ${chica ? `<p class="chica-aviso">${esc(m.etiqueta)} es de ${num(m.manillas)} y
-       lo que compró ${esc(dueño.comprador || "esta orden")} trae ${num(dueño.manillas)}:
-       faltan ${num(Number(dueño.manillas) - Number(m.manillas))} lugares. Juntale otra mesa
-       o avisale al equipo.</p>` : ""}
-    ${SALON.editar ? accionesFicha(m) : ""}`;
-}
-
-function accionesFicha(m) {
-  if (m.ocupada) {
-    /* Sin orden_id no hay a quién liberarle: no puede pasar del lado del
-       administrador —mesas_evento() se lo da entero— y si pasara, un botón
-       que no sabe qué soltar es peor que no tenerlo. */
-    return m.orden_id
-      ? `<div class="ficha-acciones">
-           <button type="button" class="btn plano chico" data-liberar="${esc(m.orden_id)}">Liberar la mesa</button>
-         </div>` : "";
-  }
-  const sinMesa = SALON.compras.filter(c => !mesaDeCompra(c));
-  if (!sinMesa.length) return `<p class="ayuda">No queda ninguna compra esperando mesa.</p>`;
-  /* Primero las compras de mesa: son las que la están esperando de verdad.
-     Las otras quedan abajo por si el equipo decide sentar a alguien igual,
-     que es una decisión de la casa y no algo que la pantalla deba impedir. */
-  const orden = [...sinMesa].sort((a, b) =>
-    (compraDeMesa(b) ? 1 : 0) - (compraDeMesa(a) ? 1 : 0) ||
-    Number(b.manillas) - Number(a.manillas));
-  return `<div class="ficha-acciones">
-    <select id="selCompra" aria-label="Compra a la que darle la mesa ${esc(m.etiqueta)}">
-      ${orden.map(c => `<option value="${esc(c.orden_id)}"
-        >${esc(c.comprador || "Sin nombre")} · ${manillasTxt(c.manillas)} · ${esc(c.detalle || "")}${
-          noEntra(c, m) ? ` — no entra: la mesa es de ${num(m.manillas)}` : ""}</option>`).join("")}
-    </select>
-    <button type="button" class="btn primario chico" data-dar="${esc(m.id)}">Asignar</button>
-  </div>`;
-}
-
-function clicEnPlano(e) {
-  const ch = e.target.closest("button.chapa");
-  if (ch) {
-    SALON.sel = SALON.sel === ch.dataset.mesa ? null : ch.dataset.mesa;
-    marcarSeleccion();
-    return;
-  }
-  const b = e.target.closest("button[data-liberar],button[data-dar]");
-  if (!b) return;
-  if (b.dataset.liberar) return liberarMesa(b.dataset.liberar);
-  const sel = $("#selCompra");
-  if (sel && sel.value) return asignarMesa(sel.value, b.dataset.dar);
-}
-
-/* ── repartir ──
-   asignar_mesa() NO valida que la mesa alcance para las manillas del
-   combo, y es a propósito: los boliches juntan dos mesas para un grupo
-   grande todo el tiempo, y bloquearlo haría que el administrador pelee
-   con el sistema en vez de usarlo. Pero que la base no lo impida no
-   significa que la pantalla se calle: el que reparte tiene que enterarse
-   acá, no el sábado con veinte personas paradas frente a una mesa de
-   catorce. Avisa, dice cuánto falta, y deja seguir. */
-async function asignarMesa(ordenId, mesaId) {
-  const c = SALON.compras.find(x => x.orden_id === ordenId);
-  const m = SALON.mesas.find(x => x.id === mesaId);
-  if (noEntra(c, m) && !confirm(
-      `${m.etiqueta} es de ${m.manillas} y el combo trae ${c.manillas}: ` +
-      `faltan ${Number(c.manillas) - Number(m.manillas)} lugares.\n\n` +
-      `Se puede asignar igual —para eso se juntan mesas—, pero alguien se va a ` +
-      `quedar parado si nadie lo sabe. ¿La asigno?`)) return;
-
-  const { data, error } = await sb.rpc("asignar_mesa", { p_orden: ordenId, p_mesa: mesaId });
-  /* El error es el 'Sin permiso' de puede_editar(): no es un resultado del
-     reparto, es alguien que no debería haber llegado hasta acá. */
-  if (error) { avisar(error.message); return; }
-  /* `motivo` viene armado desde el SQL y se muestra TAL CUAL: nombra la
-     mesa y a quién la tiene, y el que lo lee está parado frente al
-     cliente. Rearmarlo acá perdería justo esos dos datos, que la pantalla
-     no tiene cuando el update toca cero filas. `codigo` es para la
-     máquina; para esto alcanza con `ok`. */
-  avisar(data.motivo);
-  SALON.asignando = null;
-  if (data.ok) SALON.sel = mesaId;
-  await refrescarSalon();
-}
-
-async function liberarMesa(ordenId) {
-  const { data, error } = await sb.rpc("liberar_mesa", { p_orden: ordenId });
-  if (error) { avisar(error.message); return; }
-  avisar(data.motivo);
-  SALON.asignando = null;
-  await refrescarSalon();
-}
-
+   Si estás por reescribir el plano: preguntá primero si el evento vende
+   mesas. Si no las vende, esto tiene que seguir sin existir. */
 /* ══ la bitácora ══════════════════════════════════════════════════
    Todo lo que se decidió y todo lo que pasó en la puerta ya estaba
    guardado con autor, hora y motivo, en dos tablas append-only que nadie
@@ -3732,7 +3483,7 @@ function formAlta() {
 
 const AYUDA_ROL = {
   admin:   "Todo, incluida esta pantalla. Que haya más de uno es lo que evita quedarse afuera.",
-  staff:   "Eventos, precios y el salón. No da de alta a nadie.",
+  staff:   "Eventos, precios y el tablero. No da de alta a nadie.",
   rrpp:    "Solo lo suyo: su link, sus ventas y su comisión.",
   portero: "Solo la pantalla de Puerta, para escanear en el ingreso.",
 };
