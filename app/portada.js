@@ -389,6 +389,13 @@ async function pintar() {
   const rail = $("#rail");
   rail.innerHTML = arriba.map(destacado).join("");
   rail.classList.toggle("solo", arriba.length === 1);
+  /* Con un solo evento en venta, "Lo próximo" no separa nada de nada: no hay
+     un "después" con el que contraste. Es un renglón que hay que leer y
+     descartar, y en el teléfono son 40px que le come al afiche justo en la
+     primera pantalla — que es donde casi todos llegan, por WhatsApp. Se
+     calla, no se borra: el h2 sigue en el árbol para quien navega la página
+     por encabezados. */
+  $("#proximosRotulo").classList.toggle("muda", eventos.length === 1);
   vigilarImagenes(rail);
   $("#proximos").hidden = false;
   cablearRail(arriba.length);

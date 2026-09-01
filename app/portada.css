@@ -141,7 +141,13 @@ img{max-width:100%;display:block}
    casi siempre por un link de WhatsApp, y la portada existe para el que
    llega sin saber qué hay: ahora que la primera pieza es un flyer a tamaño
    de afiche, cada píxel del encabezado es un píxel que el flyer no ocupa. */
-.hero{padding:clamp(26px,6vw,58px) 0 clamp(22px,3.4vw,32px)}
+/* Los números de arriba están calculados contra una meta concreta: que el
+   afiche del evento más próximo entre ENTERO en la primera pantalla de un
+   teléfono. Con la barra de Safari comiendo su parte, eso son unos 700px
+   útiles; el afiche mide 419 a 375px de ancho, así que al encabezado le
+   quedan 260 y antes gastaba 315. De ahí salen estos paddings y no de una
+   escala: en escritorio sobra pantalla y el aire vuelve casi entero. */
+.hero{padding:clamp(18px,4.6vw,54px) 0 clamp(16px,3vw,30px)}
 /* Los tres renglones están cortados a mano, así que el cuerpo se ata al
    ancho de la ventana y no a un piso fijo: con un piso, abajo de 400px el
    renglón más largo se parte y el título pasa a cuatro líneas mal cortadas.
@@ -156,12 +162,20 @@ img{max-width:100%;display:block}
 .titulo .l{display:block}
 .titulo .fluor{color:var(--fluor)}
 .bajada{
-  margin-top:16px;max-width:38ch;
+  margin-top:clamp(10px,2.6vw,16px);max-width:38ch;
   font-size:clamp(15px,2vw,19px);color:var(--hueso-64);
 }
 
 /* ─── rótulos de sección ──────────────────────────────────────── */
-.rotulo{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+.rotulo{display:flex;align-items:center;gap:14px;margin-bottom:clamp(14px,2.4vw,20px)}
+/* Mudo, no ausente: el rótulo se va de la pantalla cuando no separa nada
+   (portada.js decide cuándo) pero el h2 se queda para quien navega por
+   encabezados. Es el recorte estándar de "sólo lectores de pantalla" —
+   `display:none` lo sacaría también del árbol, que es lo contrario. */
+.rotulo.muda{
+  position:absolute;width:1px;height:1px;margin:0;padding:0;
+  overflow:hidden;clip-path:inset(50%);white-space:nowrap;
+}
 .rotulo h2{
   font-family:var(--mono);font-weight:500;
   font-size:12px;letter-spacing:.18em;text-transform:uppercase;
