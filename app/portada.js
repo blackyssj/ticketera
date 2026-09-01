@@ -423,6 +423,13 @@ async function pintar() {
 
   $("#rotuloTxt").textContent = muchos ? "Toda la cartelera" : "También a la venta";
   contar(abajo.length);
+  /* Con la cartelera larga, en el teléfono la grilla pasa a dos columnas.
+     Con una sola, veinte eventos son doce mil píxeles de scroll: no se
+     recorre, se sufre. Se usa el mismo umbral que decide el carrusel porque
+     es la misma idea — una cartelera de veinte no es una de tres con más
+     tarjetas—, y con pocas el afiche se merece el ancho entero del teléfono
+     (el CSS ignora la clase de 540px para arriba). */
+  grilla.classList.toggle("densa", muchos);
   grilla.innerHTML = conMeses(abajo);
   vigilarImagenes(grilla);
   revelar(grilla);

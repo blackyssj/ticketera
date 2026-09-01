@@ -301,6 +301,14 @@ img{max-width:100%;display:block}
 .perf .p1{left:calc(var(--muesca) / -2)}
 .perf .p2{right:calc(var(--muesca) / -2)}
 
+/* La tarjeta de la grilla se mide a sí misma (ver la consulta de contenedor
+   al final del bloque). Contenedor y no media query porque lo que decide el
+   tamaño del talón no es el ancho de la ventana sino el de la pieza: a
+   900px de ventana la misma tarjeta mide 240 o 390 según cuántas columnas
+   entren, y a 375 mide 335 o 161 según si la cartelera es corta o larga.
+   Sólo la chica: la entrada grande nunca baja del umbral. */
+.evento{container-type:inline-size}
+
 /* ── el talón ── */
 .talon{display:flex;flex-direction:column;padding:18px 18px 17px;flex:1}
 .cuando{
@@ -332,12 +340,23 @@ img{max-width:100%;display:block}
   display:flex;align-items:baseline;gap:12px;
   margin-top:auto;padding-top:14px;
 }
+/* En la grilla el pie va apilado: el lugar en su renglón y el precio en el
+   suyo. Compartiendo renglón, en una columna de 273px el lugar se cortaba
+   en "FEXPO '26 · SAN…" — catorce caracteres no distinguen la Fexpo de la
+   Casa de la Cultura ni del Club Social Norte, así que era un renglón que
+   ocupaba lugar sin decir nada. Y en Santa Cruz el lugar es la mitad de lo
+   que dice qué clase de noche es. */
 .evento .pie-talon{
+  flex-direction:column;align-items:flex-start;gap:5px;
   font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
 }
 .evento .donde{
-  flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  max-width:100%;font-size:10.5px;letter-spacing:.05em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
+/* El `margin-left:auto` que en un renglón mandaba el precio a la derecha,
+   en una columna lo mandaría al canto: acá va alineado con todo lo demás. */
+.evento .desde{margin-left:0}
 /* margin-left:auto y no sólo el flex:1 del vecino: cuando el talón de la
    entrada grande no lleva organizador —porque ya está en el papel— el
    precio se quedaba pegado a la izquierda, que no es donde se lo busca. */
@@ -361,6 +380,20 @@ img{max-width:100%;display:block}
 @media (min-width:840px){ .grilla{grid-template-columns:repeat(3,1fr)} }
 @media (min-width:1120px){ .grilla{grid-template-columns:repeat(4,1fr)} }
 
+/* Dos columnas en el teléfono, pero sólo cuando la cartelera es larga. Con
+   una sola columna veinte eventos son doce mil píxeles de scroll: eso no se
+   recorre, se sufre. Con dos son la mitad, y a 160px un flyer se sigue
+   reconociendo — así se los reconoce en la grilla de Instagram, que es
+   donde la gente ya los vio.
+   Y sólo cuando es larga porque con tres eventos dos columnas dejarían
+   tarjetas chiquitas y media grilla vacía; ahí el afiche se merece el ancho
+   entero del teléfono. La clase la pone portada.js con el mismo umbral que
+   ya decide el carrusel: una cartelera de veinte no es una de tres con más
+   tarjetas. */
+@media (max-width:539px){
+  .grilla.densa{grid-template-columns:repeat(2,1fr);gap:20px 12px}
+}
+
 /* El corte de mes sólo aparece si la cartelera cruza más de uno (lo decide
    portada.js). Con veinte eventos es lo que hace que se pueda buscar "el
    finde de octubre" en vez de contar tarjetas. */
@@ -373,6 +406,30 @@ img{max-width:100%;display:block}
   color:var(--hueso-40);
 }
 .mes::after{content:"";flex:1;height:1px;background:var(--filo)}
+
+/* ── la tarjeta angosta ──
+   Lo que pasa cuando la pieza queda en 160px: dos columnas en un teléfono.
+   No es "la versión móvil" —a 375px de ventana la tarjeta puede medir 335 y
+   entonces nada de esto corre—, es la versión angosta, y la decide la
+   tarjeta midiéndose. */
+@container (max-width:210px){
+  .evento .talon{padding:12px 12px 13px}
+  .evento .cuando{font-size:10.5px;letter-spacing:.01em;gap:6px}
+  /* La flecha se va: a este ancho el renglón no da para las dos cosas, y de
+     las dos la fecha es la que informa. La tarjeta entera sigue siendo el
+     link, así que no se pierde nada de lo que se puede tocar. */
+  .evento .cuando .flecha{display:none}
+  .evento .nombre{margin-top:6px;font-size:16px;letter-spacing:-.02em}
+  .evento .pie-talon{padding-top:10px;gap:4px}
+  .evento .donde{font-size:9.5px}
+  .evento .desde{font-size:10px}
+  /* El papel también achica: a 160px un nombre de 30px son tres renglones
+     partidos, y 20px de aire a cada lado se comen un cuarto de la pieza. */
+  .papel{padding:14px 12px}
+  .papel-nombre{font-size:clamp(19px,15.5cqi,58px)}
+  .papel-dia{font-size:clamp(52px,44cqi,210px)}
+  .papel-org{margin-top:9px;padding-top:8px;font-size:9.5px;letter-spacing:.1em}
+}
 
 /* ─── lo próximo ──────────────────────────────────────────────── */
 .proximos{padding-bottom:clamp(40px,6vw,62px)}
