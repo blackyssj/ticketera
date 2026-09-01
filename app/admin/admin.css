@@ -1580,3 +1580,14 @@ body[data-filtro="1"] .puerta-visor::before{
 @media (max-width:760px){
   .ayuda+.ayuda{margin-top:10px}
 }
+
+/* El foco de teclado tiene que verse en la pastilla entera y no en el
+   tilde de 17px que lleva adentro: lo que se aprieta es la pastilla. */
+.cartelera:has(input:focus-visible){outline:2px solid var(--dorado);outline-offset:2px}
+
+/* La regla general de arriba apaga transiciones, no animaciones. Con el
+   cartel a pantalla completa, entrar con un `scale` es toda la pantalla
+   moviéndose: aparece y ya está. */
+@media (prefers-reduced-motion:reduce){
+  .puerta-cartel[data-on="1"]{animation:none}
+}
