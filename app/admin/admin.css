@@ -1383,7 +1383,13 @@ body[data-filtro="1"] .puerta-visor::before{
     font-family:var(--dato);font-size:10px;letter-spacing:.1em;
     text-transform:uppercase;color:var(--txt-3);font-weight:400;
   }
-  .ficha-tabla td.col-accion{flex:1 1 100%;width:auto;white-space:normal;text-align:left}
+  /* El `!important` de la columna de acciones pinta una banda más clara
+     al costado del botón, que en la ficha no separa nada: era el fondo de
+     una columna. */
+  .ficha-tabla td.col-accion{
+    flex:1 1 100%;width:auto;white-space:normal;text-align:left;
+    background:transparent !important;
+  }
   /* Una fila desplegada —el formulario de anular una manilla— no es una
      ficha: es lo que se abre debajo de una, y pintarla como tarjeta la
      desprende de la manilla que la abrió. */
@@ -1450,6 +1456,7 @@ body[data-filtro="1"] .puerta-visor::before{
      píxeles con tres botones adentro. */
   .tabla-compras>tbody>tr>td.col-accion{
     display:flex;flex-wrap:wrap;gap:8px;width:auto;white-space:normal;
+    background:transparent !important;
   }
   /* Los tres se reparten el ancho: en escritorio son tres botones chicos
      al final de la fila, acá son tres objetivos de un tercio de pantalla
@@ -1555,4 +1562,21 @@ body[data-filtro="1"] .puerta-visor::before{
     font-family:var(--dato);font-size:11px;letter-spacing:.16em;
     text-transform:uppercase;opacity:.6;
   }
+}
+
+/* El formulario de la fase se había quedado afuera del corte a una
+   columna que sí tienen el del evento, el de la persona y el de las
+   cortesías. En dos columnas de 166px, el par fecha+hora sacaba la página
+   81px de cuadro: un `input[type="date"]` no encoge abajo de su ancho
+   intrínseco salvo que se le diga. */
+@media (max-width:760px){
+  .form-fase{grid-template-columns:1fr}
+  .form-fase input{min-width:0}
+}
+
+/* Dos párrafos de ayuda seguidos, sin margen entre ellos, en escritorio
+   son dos renglones y en el teléfono son diez: se leen como uno solo y
+   largo, y nadie lee el segundo. */
+@media (max-width:760px){
+  .ayuda+.ayuda{margin-top:10px}
 }
