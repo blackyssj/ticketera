@@ -291,7 +291,11 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 }
 .publicar.vivo{border-color:rgba(61,214,140,.35);background:linear-gradient(var(--sup),rgba(61,214,140,.05))}
 .publicar h3{font-size:21px}
-.publicar>div{min-width:0}
+/* En columna —que es como cae en el teléfono— `align-items:flex-start`
+   deja que este bloque crezca hasta su contenido, y adentro hay un link
+   público que mide más que la pantalla. Con el ancho fijado, el link
+   vuelve a recortarse con puntos suspensivos como fue diseñado. */
+.publicar>div{min-width:0;max-width:100%}
 .publicar p{margin:5px 0 0;font-size:13.5px;color:var(--txt-2)}
 .publicar>.btn{margin-left:auto;flex:0 0 auto}
 .faltan{margin:10px 0 0;padding-left:19px;font-size:13px;color:var(--aviso)}
@@ -548,7 +552,12 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 .tabla .tenue{color:var(--txt-3)}
 .tabla .detalle{max-width:270px;font-size:13.5px;color:var(--txt-2)}
 
+/* `min-width:0` y no `auto`: una celda de grilla se mide por su contenido,
+   así que la tabla de adentro —que ya scrollea sola— empujaba la celda
+   hasta su ancho natural y sacaba la PÁGINA de cuadro. El scroll tiene que
+   quedarse adentro de la caja de la tabla, que es donde se lo espera. */
 .dos-tablas{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start;margin-top:8px}
+.dos-tablas>div{min-width:0}
 .ayuda.bajo-titulo{display:block;margin:-6px 0 10px;max-width:640px}
 
 /* ─── cabecera de bloque ───
@@ -1160,3 +1169,64 @@ body[data-filtro="1"] .puerta-visor::before{
 .bit-que b{color:var(--txt);font-weight:600}
 .bit-motivo{font-size:14px;line-height:1.45;color:var(--txt);max-width:74ch}
 .bit-nota,.bit-quien{font-family:var(--dato);font-size:11.5px;color:var(--txt-3)}
+
+
+/* ══ el teléfono ══════════════════════════════════════════════════
+   El panel se diseñó sentado. Se usa parado: el organizador en la puerta,
+   el relacionador en la vereda mirando sus ventas, el portero con el
+   teléfono en una mano y la fila encima.
+
+   Todo lo de acá abajo vive al FINAL del archivo y adentro de una consulta
+   de medios, a propósito. `admin.css` ya tiene reglas que se pisan entre
+   sí; poner los arreglos del teléfono desperdigados al lado de cada bloque
+   obligaba a subir la especificidad de cada uno para ganarle a lo que
+   viniera después. Acá abajo alcanza con nombrar lo mismo: gana por
+   orden, no por peso.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ─── lo que se toca ───
+   44px de alto, igual que en la landing (0f6a5c3), y por `pointer:coarse`
+   además de por ancho: lo que fija la medida es el dedo y no la pantalla.
+   Una tablet apaisada entra en 1024px y se toca igual.
+
+   Los `input` van con `:not(checkbox)` porque una casilla de 44px no es
+   un objetivo más grande, es una casilla deforme: su zona de toque es la
+   etiqueta que la envuelve, y eso se resuelve etiqueta por etiqueta. */
+@media (max-width:900px), (pointer:coarse){
+  .btn,
+  .tabs button,
+  select,
+  input:not([type="checkbox"]):not([type="radio"]){min-height:44px}
+  /* El chico deja de ser chico de alto y sigue siendo chico de ancho: lo
+     que lo distingue del botón normal es el peso tipográfico, no la
+     superficie que ocupa el dedo. */
+  .btn.chico{padding-top:10px;padding-bottom:10px}
+  .arte-controles input[type="file"]::file-selector-button{min-height:36px}
+}
+
+/* ─── la cabecera ───
+   A 375px la marca, tres pestañas y «Salir» sumaban 393px: la página
+   entera scrolleaba de costado en las nueve pantallas, y lo que se salía
+   por la derecha era justo el botón de salir.
+
+   Ceder ancho lo hace la tira de pestañas, que es la única que puede
+   scrollear sola sin perder nada: con dos pestañas no scrollea, con
+   cuatro sí, y en los dos casos «Salir» sigue estando donde estaba. */
+@media (max-width:760px){
+  .cab{gap:10px;padding:0 12px}
+  .marca{font-size:16px;letter-spacing:.04em;flex:0 0 auto}
+  .tabs{
+    flex:1 1 auto;min-width:0;overflow-x:auto;
+    scrollbar-width:none;-ms-overflow-style:none;
+  }
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs button{flex:0 0 auto;padding:7px 12px;font-size:11px}
+  #btnSalir{flex:0 0 auto;margin-left:0}
+}
+
+/* En columna el bloque tiene que ocupar el ancho, no encogerse a su
+   contenido: encogido, el link largo de adentro es el que decide cuánto
+   mide, y decide mal. */
+@media (max-width:760px){
+  .publicar>div{width:100%}
+}
