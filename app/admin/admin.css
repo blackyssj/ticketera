@@ -194,16 +194,43 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 }
 /* La columna del tipo queda fija al hacer scroll lateral: sin eso no se sabe
    de qué fila es el precio que se está mirando. */
-/* La casilla vive en la celda del nombre porque es una propiedad del
-   producto, no de un precio: vale para todas las fases de la fila. */
-.marca-cartelera{
-  display:flex;align-items:center;gap:7px;margin-top:8px;
-  min-height:44px;          /* el tilde se toca con el pulgar, no con la uña */
-  font-family:var(--dato);font-size:10.5px;letter-spacing:.04em;
-  text-transform:none;color:var(--txt-3);cursor:pointer;
+
+/* ─── la marca de cartelera ───
+   Vive en la celda del nombre porque es una propiedad del producto, no de
+   un precio: vale para todas las fases de la fila.
+
+   Antes era una casilla pelada con la etiqueta al lado, y la etiqueta
+   ocupaba el ancho entero de la celda: 230px de superficie invisible que
+   guardaba en la base al primer roce. Así fue como una noche la vitrina
+   pasó a anunciar «desde 1 Bs» por una entrada de prueba.
+
+   Ahora es una pastilla del tamaño de lo que dice, con su zona propia
+   separada por una línea, y el texto NOMBRA el estado en vez de
+   describir la acción: un toque sin querer cambia el color y cambia la
+   palabra, así que se ve. Lo que no hace es pedir confirmación —ver
+   `ofrecerVuelta()` en admin.js para por qué. */
+.zona-cartelera{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin-top:13px;padding-top:11px;border-top:1px solid var(--linea);
 }
-.marca-cartelera input{width:15px;height:15px;accent-color:var(--dorado);cursor:pointer;flex:0 0 auto}
-.marca-cartelera input:disabled{cursor:progress;opacity:.5}
+.cartelera{
+  /* `row` explícito: el `label` general de más arriba es una columna, que
+     acá pondría el tilde arriba del texto y centrado. */
+  display:inline-flex;flex-direction:row;align-items:center;gap:9px;
+  min-height:44px;padding:0 15px 0 13px;border-radius:999px;
+  border:1px solid var(--linea-2);background:var(--sup-2);
+  font-family:var(--dato);font-size:11px;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--txt-3);cursor:pointer;white-space:nowrap;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+.cartelera input{
+  width:17px;height:17px;margin:0;flex:0 0 auto;
+  accent-color:var(--dorado);cursor:pointer;
+}
+.cartelera[data-on="1"]{
+  background:rgba(233,180,76,.12);border-color:rgba(233,180,76,.42);color:var(--dorado);
+}
+.cartelera:has(input:disabled){cursor:progress;opacity:.55}
 
 .grilla tbody th{position:sticky;left:0;z-index:2}
 .grilla thead th:first-child{position:sticky;left:0;z-index:3}
@@ -1289,6 +1316,11 @@ body[data-filtro="1"] .puerta-visor::before{
   .grilla tbody tr:hover td{background:var(--sup)}
   .grilla tbody th{padding:15px 16px 0;border-bottom:0}
   .grilla tbody th em{-webkit-line-clamp:3}
+  /* La línea llega a los dos bordes de la ficha: media línea flotando en
+     el medio se lee como un subrayado del texto de arriba y no como la
+     separación que es. Y el aire de abajo aleja la pastilla del primer
+     campo de precio, que es de lo que había que alejarla. */
+  .zona-cartelera{margin:14px -16px 0;padding:12px 16px 15px}
 
   /* El renglón de una fase: el nombre a la izquierda, el precio a la
      derecha y grande, y abajo lo que paga el comprador. El cupo va en la

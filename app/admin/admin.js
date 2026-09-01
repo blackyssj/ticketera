@@ -538,10 +538,7 @@ async function pantallaEntradas(eventoId) {
         <tbody>
           ${T.map(t => `<tr data-tipo="${t.id}">
             <th>${esc(t.nombre)}<em>${esc(t.descripcion || "")}</em>
-              <label class="marca-cartelera">
-                <input type="checkbox" class="chk-cartelera" data-t="${t.id}"
-                       ${t.en_cartelera === false ? "" : "checked"}>
-                <span>Cuenta en la cartelera</span></label></th>
+              ${marcaCartelera(t)}</th>
             ${F.map(f => {
               const p = P.get(`${f.id}|${t.id}`);
               /* El nombre de la fase viaja repetido en cada celda porque en
@@ -576,9 +573,9 @@ async function pantallaEntradas(eventoId) {
       <button class="btn primario" id="btnGuardarGrilla">Guardar precios</button>
     </div>
     <p class="ayuda">Precio vacío = ese tipo no se vende en esa fase. Cupo vacío = sin tope.</p>
-    <p class="ayuda">«Cuenta en la cartelera» decide si ese producto entra en el
-       «desde» y en el «agotado» que la portada muestra del evento. Destildalo
-       para lo que no es una oferta al público —una prueba de cobro, un
+    <p class="ayuda">«En la cartelera» decide si ese producto entra en el
+       «desde» y en el «agotado» que la portada muestra del evento. Sacá de la
+       cartelera lo que no es una oferta al público —una prueba de cobro, un
        producto interno—: se sigue vendiendo igual, solo deja de fijar el
        precio con el que se anuncia la fiesta.</p>
     <div id="zonaPublicar"></div>`;
@@ -607,27 +604,81 @@ async function pantallaEntradas(eventoId) {
   /* Se guarda al tildar y no con «Guardar precios»: es una sola casilla y
      su efecto está en otra pantalla (la portada), así que un tilde que espera
      a un botón que dice «precios» es un tilde que alguien va a dar por
-     guardado. El .select() de vuelta por lo de siempre — un update que RLS
-     filtra contesta 204 y cero filas, sin error. */
+     guardado. */
   document.querySelectorAll("#main .chk-cartelera").forEach(chk => {
-    chk.onchange = async () => {
-      const valor = chk.checked;
-      chk.disabled = true;
-      const { data, error } = await sb.from("tipo_entrada")
-        .update({ en_cartelera: valor }).eq("id", chk.dataset.t).select("id");
-      chk.disabled = false;
-      if (error || !data || !data.length) {
-        chk.checked = !valor;
-        avisar("No se pudo guardar" + (error ? ": " + error.message : ": la base no lo permitió."));
-        return;
-      }
-      avisar(valor ? "Ese producto vuelve a contar en la cartelera."
-                   : "Ese producto ya no cuenta en la cartelera.");
-    };
+    chk.onchange = () => guardarCartelera(chk, chk.checked, true);
   });
 
   $("#btnGuardarGrilla").onclick = () => guardarGrilla(eventoId);
   zonaPublicar(eventoId, ev.data.estado, ev.data.slug);
+}
+
+/* ── la marca de cartelera ──
+   El texto dice el ESTADO, no la acción. Con «Cuenta en la cartelera»
+   fijo, lo único que separaba prendido de apagado era un tilde de 15px;
+   con dos frases distintas, un toque sin querer se lee sin buscar dónde
+   mirar. Corto a propósito: la celda del tipo mide 230px en escritorio y
+   una pastilla que no entra se parte en dos renglones. */
+const CARTELERA_TXT = { si: "En la cartelera", no: "Fuera de la cartelera" };
+
+function marcaCartelera(t) {
+  const on = t.en_cartelera !== false;
+  return `<div class="zona-cartelera">
+    <label class="cartelera" data-on="${on ? 1 : 0}">
+      <input type="checkbox" class="chk-cartelera" data-t="${esc(t.id)}"${on ? " checked" : ""}>
+      <span>${on ? CARTELERA_TXT.si : CARTELERA_TXT.no}</span>
+    </label>
+    <span class="cartelera-vuelta"></span>
+  </div>`;
+}
+
+function pintarCartelera(chk) {
+  const lbl = chk.closest(".cartelera");
+  if (!lbl) return;
+  lbl.dataset.on = chk.checked ? "1" : "0";
+  lbl.querySelector("span").textContent = chk.checked ? CARTELERA_TXT.si : CARTELERA_TXT.no;
+}
+
+/* El .select() de vuelta por lo de siempre: un update que RLS filtra
+   contesta 204 y cero filas, sin error. */
+async function guardarCartelera(chk, valor, ofrecer) {
+  chk.disabled = true;
+  const { data, error } = await sb.from("tipo_entrada")
+    .update({ en_cartelera: valor }).eq("id", chk.dataset.t).select("id");
+  chk.disabled = false;
+  const guardo = !error && data && data.length > 0;
+  chk.checked = guardo ? valor : !valor;
+  pintarCartelera(chk);
+  if (!guardo) {
+    avisar("No se pudo guardar" + (error ? ": " + error.message : ": la base no lo permitió."));
+    return;
+  }
+  avisar(valor ? "Ese producto vuelve a contar en la cartelera."
+               : "Ese producto ya no cuenta en la cartelera.");
+  if (ofrecer) ofrecerVuelta(chk, valor);
+}
+
+/* ── deshacer, no confirmar ──
+   Pedir confirmación cobra un toque las cien veces que el cambio fue a
+   propósito, y a la décima nadie lee lo que confirma: se convierte en un
+   paso que se aprieta de memoria y deja de proteger. Deshacer no cuesta
+   nada cuando estuvo bien y arregla el otro caso con un solo toque, en el
+   lugar donde el ojo ya está.
+
+   Quince segundos: lo que tarda alguien en darse cuenta. Más que eso es
+   un botón viejo al lado de una casilla nueva, y ahí deshacer deshace lo
+   que no era. */
+const VUELTAS = new WeakMap();
+
+function ofrecerVuelta(chk, valor) {
+  const caja = chk.closest(".zona-cartelera").querySelector(".cartelera-vuelta");
+  clearTimeout(VUELTAS.get(caja));
+  caja.innerHTML = `<button type="button" class="btn plano chico">Deshacer</button>`;
+  caja.firstElementChild.onclick = () => {
+    caja.innerHTML = "";
+    guardarCartelera(chk, !valor, false);
+  };
+  VUELTAS.set(caja, setTimeout(() => { caja.innerHTML = ""; }, 15000));
 }
 
 
