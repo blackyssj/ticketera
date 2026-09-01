@@ -144,7 +144,20 @@ function tarjeta(e, i) {
    más: sin flyer, el papel ya grita RED CIRCLE a media pieza de distancia
    y repetirlo en el talón deja el mismo nombre dos veces en la misma
    entrada, en dos tamaños, a veinte centímetros. Con el organizador pasa
-   igual: lo que el papel ya dice, el talón no lo repite. */
+   igual: lo que el papel ya dice, el talón no lo repite.
+
+   La última fila es la que cambió de idea con el primer flyer real adentro.
+   Un flyer boliviano imprime la fecha, la hora y el lugar en una banda
+   abajo — o sea que el talón, tal como estaba, transcribía la banda del
+   afiche a cuatro centímetros de distancia y encima en cuerpo de titular.
+   Lo único que el flyer nunca dice es cuánto sale, y eso estaba escrito en
+   11,5px gris al lado del organizador: el dato que todo el mundo pregunta
+   primero, más chico que cualquier otra cosa de la pieza.
+
+   Así que el precio se muda a la fila de la acción, al lado de la manera de
+   entrar, que es donde en una entrada de papel se imprime lo que se pagó.
+   La fecha sigue siendo el número grande y no se lo cede: es la convención
+   del talón, y el que compra guarda la entrada por la fecha. */
 function destacado(e, i) {
   return `<a class="destacado${e.venta === "agotado" ? " agotado" : ""}" href="${esc(e.url)}">
     ${afiche(e, i === 0)}
@@ -154,11 +167,11 @@ function destacado(e, i) {
       <div class="fechon"><b>${esc(e.dia)}</b><span>${esc(MESES[Number(e.fecha.slice(5, 7)) - 1] || e.mes)}</span></div>
       ${e.flyer_url ? `<h3 class="nombre">${esc(e.nombre)}</h3>` : ""}
       <p class="donde">${esc(e.lugar)}</p>
-      <div class="pie-talon">
-        ${e.flyer_url ? `<span class="quien">${esc(e.organizador_nombre)}</span>` : ""}
+      ${e.flyer_url ? `<span class="quien">${esc(e.organizador_nombre)}</span>` : ""}
+      <div class="accion">
+        <span class="ver" aria-hidden="true">Ver entradas<i class="flecha"></i></span>
         ${e.desde != null ? `<span class="desde">desde <b>${esc(bs(e.desde))}</b></span>` : ""}
       </div>
-      <span class="ver" aria-hidden="true">Ver entradas<i class="flecha"></i></span>
     </div>
   </a>`;
 }
