@@ -1476,3 +1476,25 @@ body[data-filtro="1"] .puerta-visor::before{
   .tabla-compras>tbody>tr.fila-detalle>td{display:block}
 }
 
+
+/* ─── el tablero: primero lo que hay que ir a hacer ───
+   Tres cifras apiladas medían 393px: las alertas —lo único de esta
+   pantalla que pide una acción— arrancaban abajo de la primera pantalla,
+   y en el teléfono lo que no se ve al abrir no existe.
+
+   Las cifras no se achican ni se esconden: se acuestan. El número a la
+   izquierda y su rótulo al lado en vez de abajo ocupa la mitad del alto y
+   se lee igual de rápido, porque un número grande con un rótulo pegado
+   sigue siendo un número grande. */
+@media (max-width:760px){
+  .cifra-grande{
+    display:grid;grid-template-columns:auto minmax(0,1fr);
+    align-items:center;gap:1px 14px;padding:14px 16px;
+  }
+  .cifra-grande .valor{grid-row:1/3;font-size:34px}
+  .cifra-grande.plata .valor{font-size:26px}
+  .cifra-grande .valor i{font-size:.55em}
+  .cifra-grande .rotulo{grid-column:2;align-self:end}
+  .cifra-grande .pie{grid-column:2;align-self:start}
+  .cifra-grande .avance{grid-column:1/-1;margin-top:9px}
+}
