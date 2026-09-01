@@ -544,7 +544,12 @@ async function pantallaEntradas(eventoId) {
                 <span>Cuenta en la cartelera</span></label></th>
             ${F.map(f => {
               const p = P.get(`${f.id}|${t.id}`);
-              return `<td>
+              /* El nombre de la fase viaja repetido en cada celda porque en
+                 el teléfono la tabla se despliega en fichas y el encabezado
+                 de columna deja de existir: sin esto, el precio queda
+                 flotando sin decir de qué fase es. En escritorio el
+                 atributo no se lee y la columna sigue siendo la etiqueta. */
+              return `<td data-fase="${esc(f.nombre)}">
                 <input class="celda-precio" data-f="${f.id}" data-t="${t.id}"
                        type="number" min="0" step="1" placeholder="—"
                        value="${p ? Number(p.precio) : ""}" aria-label="Precio">

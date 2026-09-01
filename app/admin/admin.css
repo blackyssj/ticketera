@@ -1230,3 +1230,89 @@ body[data-filtro="1"] .puerta-visor::before{
 @media (max-width:760px){
   .publicar>div{width:100%}
 }
+
+/* ─── entradas y precios: la tabla se abre en fichas ───
+   Es el defecto que reportaron. La grilla es tipos × fases y en 375px
+   entra una columna y media: se veía la del tipo, media de la primera
+   fase, y nada que dijera que había más a la derecha. Con dos fases —el
+   caso normal de una preventa— la pantalla mentía.
+
+   Ensanchar el scroll y ponerle una sombra no alcanzaba: una tabla que
+   hay que empujar de costado para editar una celda a la vez no es una
+   tabla, es un rompecabezas. Así que en el teléfono la grilla se abre:
+   una ficha por tipo de entrada, y adentro un renglón por fase con el
+   nombre de la fase pegado al precio. El cruce sigue estando —es lo que
+   la pantalla vino a mostrar—, pero se lee de arriba abajo, que es como
+   se lee un teléfono.
+
+   Las fases se van arriba, a su propio bloque: ahí es donde se las edita
+   y donde dicen qué están haciendo ahora. En la tabla eran encabezados de
+   columna; sin columnas, son una lista. */
+@media (max-width:760px){
+  .grilla-envoltorio{
+    overflow-x:visible;border:0;background:transparent;border-radius:0;
+  }
+  .grilla,.grilla thead,.grilla tbody,.grilla tr,
+  .grilla thead th,.grilla tbody th,.grilla td{display:block}
+  /* Las tres columnas fijas de la versión de escritorio: sin ellas la
+     ficha hereda 230px de ancho y un `position:sticky` que no tiene
+     scroll del que pegarse. */
+  .grilla thead th,.grilla tbody th,.grilla td{
+    position:static;width:auto;min-width:0;max-width:none;border-right:0;
+  }
+
+  /* ── el bloque de fases ── */
+  .grilla thead tr{display:grid;gap:8px;margin-bottom:16px}
+  /* «Tipo» era el rótulo de una columna que ya no existe. */
+  .grilla thead th:first-child{display:none}
+  /* Cuatro cosas apiladas ocupaban media pantalla antes del primer
+     precio. En la ficha el estado y el botón comparten renglón: se leen
+     igual y la fase entra entera arriba de lo que se vino a editar. */
+  .grilla thead th.th-fase{
+    display:grid;grid-template-columns:minmax(0,1fr) auto;
+    align-items:center;gap:5px 12px;
+    background:var(--sup);border:1px solid var(--linea);
+    border-radius:var(--r);padding:14px 16px;
+  }
+  .fase-titulo,.th-fase em{grid-column:1/-1}
+  .fase-estado{grid-column:1;justify-self:start;margin-top:4px}
+  .fase-editar{grid-column:2;margin-top:4px}
+  .grilla thead th.col-accion{background:transparent !important;padding:0}
+  .grilla thead th.col-accion .btn{width:100%}
+
+  /* ── una ficha por tipo ── */
+  .grilla tbody{display:grid;gap:10px}
+  .grilla tbody tr{
+    background:var(--sup);border:1px solid var(--linea);
+    border-radius:var(--r);overflow:hidden;
+  }
+  .grilla tbody tr:hover td{background:var(--sup)}
+  .grilla tbody th{padding:15px 16px 0;border-bottom:0}
+  .grilla tbody th em{-webkit-line-clamp:3}
+
+  /* El renglón de una fase: el nombre a la izquierda, el precio a la
+     derecha y grande, y abajo lo que paga el comprador. El cupo va en la
+     tercera línea con su rótulo, porque es el único de los tres números
+     que sin nombre no se distingue de un precio. */
+  .grilla tbody td{
+    display:grid;grid-template-columns:minmax(0,1fr) auto;
+    align-items:center;gap:4px 12px;
+    padding:13px 16px;border-top:1px solid var(--linea);border-bottom:0;
+  }
+  .grilla tbody td::before{
+    content:attr(data-fase);grid-area:1/1;
+    font-family:var(--display);font-size:18px;text-transform:uppercase;
+    letter-spacing:.01em;line-height:1;overflow-wrap:anywhere;
+  }
+  .grilla tbody td::after{
+    content:"cupo";grid-area:3/1;
+    font-family:var(--dato);font-size:10.5px;letter-spacing:.11em;
+    text-transform:uppercase;color:var(--txt-3);
+  }
+  .grilla td .celda-precio{grid-area:1/2;width:116px}
+  .celda-paga{grid-area:2/1/2/3;margin-top:0;min-height:0}
+  .grilla td .celda-cupo{grid-area:3/2;width:116px;margin-top:0}
+  /* Una columna de acciones vacía deja un renglón de aire abajo de cada
+     ficha que se lee como un error de dibujo. */
+  .grilla tbody td.col-accion{display:none}
+}
