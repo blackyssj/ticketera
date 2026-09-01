@@ -99,9 +99,12 @@ img{max-width:100%;display:block}
 
 .carril{width:100%;max-width:var(--carril);margin:0 auto;padding:0 20px}
 
+/* 44px medidos y no calculados de cabeza: con el relleno solo quedaba en
+   43,5 — medio píxel, pero la regla de la casa no tiene comas. */
 .saltar{
   position:absolute;left:-9999px;top:0;z-index:200;
-  background:var(--fluor);color:var(--tinta);padding:12px 16px;
+  display:inline-flex;align-items:center;min-height:44px;
+  background:var(--fluor);color:var(--tinta);padding:0 16px;
   font-family:var(--mono);font-size:13px;
 }
 .saltar:focus{left:12px;top:12px}
@@ -429,7 +432,23 @@ img{max-width:100%;display:block}
   .papel-nombre{font-size:clamp(19px,15.5cqi,58px)}
   .papel-dia{font-size:clamp(52px,44cqi,210px)}
   .papel-org{margin-top:9px;padding-top:8px;font-size:9.5px;letter-spacing:.1em}
+  /* La calcomanía también: "Últimas entradas" a 10,5px cruzaba la tarjeta
+     de lado a lado y se comía el tercio de arriba del afiche. Una
+     calcomanía se pega en una esquina; si tapa el cartel entero deja de
+     avisar algo y pasa a esconderlo. */
+  .sello{font-size:9px;letter-spacing:.07em;padding:5px 9px 4px}
 }
+/* Un escalón más angosto todavía: 134px, que es la tarjeta de dos columnas
+   en un teléfono de 320. Ahí el renglón de la fecha no entra entero y se
+   cortaba justo en la hora — "SÁB 12 SEP · 2…", que es peor que no
+   ponerla—. Se va la hora y queda la fecha completa, que es la que decide
+   si el evento te sirve. */
+@container (max-width:152px){
+  .evento .cuando .hora{display:none}
+}
+/* `<i>` porque es el idioma del archivo para las piezas sin semántica, pero
+   acá lleva texto y no puede salir en cursiva. */
+.hora{font-style:normal}
 
 /* ─── lo próximo ──────────────────────────────────────────────── */
 .proximos{padding-bottom:clamp(40px,6vw,62px)}

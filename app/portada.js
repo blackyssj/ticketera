@@ -116,14 +116,22 @@ const perf = `<div class="perf" aria-hidden="true"><i class="p1"></i><i class="p
 
    El nombre se repite en el talón sólo cuando arriba hay una imagen. Sin
    flyer ya está en el papel, cuatro veces más grande, y repetirlo sesenta
-   píxeles más abajo es un tartamudeo, no una jerarquía. */
+   píxeles más abajo es un tartamudeo, no una jerarquía.
+
+   La fecha se arma acá con las mismas partes que la función usa para su
+   `fecha_txt` —da la misma cadena— y no con `fecha_txt` mismo, para poder
+   marcar la hora aparte. En una tarjeta de 134px (dos columnas en un
+   teléfono chico) el renglón entero no entra y se cortaba justo en la hora:
+   "SÁB 12 SEP · 2…". Marcada, el CSS la saca a ese ancho y queda la fecha
+   completa, que es la que decide si el evento te sirve; la hora está a un
+   toque de distancia y casi siempre impresa en el flyer. */
 function tarjeta(e, i) {
   const conFlyer = !!e.flyer_url;
   return `<a class="evento${e.venta === "agotado" ? " agotado" : ""}" href="${esc(e.url)}">
     ${afiche(e, i < 2)}
     ${perf}
     <div class="talon">
-      <div class="cuando"><span>${esc(e.fecha_txt)}</span>
+      <div class="cuando"><span>${esc(e.dia_semana)} ${esc(e.dia)} ${esc(e.mes)}<i class="hora"> · ${esc(e.hora)}</i></span>
         <i class="flecha" aria-hidden="true"></i></div>
       ${conFlyer ? `<h3 class="nombre">${esc(e.nombre)}</h3>` : ""}
       <div class="pie-talon">
