@@ -1793,7 +1793,7 @@ async function refrescarPorteros(eventoId) {
         es el único movimiento con el que se puede hacer entrar a alguien de más.
         Unos pocos en la noche son escaneos corregidos; muchos son otra cosa.</p>
       <div class="grilla-envoltorio">
-        <table class="tabla tabla-porteros">
+        <table class="tabla ficha-tabla tabla-porteros">
           <thead><tr>
             <th>Portero</th><th>Turno</th>
             <th class="n">Dejó pasar</th><th class="n">Rechazó</th><th class="n">Deshizo</th>
@@ -1801,10 +1801,11 @@ async function refrescarPorteros(eventoId) {
           <tbody>${filas.map(filaPortero).join("")}</tbody>
           ${filas.length > 1 ? `<tfoot><tr>
             <td class="dato">Los ${num(filas.length)}</td>
-            <td class="dato">${esc(turnoTxt(t.primero_at, t.ultimo_at))}</td>
-            <td class="n">${num(t.ingresos)}</td>
-            <td class="n">${num(t.rechazadas)}</td>
-            <td class="n${Number(t.deshechas) ? " deshechos" : ""}">${num(t.deshechas)}</td>
+            <td class="dato" data-rot="Turno">${esc(turnoTxt(t.primero_at, t.ultimo_at))}</td>
+            <td class="n" data-rot="Dejó pasar">${num(t.ingresos)}</td>
+            <td class="n" data-rot="Rechazó">${num(t.rechazadas)}</td>
+            <td class="n${Number(t.deshechas) ? " deshechos" : ""}"
+                data-rot="Deshizo">${num(t.deshechas)}</td>
           </tr></tfoot>` : ""}
         </table>
       </div>`
@@ -1819,11 +1820,11 @@ function filaPortero(f) {
   return `<tr>
     <td><span class="prod-nombre">${esc(f.portero)}</span>
       <i>${esc(f.rol || "")}${f.activo === false ? " · desactivado" : ""}</i></td>
-    <td class="dato">${esc(turnoTxt(f.primero_at, f.ultimo_at))}</td>
-    <td class="n">${num(f.ingresos)}${rei
+    <td class="dato" data-rot="Turno">${esc(turnoTxt(f.primero_at, f.ultimo_at))}</td>
+    <td class="n" data-rot="Dejó pasar">${num(f.ingresos)}${rei
       ? `<em>${num(rei)} ${rei === 1 ? "reingreso" : "reingresos"}</em>` : ""}</td>
-    <td class="n">${num(f.rechazadas)}</td>
-    <td class="n${des ? " deshechos" : ""}">${num(des)}${aj
+    <td class="n" data-rot="Rechazó">${num(f.rechazadas)}</td>
+    <td class="n${des ? " deshechos" : ""}" data-rot="Deshizo">${num(des)}${aj
       ? `<em>${num(aj)} de otro portero</em>` : ""}</td>
   </tr>`;
 }
@@ -1959,7 +1960,7 @@ function bloqueDesgloses(r) {
   <p class="ayuda bajo-titulo">Las unidades son lo que compró el cliente y miden el cupo;
     las manillas son la gente que entra. Un combo de 10 vendido una vez es 1 unidad y 10 manillas.</p>
   <div class="grilla-envoltorio">
-    <table class="tabla">
+    <table class="tabla ficha-tabla">
       <thead><tr>
         <th>Producto</th><th class="n">Unidades</th><th class="n">Manillas</th>
         <th class="n">Cupo</th><th class="n">Quedan</th>
@@ -1971,13 +1972,13 @@ function bloqueDesgloses(r) {
             <em>${esc(p.categoria)}${p.manillas_por_unidad > 1
                   ? ` · ${num(p.manillas_por_unidad)} manillas por unidad` : ""}${
                   p.activo ? "" : " · inactivo"}</em></td>
-          <td class="n">${num(p.unidades)}</td>
-          <td class="n">${num(p.manillas)}${p.manillas_anuladas
+          <td class="n" data-rot="Unidades">${num(p.unidades)}</td>
+          <td class="n" data-rot="Manillas">${num(p.manillas)}${p.manillas_anuladas
               ? `<em>${num(p.manillas_anuladas)} anuladas</em>` : ""}</td>
-          <td class="n">${p.cupo == null ? `<i>sin tope</i>` : num(p.cupo)}</td>
-          <td class="n">${quedanTxt(p)}</td>
-          <td class="n">${p.precio == null ? `<i>—</i>` : bs(p.precio)}</td>
-          <td class="n">${bs(p.recaudado)}</td>
+          <td class="n" data-rot="Cupo">${p.cupo == null ? `<i>sin tope</i>` : num(p.cupo)}</td>
+          <td class="n" data-rot="Quedan">${quedanTxt(p)}</td>
+          <td class="n" data-rot="Precio">${p.precio == null ? `<i>—</i>` : bs(p.precio)}</td>
+          <td class="n" data-rot="Recaudado">${bs(p.recaudado)}</td>
         </tr>`).join("")}</tbody>
     </table>
   </div>
@@ -2216,9 +2217,9 @@ function filaCompraFila(c) {
       <em>${esc(fmtFH(c.fecha))}</em></td>
     <td class="dato">${esc(c.telefono || "—")}${c.email ? `<em>${esc(c.email)}</em>` : ""}</td>
     <td class="detalle">${esc(c.detalle || "—")}</td>
-    <td class="n">${num(c.manillas)}${c.manillas_usadas
+    <td class="n" data-rot="Manillas">${num(c.manillas)}${c.manillas_usadas
         ? `<em>${num(c.manillas_usadas)} usadas</em>` : ""}</td>
-    <td class="n">${bs(c.pagado)}</td>
+    <td class="n" data-rot="Pagó">${bs(c.pagado)}</td>
     <td class="dato">${esc(c.rrpp_nombre || (c.canal === "rrpp" ? "sin nombre" : "Público"))}</td>
     <td class="col-accion">${accionesCompra(c)}</td>
   </tr>`;
@@ -2363,16 +2364,16 @@ function listaManillas(c) {
   const filas = SALON.manillas[c.orden_id];
   if (!filas) return `<p class="cargando">Cargando las manillas…</p>`;
   if (!filas.length) return `<p class="vacio">Esta compra no tiene manillas emitidas.</p>`;
-  return `<table class="tabla tabla-manillas">
+  return `<table class="tabla ficha-tabla tabla-manillas">
     <thead><tr><th>Código</th><th>Producto</th><th>A nombre de</th>
       <th>Estado</th><th class="col-accion"></th></tr></thead>
     <tbody>${filas.map(en => {
       const e = ESTADO_MANILLA[en.estado] || { txt: en.estado, cls: "gris" };
       return `<tr>
         <td class="dato"><code>${esc(en.code)}</code></td>
-        <td>${esc((en.tipo_entrada && en.tipo_entrada.nombre) || "—")}</td>
-        <td class="dato">${esc(en.cliente || "—")}</td>
-        <td><span class="pastilla ${e.cls}">${e.txt}</span>${
+        <td data-rot="Producto">${esc((en.tipo_entrada && en.tipo_entrada.nombre) || "—")}</td>
+        <td class="dato" data-rot="A nombre de">${esc(en.cliente || "—")}</td>
+        <td data-rot="Estado"><span class="pastilla ${e.cls}">${e.txt}</span>${
           en.used_at ? `<em>${esc(fmtFH(en.used_at))}</em>` : ""}</td>
         <td class="col-accion">${en.estado === "anulada" ? ""
           : `<button type="button" class="btn plano chico peligrosa"
@@ -2918,17 +2919,17 @@ function pintarCortesias(tope) {
       CORT.total > tope ? ` Se muestran las últimas ${num(tope)} de ${num(CORT.total)}.` : ""}</p>
     ${CORT.lista.length ? `
       <div class="grilla-envoltorio">
-        <table class="tabla tabla-manillas">
+        <table class="tabla ficha-tabla tabla-manillas">
           <thead><tr><th>Código</th><th>Producto</th><th>A nombre de</th>
             <th>Cuándo</th><th>Estado</th><th class="col-accion"></th></tr></thead>
           <tbody>${CORT.lista.map(en => {
             const e = ESTADO_MANILLA[en.estado] || { txt: en.estado, cls: "gris" };
             return `<tr>
               <td class="dato"><code>${esc(en.code)}</code></td>
-              <td>${esc((en.tipo_entrada && en.tipo_entrada.nombre) || "—")}</td>
-              <td class="dato">${esc(en.cliente || "—")}</td>
-              <td class="dato">${esc(fmtFH(en.created_at))}</td>
-              <td><span class="pastilla ${e.cls}">${e.txt}</span></td>
+              <td data-rot="Producto">${esc((en.tipo_entrada && en.tipo_entrada.nombre) || "—")}</td>
+              <td class="dato" data-rot="A nombre de">${esc(en.cliente || "—")}</td>
+              <td class="dato" data-rot="Cuándo">${esc(fmtFH(en.created_at))}</td>
+              <td data-rot="Estado"><span class="pastilla ${e.cls}">${e.txt}</span></td>
               <td class="col-accion">${en.estado === "anulada" ? ""
                 : `<button type="button" class="btn plano chico peligrosa"
                      data-anular-cortesia="${esc(en.id)}">Anular</button>`}</td>

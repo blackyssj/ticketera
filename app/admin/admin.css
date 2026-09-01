@@ -1348,3 +1348,131 @@ body[data-filtro="1"] .puerta-visor::before{
      ficha que se lee como un error de dibujo. */
   .grilla tbody td.col-accion{display:none}
 }
+
+/* ─── las tablas que se leen ───
+   Una tabla de datos en 375px no es una tabla: la fila se corta contra el
+   borde y la última columna hay que ir a buscarla empujando. Pero no
+   todas tienen el mismo problema, así que no llevan todas la misma cura.
+
+   Estas cuatro —por producto, porteros, cortesías y las manillas de una
+   compra— tienen la misma forma: un nombre, y detrás una hilera de
+   números que solo significan algo con el rótulo puesto. Se abren en
+   fichas y el rótulo va ARRIBA del número: sin encabezado de columna, el
+   rótulo es lo único que dice qué es ese 377, y tiene que llegar antes.
+   (En las cifras del resto del panel el rótulo va abajo, porque ahí ya se
+   sabe qué se está mirando.)
+
+   Las de canal y estado no entran acá: cuatro columnas cortas caben
+   enteras, y una tabla que cabe se lee más rápido que cuatro fichas de un
+   renglón. Y la grilla de precios tampoco, que se edita y tiene su propia
+   forma más arriba. */
+@media (max-width:760px){
+  .ficha-tabla,.ficha-tabla tbody,.ficha-tabla tfoot,
+  .ficha-tabla tr,.ficha-tabla td{display:block}
+  .ficha-tabla thead{display:none}
+  .ficha-tabla{background:transparent}
+  .ficha-tabla tbody tr,.ficha-tabla tfoot tr{
+    display:flex;flex-wrap:wrap;gap:10px 20px;align-items:baseline;
+    padding:14px 16px;margin-bottom:8px;
+    background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
+  }
+  .ficha-tabla tbody tr:hover td,.ficha-tabla tr.apagada:hover td{background:transparent}
+  .ficha-tabla td{padding:0;border:0;background:transparent;vertical-align:baseline}
+  /* El nombre —o el código— se lleva el primer renglón entero: es por lo
+     que se busca la fila. */
+  .ficha-tabla td:first-child{flex:1 1 100%}
+  .ficha-tabla td[data-rot]{flex:0 0 auto;text-align:left}
+  .ficha-tabla td[data-rot]::before{
+    content:attr(data-rot);display:block;margin-bottom:3px;
+    font-family:var(--dato);font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--txt-3);font-weight:400;
+  }
+  .ficha-tabla td.col-accion{flex:1 1 100%;width:auto;white-space:normal;text-align:left}
+  /* Una fila desplegada —el formulario de anular una manilla— no es una
+     ficha: es lo que se abre debajo de una, y pintarla como tarjeta la
+     desprende de la manilla que la abrió. */
+  .ficha-tabla tr:has(>td[colspan]){
+    display:block;padding:0;margin:-8px 0 8px;background:transparent;border:0;
+  }
+  .ficha-tabla td[colspan]{padding:0}
+  .ficha-tabla .sin-nada{padding:24px 14px;text-align:center}
+
+  /* Canal y estado: siguen siendo tabla, con el aire justo para entrar. */
+  .dos-tablas .tabla th,.dos-tablas .tabla td{padding:9px 8px}
+  .dos-tablas .tabla thead th{white-space:normal;font-size:9.5px;letter-spacing:.05em}
+}
+
+/* ─── los compradores ───
+   La lista que se busca: alguien escribe «compré y no me llegó nada» y
+   hay que encontrarlo por nombre o por teléfono y hacerle algo. Siete
+   columnas no entran, pero tampoco sirve la receta de arriba: una ficha
+   con siete renglones rotulados obliga a leerlos todos, y acá lo que se
+   mira es el nombre, enseguida cuánto pagó, y qué botón apretar.
+
+   Así que esta ficha tiene su propia forma: la plata enfrentada al
+   nombre, el detalle y las manillas en el medio, y los botones abajo a lo
+   ancho, que es donde llega el pulgar.
+
+   Todo con `>` y no con descendencia: adentro de la fila desplegada de
+   una compra vive OTRA tabla —las manillas—, y con selectores sueltos sus
+   filas agarraban esta grilla y salían con las celdas repartidas en las
+   áreas equivocadas. */
+@media (max-width:760px){
+  .tabla-compras,.tabla-compras>tbody{display:block;background:transparent}
+  .tabla-compras>thead{display:none}
+  .tabla-compras>tbody>tr:not(.fila-detalle){
+    display:grid;grid-template-columns:minmax(0,1fr) auto;
+    grid-template-areas:
+      "quien    pago"
+      "compro   manillas"
+      "contacto rrpp"
+      "acc      acc";
+    gap:11px 14px;padding:14px 16px;margin-bottom:8px;
+    background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
+  }
+  .tabla-compras>tbody>tr:not(.fila-detalle):hover>td{background:transparent}
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td{
+    display:block;padding:0;border:0;background:transparent;
+  }
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(1){grid-area:quien}
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(2){grid-area:contacto}
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(3){grid-area:compro;max-width:none}
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(4){grid-area:manillas;text-align:right}
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(5){
+    grid-area:pago;text-align:right;font-size:16px;color:var(--txt);
+  }
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(6){grid-area:rrpp;text-align:right}
+  .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(7){grid-area:acc}
+  .tabla-compras>tbody>tr>td[data-rot]::before{
+    content:attr(data-rot);display:block;margin-bottom:3px;
+    font-family:var(--dato);font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--txt-3);
+  }
+
+  /* `width:auto` porque la columna de acciones de escritorio mide 1% —lo
+     que en una tabla significa «lo mínimo»— y en la ficha eso son tres
+     píxeles con tres botones adentro. */
+  .tabla-compras>tbody>tr>td.col-accion{
+    display:flex;flex-wrap:wrap;gap:8px;width:auto;white-space:normal;
+  }
+  /* Los tres se reparten el ancho: en escritorio son tres botones chicos
+     al final de la fila, acá son tres objetivos de un tercio de pantalla
+     cada uno. «Anular» queda al lado de los otros a propósito —mandarlo a
+     un renglón propio agrega 52px por ficha en una lista de doce— y lo que
+     lo protege no es la distancia sino que abre un formulario con motivo
+     obligatorio, no una anulación de un toque. */
+  .tabla-compras>tbody>tr>td.col-accion>.btn{flex:1 1 auto;margin-left:0}
+
+  /* Lo que se despliega —el link, las manillas, la anulación— se pega a
+     la ficha que lo abrió en vez de flotar como una tarjeta suelta. */
+  .tabla-compras>tbody>tr:not(.fila-detalle):has(+.fila-detalle){
+    margin-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0;
+  }
+  .tabla-compras>tbody>tr.fila-detalle{
+    display:block;margin-bottom:8px;overflow:hidden;
+    border:1px solid var(--linea);border-top:0;
+    border-radius:0 0 var(--r) var(--r);
+  }
+  .tabla-compras>tbody>tr.fila-detalle>td{display:block}
+}
+
