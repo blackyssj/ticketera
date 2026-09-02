@@ -468,3 +468,46 @@ html.js .rev.vista{
   .lamina .momento ul{margin-top:11px;gap:7px}
   .lamina .momento li{font-size:13.5px}
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   LA CUENTA DE TU NOCHE
+
+   La única parte de la presentación que el cliente toca. Pone sus
+   entradas y su precio y el recibo se rehace con SU plata. Un ejemplo
+   con números nuestros se mira; un número propio se discute — y una
+   reunión donde el cliente discute su propio número ya está ganada.
+   ══════════════════════════════════════════════════════════════════ */
+.calc{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:clamp(18px,3vh,26px)}
+.campo{display:flex;flex-direction:column;gap:7px}
+.campo label{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--hueso-40)
+}
+.campo input{
+  width:100%;min-height:52px;padding:0 14px;border-radius:11px;
+  background:var(--tinta-2);color:var(--hueso);
+  border:1px solid var(--filo);
+  font-family:var(--mono);font-size:19px;font-variant-numeric:tabular-nums;
+  -moz-appearance:textfield
+}
+.campo input::-webkit-outer-spin-button,
+.campo input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.campo input:focus{outline:none;border-color:var(--fluor);background:var(--tinta-3)}
+
+/* El renglón que se rehace mientras el cliente escribe. Sin animación:
+   un número que late mientras alguien lo lee es un número que no se lee. */
+.recibo .calculado{font-variant-numeric:tabular-nums}
+
+/* ═══ OBJECIONES ══════════════════════════════════════════════════
+   La lámina que ninguna presentación bonita tiene y toda venta necesita.
+   La pregunta va en fluor y adelante: si la hace el vendedor antes que el
+   cliente, deja de ser una objeción y pasa a ser un argumento. */
+.objeciones{display:grid;gap:1px;background:var(--canto);border:1px solid var(--canto);
+  border-radius:14px;overflow:hidden;margin-top:clamp(20px,3vh,30px)}
+.objecion{background:var(--tinta);padding:clamp(15px,2vw,20px)}
+.objecion h3{
+  font-size:clamp(15.5px,1.8vw,18px);font-weight:700;color:var(--fluor);
+  letter-spacing:-.012em;line-height:1.25
+}
+.objecion p{margin-top:7px;color:var(--hueso-72);font-size:14px;line-height:1.5}
+@media (min-width:820px){ .objeciones{grid-template-columns:repeat(3,1fr)} }

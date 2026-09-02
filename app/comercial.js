@@ -12,6 +12,12 @@
    Si queda vacío, los botones de WhatsApp se esconden solos en vez de
    mandar a un número que no existe — un botón roto en una presentación
    comercial cuesta más que un botón de menos. */
+/* El cargo por servicio, en un solo lugar. Si mañana se baja a 5% para
+   igualar a la competencia, se cambia acá y la cuenta de la presentación
+   se rehace sola. El texto de las láminas dice "8%" a mano: si cambia el
+   número, buscar "8%" en las dos páginas. */
+const FEE = 0.08;
+
 const CONTACTO = {
   wa: "59170000000",                 // ← reemplazar por el número real
   texto: "Hola, quiero vender mis entradas con TICKETAZO.",
@@ -137,4 +143,55 @@ const CONTACTO = {
     } else if (k === "Home") { ev.preventDefault(); ir(0); }
     else if (k === "End")  { ev.preventDefault(); ir(laminas.length - 1); }
   });
+})();
+
+/* ══════════════════════════════════════════════════════════════════
+   La cuenta de la noche
+
+   Dos campos y un recibo que se rehace. Es la única parte de la
+   presentación que el cliente toca, y existe por una razón de venta:
+   un ejemplo con números nuestros se mira; el número propio se
+   discute. La reunión donde el cliente discute su propio número ya
+   está ganada.
+   ══════════════════════════════════════════════════════════════════ */
+(function cuenta(){
+  const cant = document.getElementById("cant");
+  const precio = document.getElementById("precio");
+  if (!cant || !precio) return;
+
+  const $ = id => document.getElementById(id);
+  const salida = { linea: $("lineaEntradas"), sub: $("subtotal"), cargo: $("cargo"),
+                   total: $("total"), tuyo: $("tuyo") };
+
+  const bs = n => n.toLocaleString("es-BO", { minimumFractionDigits: 2,
+                                              maximumFractionDigits: 2 });
+  const entero = n => n.toLocaleString("es-BO");
+
+  /* Un campo vacío no es cero: es alguien a mitad de escribir. Mientras
+     tanto se sostiene el último valor válido en vez de mostrar Bs 0,00,
+     que en una reunión se lee como que el sistema se rompió. */
+  let ultimaCant = 1000, ultimoPrecio = 100;
+
+  function leer(campo, ultimo){
+    const n = Math.floor(Number(campo.value));
+    if (!Number.isFinite(n) || n < 1) return ultimo;
+    return Math.min(n, Number(campo.max) || n);
+  }
+
+  function pintar(){
+    ultimaCant   = leer(cant, ultimaCant);
+    ultimoPrecio = leer(precio, ultimoPrecio);
+
+    const sub   = ultimaCant * ultimoPrecio;
+    const cargo = Math.round(sub * FEE);
+
+    salida.linea.textContent = `${entero(ultimaCant)} × Bs ${entero(ultimoPrecio)}`;
+    salida.sub.textContent   = bs(sub);
+    salida.cargo.textContent = bs(cargo);
+    salida.total.textContent = "Bs " + bs(sub + cargo);
+    salida.tuyo.textContent  = "Bs " + bs(sub);
+  }
+
+  [cant, precio].forEach(c => c.addEventListener("input", pintar));
+  pintar();
 })();
