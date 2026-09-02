@@ -12,12 +12,6 @@
    Si queda vacío, los botones de WhatsApp se esconden solos en vez de
    mandar a un número que no existe — un botón roto en una presentación
    comercial cuesta más que un botón de menos. */
-/* El cargo por servicio, en un solo lugar. Si mañana se baja a 5% para
-   igualar a la competencia, se cambia acá y la cuenta de la presentación
-   se rehace sola. El texto de las láminas dice "8%" a mano: si cambia el
-   número, buscar "8%" en las dos páginas. */
-const FEE = 0.08;
-
 const CONTACTO = {
   wa: "59170000000",                 // ← reemplazar por el número real
   texto: "Hola, quiero vender mis entradas con TICKETAZO.",
@@ -158,10 +152,11 @@ const CONTACTO = {
   const cant = document.getElementById("cant");
   const precio = document.getElementById("precio");
   if (!cant || !precio) return;
+  const fee = document.getElementById("fee");   // sólo en la presentación
 
   const $ = id => document.getElementById(id);
   const salida = { linea: $("lineaEntradas"), sub: $("subtotal"), cargo: $("cargo"),
-                   total: $("total"), tuyo: $("tuyo") };
+                   filaTotal: $("filaTotal"), total: $("total"), tuyo: $("tuyo") };
 
   const bs = n => n.toLocaleString("es-BO", { minimumFractionDigits: 2,
                                               maximumFractionDigits: 2 });
@@ -178,20 +173,41 @@ const CONTACTO = {
     return Math.min(n, Number(campo.max) || n);
   }
 
+  /* El cargo es la excepción: vacío SÍ significa vacío. Ninguna de las dos
+     páginas publica una tarifa —cada cliente negocia la suya— así que sin
+     número el recibo muestra sólo lo que no se negocia: que el precio de la
+     entrada es entero del organizador. Con número, la cuenta se completa. */
+  function leerFee(){
+    if (!fee) return null;
+    const n = Number(fee.value);
+    if (fee.value.trim() === "" || !Number.isFinite(n) || n < 0) return null;
+    return Math.min(n, Number(fee.max) || n) / 100;
+  }
+
   function pintar(){
     ultimaCant   = leer(cant, ultimaCant);
     ultimoPrecio = leer(precio, ultimoPrecio);
 
-    const sub   = ultimaCant * ultimoPrecio;
-    const cargo = Math.round(sub * FEE);
+    const sub = ultimaCant * ultimoPrecio;
+    const pct = leerFee();
 
     salida.linea.textContent = `${entero(ultimaCant)} × Bs ${entero(ultimoPrecio)}`;
     salida.sub.textContent   = bs(sub);
-    salida.cargo.textContent = bs(cargo);
-    salida.total.textContent = "Bs " + bs(sub + cargo);
     salida.tuyo.textContent  = "Bs " + bs(sub);
+
+    if (pct === null) {
+      salida.cargo.textContent = "a convenir";
+      if (salida.filaTotal) salida.filaTotal.hidden = true;
+    } else {
+      const cargo = Math.round(sub * pct);
+      salida.cargo.textContent = bs(cargo);
+      if (salida.filaTotal) {
+        salida.filaTotal.hidden = false;
+        salida.total.textContent = "Bs " + bs(sub + cargo);
+      }
+    }
   }
 
-  [cant, precio].forEach(c => c.addEventListener("input", pintar));
+  [cant, precio, fee].forEach(c => c && c.addEventListener("input", pintar));
   pintar();
 })();

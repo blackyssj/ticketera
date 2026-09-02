@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Azeret+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/comercial.css?v=4">
+<link rel="stylesheet" href="/comercial.css?v=5">
 <script>document.documentElement.className="js"</script>
 </head>
 <body class="pagina-deck">
@@ -118,10 +118,15 @@
         <h2>Poné tus números.</h2>
         <p class="bajada">
           El precio lo ponés vos y lo cobrás entero: el cargo por servicio se le
-          suma al comprador y lo ve antes de pagar. Cambiá los dos campos y mirá
-          la cuenta de tu propia noche.
+          suma al comprador y lo ve antes de pagar. Cambiá los campos y mirá la
+          cuenta de tu propia noche.
         </p>
-        <div class="calc">
+        <!-- El tercer campo nace vacío a propósito. La página no publica
+             ninguna tarifa —cada cliente tiene la suya— pero el que la está
+             mostrando escribe el número acordado y la cuenta se completa
+             delante del cliente. Vacío, el recibo muestra lo único que no se
+             negocia: que el precio de la entrada es entero del organizador. -->
+        <div class="calc tres">
           <div class="campo">
             <label for="cant">Entradas</label>
             <input id="cant" type="number" inputmode="numeric" min="1" max="100000" step="50" value="1000">
@@ -130,6 +135,10 @@
             <label for="precio">Precio (Bs)</label>
             <input id="precio" type="number" inputmode="numeric" min="1" max="10000" step="10" value="100">
           </div>
+          <div class="campo">
+            <label for="fee">Cargo (%)</label>
+            <input id="fee" type="number" inputmode="decimal" min="0" max="30" step="0.5" placeholder="—">
+          </div>
         </div>
       </div>
 
@@ -137,9 +146,9 @@
         <h3>La cuenta de tu noche</h3>
         <dl>
           <div class="fila"><dt id="lineaEntradas">1.000 × Bs 100</dt><dd class="calculado" id="subtotal">100.000,00</dd></div>
-          <div class="fila"><dt>Cargo por servicio (8%)</dt><dd class="calculado" id="cargo">8.000,00</dd></div>
+          <div class="fila"><dt>Cargo por servicio</dt><dd class="calculado" id="cargo">a convenir</dd></div>
           <div class="corte"></div>
-          <div class="fila fuerte"><dt>Pagan los compradores</dt><dd class="calculado" id="total">Bs 108.000,00</dd></div>
+          <div class="fila fuerte" id="filaTotal" hidden><dt>Pagan los compradores</dt><dd class="calculado" id="total"></dd></div>
           <div class="fila vos"><dt>Te queda a vos</dt><dd class="calculado" id="tuyo">Bs 100.000,00</dd></div>
         </dl>
         <p class="nota">Disponible al instante, no al cierre del evento.</p>
@@ -248,12 +257,12 @@
       <h2>Tres preguntas, contestadas antes de que las hagas.</h2>
       <div class="objeciones">
         <article class="objecion">
-          <h3>“Otros cobran 5%. ¿Por qué ustedes 8%?”</h3>
+          <h3>“¿Cuánto me van a cobrar?”</h3>
           <p>
-            Porque ese 5% te paga en días y esa noche no te manda a nadie. Los tres
-            puntos de diferencia son tu plata al instante y alguien despierto toda
-            la noche, incluido. Si no necesitás ninguna de las dos, hay quien te
-            cobre menos y está bien.
+            Se acuerda con vos: depende de tu volumen y del tipo de evento. Y lo
+            paga el comprador, no sale de tu precio. Vas a encontrar quien te cobre
+            menos; no vas a encontrar quien te pague al instante y se quede
+            despierto con vos toda la noche.
           </p>
         </article>
         <article class="objecion">
@@ -305,6 +314,6 @@
   </svg>
 </button>
 
-<script src="/comercial.js?v=4"></script>
+<script src="/comercial.js?v=5"></script>
 </body>
 </html>

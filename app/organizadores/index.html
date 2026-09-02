@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Azeret+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/comercial.css?v=4">
+<link rel="stylesheet" href="/comercial.css?v=5">
 <script>document.documentElement.className="js"</script>
 </head>
 <body>
@@ -66,8 +66,8 @@
       <div class="tira rev">
         <div><b>Al instante</b><span>Tu plata disponible, sin esperar al cierre.</span></div>
         <div><b>Toda la noche</b><span>Alguien nuestro por WhatsApp, en tu evento.</span></div>
-        <div><b>8%</b><span>Cargo por servicio. Lo paga quien compra, no vos.</span></div>
-        <div><b>0%</b><span>Lo que te descontamos del precio de tu entrada.</span></div>
+        <div><b>Tu precio</b><span>Lo que ponés es lo que cobrás. El cargo lo paga quien compra.</span></div>
+        <div><b>Sin cuota</b><span>Ni alta, ni mensualidad, ni permanencia.</span></div>
       </div>
     </div>
   </section>
@@ -82,9 +82,9 @@
         <h2 class="h2">Vos cobrás lo que pusiste. El servicio lo paga el que compra.</h2>
         <p class="bajada">
           Es como cobran las ticketeras en todos lados y es la única forma de que
-          el precio de tu entrada siga siendo el precio de tu entrada. Ponés la
-          General en Bs 120 y son Bs 120 los que entran a tu liquidación. El 8%
-          se le suma al comprador y lo ve antes de pagar, con ese nombre.
+          el precio de tu entrada siga siendo el precio de tu entrada: lo que le
+          pusiste a la General es lo que entra a tu liquidación. El cargo por
+          servicio se le suma al comprador y él lo ve desglosado antes de pagar.
         </p>
         <p class="bajada">
           Y no esperás para cobrarlo. En el rubro se liquida después del evento,
@@ -92,23 +92,32 @@
           el momento y lo sacás cuando lo necesitás — el jueves para pagar el
           sonido, o el sábado a la madrugada.
         </p>
-        <p class="bajada">
-          No hay cuota mensual, no hay costo de instalación, no hay permanencia.
-          Si un mes no hacés eventos, no pagás nada.
-        </p>
+        <!-- Poné tus números: los dos campos son del que mira la página, y el
+             tercero es del que la muestra. Así la página no publica ninguna
+             tarifa y sigue sirviendo para hacer la cuenta en una reunión. -->
+        <div class="calc">
+          <div class="campo">
+            <label for="cant">Entradas</label>
+            <input id="cant" type="number" inputmode="numeric" min="1" max="100000" step="50" value="1000">
+          </div>
+          <div class="campo">
+            <label for="precio">Precio (Bs)</label>
+            <input id="precio" type="number" inputmode="numeric" min="1" max="10000" step="10" value="100">
+          </div>
+        </div>
       </div>
 
-      <div class="recibo rev" role="figure" aria-label="Ejemplo de cobro de una entrada de 120 bolivianos">
-        <h3>Ejemplo de cobro</h3>
+      <div class="recibo rev" role="figure" aria-label="La cuenta de tu noche">
+        <h3>La cuenta de tu noche</h3>
         <dl>
-          <div class="fila"><dt>Entrada General</dt><dd>120,00</dd></div>
-          <div class="fila"><dt>Cargo por servicio (8%)</dt><dd>9,60</dd></div>
+          <div class="fila"><dt id="lineaEntradas">1.000 × Bs 100</dt><dd class="calculado" id="subtotal">100.000,00</dd></div>
+          <div class="fila"><dt>Cargo por servicio</dt><dd class="calculado" id="cargo">a convenir</dd></div>
           <div class="corte"></div>
-          <div class="fila fuerte"><dt>Paga el comprador</dt><dd>Bs 129,60</dd></div>
-          <div class="fila vos"><dt>Te queda a vos</dt><dd>Bs 120,00</dd></div>
+          <div class="fila fuerte" id="filaTotal" hidden><dt>Pagan los compradores</dt><dd class="calculado" id="total"></dd></div>
+          <div class="fila vos"><dt>Te queda a vos</dt><dd class="calculado" id="tuyo">Bs 100.000,00</dd></div>
         </dl>
         <p class="nota">
-          El comprador ve el cargo desglosado antes de pagar.<br>
+          El cargo lo paga el comprador y no sale de tu precio.<br>
           Tu parte queda disponible al instante.
         </p>
       </div>
@@ -329,7 +338,7 @@
     <span class="logo chico" aria-hidden="true">TICKET<span>AZO</span></span>
     <p>
       El precio de la entrada lo pone quien organiza. Al comprar se suma un cargo
-      por servicio del 8% y el comprador lo ve desglosado antes de pagar.
+      por servicio, que el comprador ve desglosado antes de pagar.
     </p>
     <div class="pie-links">
       <a href="/">Cartelera</a>
@@ -341,6 +350,6 @@
   </div>
 </footer>
 
-<script src="/comercial.js?v=4"></script>
+<script src="/comercial.js?v=5"></script>
 </body>
 </html>
