@@ -7,13 +7,13 @@
    3. y en el deck, mueve el índice y la barra de progreso.
    ══════════════════════════════════════════════════════════════════ */
 
-/* ⚠ LO ÚNICO QUE HAY QUE CAMBIAR ACÁ.
+/* El contacto de las dos páginas, en un solo lugar.
    `wa` va sin +, sin espacios y sin guiones: es lo que pide wa.me.
    Si queda vacío, los botones de WhatsApp se esconden solos en vez de
    mandar a un número que no existe — un botón roto en una presentación
    comercial cuesta más que un botón de menos. */
 const CONTACTO = {
-  wa: "59170000000",                 // ← reemplazar por el número real
+  wa: "59178183001",
   texto: "Hola, quiero vender mis entradas con TICKETAZO.",
   correo: "",                        // opcional
   instagram: ""                      // opcional, sin @
