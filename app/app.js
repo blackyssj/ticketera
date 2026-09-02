@@ -138,7 +138,7 @@ function apiDemo() {
     async crearOrden(items, comprador) {
       await esperar(220);
       const { subtotal, fee, total } = cotizar();
-      return { id: crypto.randomUUID(), subtotal, fee, total,
+      return { id: crypto.randomUUID(), subtotal, fee, total, gratis: total === 0,
                expira_at: Date.now() + HOLD_SEG * 1000, comprador };
     },
     async iniciarPago(orden) {
@@ -179,7 +179,8 @@ function apiSupabase() {
       const r = await fn("crear-orden", { organizador: CFG.ORGANIZADOR, evento: CFG.EVENTO,
                                           items, comprador, r: REL,
                                           client_key: crypto.randomUUID() });
-      return { id: r.orden, subtotal: r.subtotal, fee: r.fee, total: r.total, comprador };
+      return { id: r.orden, subtotal: r.subtotal, fee: r.fee, total: r.total,
+               gratis: r.gratis === true, comprador };
     },
     iniciarPago: orden => fn("iniciar-pago", { orden: orden.id }),
     // estado-orden confirma contra la pasarela y emite en el mismo viaje
@@ -353,7 +354,10 @@ function pintarRail() {
   const b = $("#btnSeguir"), atras = $("#btnAtras");
   const cfg = {
     entradas: { txt: "Seguir",     on: hay,               atras: false },
-    datos:    { txt: "Ir a pagar", on: formValido(false), atras: true  },
+    // Sin nada que cobrar, "Ir a pagar" es una mentira que asusta: el que
+    // viene a un evento gratis lee "pagar" y cierra la pestaña.
+    datos:    { txt: total === 0 ? "Confirmar mi lugar" : "Ir a pagar",
+                on: formValido(false), atras: true  },
     pago:     { txt: "Procesando…",   on: false,        atras: false },
     listo:    { txt: "Listo",         on: false,        atras: false }
   }[S.paso];
@@ -473,6 +477,10 @@ function formValido(mostrar) {
 function pagoDice(html) { $("#pagoEstado").innerHTML = html; }
 
 async function pagar() {
+  /* En un evento gratis el tercer paso no es un pago: llamarlo así deja al
+     invitado esperando un cobro que no existe. El rótulo se decide acá, que
+     es el único momento en que ya se sabe cuánto suma el carrito. */
+  PASOS[2].txt = cotizar().total === 0 ? "Confirmación" : "Pago";
   irA("pago");
   try {
     pagoDice(`<div class="girador"></div><h3>Reservando tu lugar</h3>
@@ -480,6 +488,18 @@ async function pagar() {
     const items = [];
     Object.entries(S.cant).forEach(([id, q]) => { if (q) items.push({ tipo_id: id, cantidad: q }); });
       S.orden = await API.crearOrden(items, { ...S.comprador });
+
+    /* Evento gratis: la orden ya nació emitida del lado del servidor, así que
+       no hay pasarela que abrir ni pago que verificar. Se salta derecho a la
+       entrada. Un paso de cobro por Bs 0 no es sólo feo: la pasarela lo
+       rechaza y el comprador se queda trabado en una pantalla que no avanza. */
+    if (S.orden.gratis) {
+      pagoDice(`<div class="girador"></div><h3>Confirmando tu lugar</h3>
+        <p>No hay nada que pagar.</p>`);
+      S.entradas = await API.emitir(S.orden);
+      await mostrarListo();
+      return;
+    }
 
     pagoDice(`<div class="girador"></div><h3>Abriendo la pasarela</h3>
       <p>Un segundo.</p>`);

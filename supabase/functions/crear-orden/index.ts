@@ -97,6 +97,29 @@ Deno.serve(async (req) => {
     } catch (err) {
       return json({ ok: false, motivo: traducir(String((err as Error).message)) }, 409);
     }
+
+    /* Evento gratis. Si no hay nada que cobrar no hay pasarela que abrir: se
+       emite acá mismo y el comprador salta del formulario a su entrada.
+       Mandar una orden de Bs 0 a la pasarela devuelve un error del banco y
+       deja al comprador mirando una pantalla de cobro por cero.
+
+       Va acá y no en el navegador porque emitir es escribir, y el público no
+       escribe: esta función corre con service_role del lado del servidor.
+
+       emitir_orden es idempotente —si la orden ya estaba pagada devuelve las
+       que hay— así que un doble envío del formulario no duplica entradas. */
+    if (data?.ok && Number(data.total) === 0) {
+      try {
+        await rpc("emitir_orden", {
+          p_orden: data.orden, p_monto_cobrado: 0, p_pago_ref: "GRATIS",
+        });
+        return json({ ...data, gratis: true });
+      } catch (err) {
+        console.error(`no se pudo emitir la orden gratis ${data.orden}: ${err}`);
+        return json({ ok: false, motivo: "No se pudo confirmar tu lugar. Probá de nuevo." }, 500);
+      }
+    }
+
     return json(data);
   } catch (err) {
     return json({ ok: false, motivo: String((err as Error).message ?? err) }, 500);

@@ -510,7 +510,9 @@ html.js .rev.vista{
   letter-spacing:-.012em;line-height:1.25
 }
 .objecion p{margin-top:7px;color:var(--hueso-72);font-size:14px;line-height:1.5}
-@media (min-width:820px){ .objeciones{grid-template-columns:repeat(3,1fr)} }
+/* Cuatro preguntas en dos columnas y no en tres: con tres, la cuarta queda
+   sola en un renglón y parece un agregado de último momento. */
+@media (min-width:760px){ .objeciones{grid-template-columns:repeat(2,1fr)} }
 
 /* Tres campos en la presentación (entradas, precio y el cargo que escribe el
    que está mostrando) contra dos en la landing. El de la tarifa es angosto:
