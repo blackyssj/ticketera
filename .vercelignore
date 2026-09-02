@@ -1,0 +1,11 @@
+# Vercel sirve `app/` (Root Directory del proyecto), pero el CLI sube lo que
+# encuentra en la raíz. Todo lo que no sea la aplicación se queda acá: nada
+# de credenciales, nada de SQL, nada de documentación.
+.credenciales
+.env*
+.claude
+.superpowers
+supabase
+scripts
+docs
+*.md
