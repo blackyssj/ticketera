@@ -414,3 +414,57 @@ html.js .rev.vista{
 @media (max-width:559px){ .barra .btn-linea{display:none} }
 
 .pie-links a{display:inline-flex;align-items:center;min-height:44px}
+
+/* ═══ GRILLA DENSA ════════════════════════════════════════════════
+   La misma grilla de capacidades, pero adentro de una lámina: nueve
+   tarjetas tienen que entrar en una pantalla, así que se achica el aire
+   y el párrafo se vuelve un renglón. Es la lámina de amplitud — la que
+   contesta "¿y qué más hace?" sin que nadie tenga que leerla entera. */
+.grilla.densa{margin-top:clamp(18px,3vh,28px)}
+.grilla.densa .tarj{padding:clamp(13px,1.6vw,17px)}
+.grilla.densa .tarj .n{margin-bottom:9px;font-size:10px}
+.grilla.densa .tarj h3{font-size:clamp(15px,1.55vw,16.5px);letter-spacing:-.014em}
+.grilla.densa .tarj p{margin-top:5px;font-size:13px;line-height:1.4}
+
+/* Las que todavía no están encendidas se marcan, y se marcan de verdad:
+   un borde punteado y un rótulo. Vender lo que hay como si fuera lo mismo
+   que lo que puede haber es la forma más rápida de perder al segundo
+   cliente. */
+.tarj.pedido{background:transparent;box-shadow:inset 0 0 0 1px var(--filo)}
+.tarj.pedido:hover{background:rgba(35,21,80,.45)}
+.tarj.pedido .n{color:var(--hueso-40)}
+
+/* Nueve tarjetas tienen que entrar en UNA pantalla, así que en la lámina la
+   grilla se abre antes: dos columnas apenas hay 400px y tres desde 700. Con
+   el corte general (640 y 980) a 900px daban dos columnas, cinco filas y
+   760px de alto — la lámina crecía y dejaba de ser una lámina. */
+@media (min-width:400px){ .lamina .grilla.densa{grid-template-columns:repeat(2,1fr)} }
+@media (min-width:700px){ .lamina .grilla.densa{grid-template-columns:repeat(3,1fr)} }
+
+/* Y el título de esas dos láminas baja un escalón: compite con nueve
+   tarjetas por la misma pantalla y el que tiene que ganar no es el título. */
+.lamina.compacta h2{font-size:clamp(27px,4.4vw,46px)}
+.lamina.compacta .bajada{font-size:clamp(15px,1.7vw,17px)}
+
+/* En el teléfono la lámina de las nueve no entra ni a una columna ni a dos:
+   a una columna mide 1114px y a dos los títulos se parten en tres renglones.
+   Así que abajo de 700 la tarjeta deja de ser tarjeta y se vuelve renglón —
+   sin el número, con menos aire y el texto un punto más chico. Nueve
+   renglones entran en una pantalla; nueve tarjetas no. */
+@media (max-width:699px){
+  .lamina .grilla.densa .tarj{padding:11px 15px}
+  .lamina .grilla.densa .tarj .n{display:none}
+  .lamina .grilla.densa .tarj h3{font-size:15px}
+  .lamina .grilla.densa .tarj p{font-size:12.5px;margin-top:3px}
+}
+
+/* Los tres momentos apilados en el teléfono medían 1064px: una lámina y
+   cuarto. Se aprieta la caja, no se saca contenido — lo que ofrecemos es
+   justamente esa lámina. */
+@media (max-width:699px){
+  .lamina .momentos{gap:14px}
+  .lamina .momento{padding:16px 18px}
+  .lamina .momento h3{margin-top:8px;font-size:20px}
+  .lamina .momento ul{margin-top:11px;gap:7px}
+  .lamina .momento li{font-size:13.5px}
+}
