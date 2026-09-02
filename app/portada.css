@@ -720,3 +720,12 @@ body.yendo{opacity:.35;transition:opacity .19s ease}
   .rail{scroll-behavior:auto}
   body.yendo{opacity:1}
 }
+
+/* El único enlace del pie que no es un dato legal: el que lleva a la parte
+   comercial. Fluor porque tiene que encontrarse, chico porque no compite con
+   la cartelera. */
+.pie-vender a{
+  font-size:14px;color:var(--fluor);font-weight:600;
+  border-bottom:1px solid rgba(255,226,75,.32);padding-bottom:2px
+}
+.pie-vender a:hover{border-bottom-color:var(--fluor)}
