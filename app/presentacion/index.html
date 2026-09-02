@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="es-BO">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TICKETAZO — presentación comercial</title>
+<meta name="description" content="Entradas por QR y control de puerta en el mismo sistema. Qué resuelve, cómo funciona la noche del evento y cuánto cuesta.">
+<meta name="theme-color" content="#180E3A">
+<meta property="og:title" content="TICKETAZO — entradas y puerta, en el mismo sistema">
+<meta property="og:description" content="Vendés por QR, controlás la puerta con todos los porteros que necesites y cerrás con un corte que ya no se mueve.">
+<meta property="og:type" content="website">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,
+  %3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E
+  %3Crect width='32' height='32' rx='7' fill='%23180E3A'/%3E
+  %3Crect x='6' y='8' width='20' height='16' rx='2.5' fill='%23FFE24B'/%3E
+  %3Ccircle cx='6' cy='16' r='3' fill='%23180E3A'/%3E
+  %3Ccircle cx='26' cy='16' r='3' fill='%23180E3A'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Azeret+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/comercial.css?v=1">
+<script>document.documentElement.className="js"</script>
+</head>
+<body class="pagina-deck">
+
+<div class="progreso" id="progreso" aria-hidden="true"></div>
+
+<header class="barra">
+  <div class="carril barra-in">
+    <a class="logo" href="/" aria-label="TICKETAZO, inicio">TICKET<span>AZO</span></a>
+    <span class="barra-donde">Presentación</span>
+    <span class="barra-fin">
+      <a class="btn btn-fluor btn-chico" data-wa href="#">Hablemos</a>
+    </span>
+  </div>
+</header>
+
+<nav class="indice" id="indice" aria-label="Láminas de la presentación"></nav>
+
+<main class="deck" id="deck">
+
+  <!-- 01 ─ Tapa -->
+  <section class="lamina" id="l1" data-titulo="Tapa">
+    <div class="carril tapa">
+      <p class="marca">TICKET<span>AZO</span></p>
+      <p class="sub">Entradas y puerta, en el mismo sistema.</p>
+      <p class="sello">Santa Cruz de la Sierra · Presentación comercial · 2026</p>
+    </div>
+  </section>
+
+  <!-- 02 ─ Cómo se controla hoy -->
+  <section class="lamina" id="l2" data-titulo="Cómo se controla hoy">
+    <div class="carril">
+      <span class="ojal apagado">El punto de partida</span>
+      <h2>Así se controla una puerta hoy.</h2>
+      <ul class="dolores">
+        <li><b>01</b> El relacionador dice cuánto vendió. No hay con qué contrastarlo.</li>
+        <li><b>02</b> La lista es un papel, y el papel no avisa si un nombre ya entró.</li>
+        <li><b>03</b> Las manillas se cuentan al final de la noche, cuando ya no se corrige nada.</li>
+        <li><b>04</b> La comisión se calcula de memoria y se discute al otro día.</li>
+        <li><b>05</b> Y si alguien pregunta cuánta gente hay adentro, la respuesta es un cálculo.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 03 ─ La frase -->
+  <section class="lamina frase" id="l3" data-titulo="El problema real">
+    <div class="carril">
+      <h2>El problema no es que te roben. Es que <span style="color:var(--fluor)">no tenés cómo saberlo</span>.</h2>
+      <p class="pie-frase">Un sistema no te hace más honesta a la gente. Te hace verificable la noche.</p>
+    </div>
+  </section>
+
+  <!-- 04 ─ Tres momentos -->
+  <section class="lamina" id="l4" data-titulo="Tres momentos">
+    <div class="carril">
+      <span class="ojal">La solución</span>
+      <h2>Un evento son tres momentos.</h2>
+      <div class="momentos">
+        <article class="momento">
+          <span class="cuando">Antes</span>
+          <h3>Vendés</h3>
+          <ul>
+            <li>Fases con precio, cupo y fecha de cierre.</li>
+            <li>Cobro por QR desde el banco del comprador.</li>
+            <li>La entrada le llega al celular.</li>
+          </ul>
+        </article>
+        <article class="momento">
+          <span class="cuando">La noche</span>
+          <h3>Controlás</h3>
+          <ul>
+            <li>Todos los porteros que necesites.</li>
+            <li>Una QR entra una sola vez.</li>
+            <li>Tablero en vivo de cuánta gente hay adentro.</li>
+          </ul>
+        </article>
+        <article class="momento">
+          <span class="cuando">Después</span>
+          <h3>Cerrás</h3>
+          <ul>
+            <li>El corte se congela y ya no se mueve.</li>
+            <li>Quién vendió, quién cobra, cuánto queda.</li>
+            <li>Todo baja a Excel.</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 ─ La puerta -->
+  <section class="lamina" id="l5" data-titulo="La puerta">
+    <div class="carril">
+      <span class="ojal">La noche del evento</span>
+      <h2>Cuatro porteros, una lista, cero doble ingreso.</h2>
+      <p class="bajada">
+        Cada portero entra con su cuenta y escanea con la cámara de su propio
+        celular: no hay que comprar lectores ni instalar nada. Si dos leen la misma
+        entrada en el mismo segundo, entra una sola — no es una promesa, es cómo
+        está construido. Si la cámara no ayuda, se busca el código a mano.
+      </p>
+      <div class="tira">
+        <div><b>1 QR</b><span>= un ingreso, y nada más que uno</span></div>
+        <div><b>Sin lectores</b><span>La cámara del celular alcanza</span></div>
+        <div><b>En vivo</b><span>Cuánta gente hay adentro, ahora</span></div>
+        <div><b>Deshacer</b><span>Con el nombre de quién lo hizo</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 ─ Relacionadores -->
+  <section class="lamina" id="l6" data-titulo="Relacionadores">
+    <div class="carril">
+      <span class="ojal">Tu equipo</span>
+      <h2>Cada relacionador con su link. La comisión se calcula sola.</h2>
+      <p class="bajada">
+        Le das un link a cada uno. Lo que se compra desde ese link queda a su
+        nombre sin que nadie anote nada, y él ve sus propias ventas en su celular.
+        La comisión es un monto fijo en bolivianos por entrada — como se paga acá,
+        no un porcentaje que haya que sacar a mano.
+      </p>
+      <p class="bajada">
+        Al cerrar el evento aparece la lista de quién cobra cuánto, y cada pago se
+        marca una sola vez: una comisión pagada dos veces deja de ser posible.
+      </p>
+    </div>
+  </section>
+
+  <!-- 07 ─ La plata -->
+  <section class="lamina" id="l7" data-titulo="La plata">
+    <div class="carril plata-in">
+      <div>
+        <span class="ojal">La plata</span>
+        <h2>Vos cobrás lo que pusiste.</h2>
+        <p class="bajada">
+          El cargo por servicio lo paga quien compra, desglosado y a la vista antes
+          de pagar. El precio de tu entrada sigue siendo el precio de tu entrada.
+        </p>
+      </div>
+      <div class="recibo" role="figure" aria-label="Ejemplo de cobro de una entrada de 120 bolivianos">
+        <h3>Ejemplo de cobro</h3>
+        <dl>
+          <div class="fila"><dt>Entrada General</dt><dd>120,00</dd></div>
+          <div class="fila"><dt>Cargo por servicio (8%)</dt><dd>9,60</dd></div>
+          <div class="corte"></div>
+          <div class="fila fuerte"><dt>Paga el comprador</dt><dd>Bs 129,60</dd></div>
+          <div class="fila vos"><dt>Te queda a vos</dt><dd>Bs 120,00</dd></div>
+        </dl>
+        <p class="nota">Liquidación al cierre del evento.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 08 ─ Después -->
+  <section class="lamina" id="l8" data-titulo="El cierre">
+    <div class="carril">
+      <span class="ojal">Al otro día</span>
+      <h2>Un número que ya no se discute.</h2>
+      <p class="bajada">
+        Cerrás el evento y el corte queda congelado: entradas vendidas, cobradas,
+        validadas en puerta y comisiones. No es una consulta que cada vez da algo
+        distinto — es una foto con fecha, y si alguien corrige algo después, el
+        cierre no cambia solo.
+      </p>
+      <div class="tira">
+        <div><b>CSV</b><span>Órdenes, entradas y comisiones, a Excel</span></div>
+        <div><b>Bitácora</b><span>Quién hizo qué y a qué hora</span></div>
+        <div><b>Congelado</b><span>El cierre no se mueve más</span></div>
+        <div><b>Reabrible</b><span>Sólo a mano y queda anotado</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 09 ─ Boliche -->
+  <section class="lamina" id="l9" data-titulo="Si tenés boliche">
+    <div class="carril">
+      <span class="ojal">El otro módulo</span>
+      <h2>Y si además tenés boliche: listas, manillas y equipos.</h2>
+      <p class="bajada">
+        Un boliche no vive sólo de la venta anticipada. Vive de la lista, de la
+        manilla que se vende en la puerta y de un equipo de relacionadores con sus
+        jefes. Eso ninguna ticketera lo cubre — y es la otra mitad de la plata.
+      </p>
+      <ul class="dolores">
+        <li><b>A</b> Listas con check-in por nombre, sin papel y sin entrar dos veces.</li>
+        <li><b>B</b> Manillas vendidas en puerta, anotadas donde se anota todo lo demás.</li>
+        <li><b>C</b> Jefes de team con su gente, sus ventas y su comisión.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 10 ─ Qué ya funciona -->
+  <section class="lamina" id="l10" data-titulo="Qué ya funciona">
+    <div class="carril">
+      <span class="ojal">Estado</span>
+      <h2>No es una maqueta. Ya cobró plata de verdad.</h2>
+      <p class="bajada">
+        El sistema está en producción con su primer cliente y la pasarela de cobro
+        está integrada y probada con transacciones reales. Estos son los números que
+        hay al día de este corte, no los que quedarían mejor en una lámina.
+      </p>
+      <div class="tira">
+        <div><b>12</b><span>Compras cobradas con pasarela real</span></div>
+        <div><b>30</b><span>Entradas emitidas con su QR</span></div>
+        <div><b>Bs 4.613</b><span>Cobrados a través del sistema</span></div>
+        <div><b>1 sep 2026</b><span>Fecha de este corte</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11 ─ Cuánto cuesta -->
+  <section class="lamina" id="l11" data-titulo="Cuánto cuesta">
+    <div class="carril">
+      <span class="ojal">Condiciones</span>
+      <h2>Sin cuota, sin instalación, sin permanencia.</h2>
+      <p class="bajada">
+        No cobramos por tener el sistema: cobramos cuando vendés. Si un mes no hacés
+        eventos, no pagás nada.
+      </p>
+      <div class="tira">
+        <div><b>8%</b><span>Cargo por servicio, lo paga el comprador</span></div>
+        <div><b>0%</b><span>Lo que te descontamos a vos</span></div>
+        <div><b>Bs 0</b><span>Alta, instalación y mensualidad</span></div>
+        <div><b>0 días</b><span>De permanencia obligatoria</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 12 ─ Empezar -->
+  <section class="lamina" id="l12" data-titulo="Empezar">
+    <div class="carril">
+      <span class="ojal">Cómo arrancamos</span>
+      <h2>Tu próximo evento puede estar vendiendo hoy.</h2>
+      <ul class="dolores">
+        <li><b>01</b> Nos pasás nombre, fecha, lugar y el flyer.</li>
+        <li><b>02</b> Cargamos las fases, los precios y a tus relacionadores.</li>
+        <li><b>03</b> Te devolvemos el link y las cuentas de puerta. Y a vender.</li>
+      </ul>
+      <div class="hero-acciones">
+        <a class="btn btn-fluor" data-wa href="#">Escribinos por WhatsApp</a>
+        <a class="btn btn-linea" href="/organizadores/">Ver todo el detalle</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<button type="button" class="btn btn-linea btn-chico avanzar" id="avanzar">
+  Siguiente
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M12 5v14M5 12l7 7 7-7"/>
+  </svg>
+</button>
+
+<script src="/comercial.js?v=1"></script>
+</body>
+</html>
