@@ -2,6 +2,14 @@
 .credenciales
 .env
 .env.*
+# Y cualquier cosa que TERMINE en .env: las dos reglas de arriba solo atrapan
+# un archivo llamado `.env` o `.env.algo`, no uno llamado
+# `ticketazo-env-para-el-equipo.env` — que es exactamente el nombre con el que
+# el archivo circula por el equipo. Sin esta línea, copiarlo a la carpeta sin
+# renombrarlo lo deja listo para subir, con la pasarela y la contraseña de la
+# base adentro, a un repo público.
+*.env
+**/*.env
 !.env.example
 
 # Vercel: .env.local trae un token OIDC de corta vida y .vercel el link del
