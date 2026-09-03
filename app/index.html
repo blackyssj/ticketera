@@ -27,7 +27,7 @@
      esperar el saludo. En 4G eso es medio segundo. -->
 <link rel="preconnect" href="https://mjotxzcddhqqpuhkcetl.supabase.co" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Azeret+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/portada.css?v=30">
+<link rel="stylesheet" href="/portada.css?v=31">
 <!-- La clase `js` la pone el propio script, en línea y antes de pintar nada:
      de ella cuelga el estado inicial invisible de las tarjetas. Si el script
      no llega a correr, la clase no está, las tarjetas nunca se esconden y la
@@ -115,6 +115,9 @@
 </footer>
 
 <script src="/config.js"></script>
-<script src="/portada.js?v=30"></script>
+<!-- Sólo se usa con ?demo=1. Son 3 KB y evita una segunda ruta de la
+     portada; cargarlo siempre cuesta menos que mantener dos páginas. -->
+<script src="/datos-demo-cartelera.js?v=1"></script>
+<script src="/portada.js?v=31"></script>
 </body>
 </html>

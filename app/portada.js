@@ -49,7 +49,20 @@ const SELLOS = {
 const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio",
                "agosto","septiembre","octubre","noviembre","diciembre"];
 
+/* Con `?demo=1` la cartelera sale de un archivo y no de la base. Es para
+   mostrar la ticketera llena en una reunión: con un solo evento a la venta,
+   la portada es honesta pero no muestra lo que la ticketera es.
+
+   El parámetro es explícito y no un modo guardado: nadie llega acá sin el
+   link, y el que lo tiene sabe qué está mirando. Y nunca escribe nada — la
+   alternativa, meter eventos falsos en la base, los pondría delante de la
+   gente que ahora mismo está comprando de verdad. */
+const DEMO = new URLSearchParams(location.search).get("demo") === "1";
+
 function pedirCartelera() {
+  if (DEMO) {
+    return Promise.resolve({ ok: true, eventos: window.DEMO_CARTELERA || [] });
+  }
   return fetch(`${CFG.SUPABASE_URL}/functions/v1/eventos`, {
     headers: { Authorization: `Bearer ${CFG.SUPABASE_ANON_KEY}` },
   }).then(r => r.json());
@@ -87,7 +100,13 @@ function afiche(e, prioridad) {
      Tapado sigue estando en el árbol de accesibilidad, así que cuando hay
      imagen el papel se marca como decoración: el `alt` y el talón ya dicen
      el nombre, y no hace falta oírlo tres veces. */
-  const papel = `<div class="papel"${e.flyer_url ? ' aria-hidden="true"' : ""}>
+  /* El color del papel lo trae sólo la cartelera de demostración, donde no
+     hay flyers: nueve carteles del mismo violeta se leen como un error de
+     carga. En la cartelera real el color lo pone la imagen. */
+  const tinta = e.papel
+    ? ` style="--papel-a:${esc(e.papel[0])};--papel-b:${esc(e.papel[1])}"`
+    : "";
+  const papel = `<div class="papel"${tinta}${e.flyer_url ? ' aria-hidden="true"' : ""}>
       <span class="papel-dia" aria-hidden="true">${esc(e.dia)}</span>
       <h3 class="papel-nombre">${esc(e.nombre)}</h3>
       <span class="papel-org">${esc(e.organizador_nombre)}</span>
@@ -104,6 +123,17 @@ function afiche(e, prioridad) {
     : "";
 
   return `<div class="afiche">${papel}${img}${sello}</div>`;
+}
+
+/* El precio de la tarjeta. "desde 0 Bs" no es un precio, es una resta mal
+   hecha: un evento gratis tiene que decir que es gratis. Y no lleva "desde"
+   —lo que no cuesta nada no tiene un mínimo del que partir— así que la
+   palabra cambia y la etiqueta también, con el fluor de la marca: en una
+   cartelera, el único evento sin costo es el que más rápido se mira. */
+function precio(e) {
+  if (e.desde == null) return "";
+  if (Number(e.desde) === 0) return `<span class="desde gratis"><b>Gratis</b></span>`;
+  return `<span class="desde">desde <b>${esc(bs(e.desde))}</b></span>`;
 }
 
 const perf = `<div class="perf" aria-hidden="true"><i class="p1"></i><i class="p2"></i></div>`;
@@ -136,7 +166,7 @@ function tarjeta(e, i) {
       ${conFlyer ? `<h3 class="nombre">${esc(e.nombre)}</h3>` : ""}
       <div class="pie-talon">
         <span class="donde">${esc(e.lugar)}</span>
-        ${e.desde != null ? `<span class="desde">desde <b>${esc(bs(e.desde))}</b></span>` : ""}
+        ${precio(e)}
       </div>
     </div>
   </a>`;
@@ -178,7 +208,7 @@ function destacado(e, i) {
       ${e.flyer_url ? `<span class="quien">${esc(e.organizador_nombre)}</span>` : ""}
       <div class="accion">
         <span class="ver" aria-hidden="true">Ver entradas<i class="flecha"></i></span>
-        ${e.desde != null ? `<span class="desde">desde <b>${esc(bs(e.desde))}</b></span>` : ""}
+        ${precio(e)}
       </div>
     </div>
   </a>`;
@@ -242,8 +272,11 @@ function vigilarImagenes(zona) {
    entran en este mismo momento) y no por posición en la lista: con el
    índice global, la tarjeta 20 esperaría un segundo entero después de
    aparecer, que se siente como que la página se colgó. */
+let entrego = false;   // ¿el observer llegó a entregar alguna vez?
+
 const observador = "IntersectionObserver" in window
   ? new IntersectionObserver((entradas, obs) => {
+      entrego = true;
       let n = 0;
       entradas.forEach(x => {
         if (!x.isIntersecting) return;
@@ -260,6 +293,15 @@ function revelar(zona) {
      muestran y listo. Una animación es un lujo; ver los eventos, no. */
   if (!observador) { piezas.forEach(p => p.classList.add("vista")); return; }
   piezas.forEach(p => observador.observe(p));
+
+  /* Y la misma regla vale cuando el observer existe pero no entrega. Pasa:
+     una pestaña abierta en segundo plano no dispara IntersectionObserver, y
+     como las tarjetas nacen invisibles, la cartelera queda en blanco hasta
+     que alguien la mire — que es justo cuando ya la dio por rota. A segundo
+     y medio sin una sola entrega, se muestran todas. */
+  setTimeout(() => {
+    if (!entrego) piezas.forEach(p => p.classList.add("vista"));
+  }, 1500);
 }
 
 /* ── el carrusel ──

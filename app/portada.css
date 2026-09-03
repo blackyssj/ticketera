@@ -240,7 +240,7 @@ img{max-width:100%;display:block}
   background:
     repeating-linear-gradient(128deg,
       transparent 0 13px, rgba(255,226,75,.055) 13px 26px),
-    linear-gradient(200deg,var(--tinta-3),var(--tinta-2) 78%);
+    linear-gradient(200deg,var(--papel-a,var(--tinta-3)),var(--papel-b,var(--tinta-2)) 78%);
 }
 /* Arriba a la derecha y entero. Abajo chocaba con el nombre y con la raya
    fluor; y sangrado fuera del borde, el recorte dejaba a la vista media
@@ -729,3 +729,8 @@ body.yendo{opacity:.35;transition:opacity .19s ease}
   border-bottom:1px solid rgba(255,226,75,.32);padding-bottom:2px
 }
 .pie-vender a:hover{border-bottom-color:var(--fluor)}
+
+/* El único precio que se dice con una palabra y no con una cifra. Va en
+   fluor porque en una pared de nueve carteles, el gratis es el que decide
+   la noche de alguien que estaba mirando de paso. */
+.desde.gratis b{color:var(--fluor);font-weight:600}
