@@ -140,7 +140,7 @@ const CONTACTO = {
 })();
 
 /* ══════════════════════════════════════════════════════════════════
-   La cuenta de la noche
+   La cuenta del evento
 
    Dos campos y un recibo que se rehace. Es la única parte de la
    presentación que el cliente toca, y existe por una razón de venta:
