@@ -1,5 +1,4 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
   "headers": [
     {
       "source": "/(.*)",
@@ -9,6 +8,30 @@
           "value": "public, max-age=0, must-revalidate"
         }
       ]
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "ticketera-coral.vercel.app"
+        }
+      ],
+      "destination": "https://ticketazo.com.bo/$1",
+      "permanent": true
+    },
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.ticketazo.com.bo"
+        }
+      ],
+      "destination": "https://ticketazo.com.bo/$1",
+      "permanent": true
     }
   ],
   "rewrites": [
@@ -52,5 +75,6 @@
       "source": "/:organizador/:evento",
       "destination": "/evento.html"
     }
-  ]
+  ],
+  "$schema": "https://openapi.vercel.sh/vercel.json"
 }
