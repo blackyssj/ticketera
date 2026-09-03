@@ -1,0 +1,39 @@
+/* ══════════════════════════════════════════════════════════════════
+   LEGAL — términos y privacidad. Un documento, no una landing: papel
+   claro, una columna de 66 caracteres, títulos numerados porque acá el
+   número SÍ es información (se cita "cláusula 5"). Usa las mismas fuentes
+   que el checkout (styles.css) porque de ahí llega el 90 % de la gente,
+   desde el link del casillero "Acepto los términos".
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  --papel:#F6F1E4;--tinta:#0B0A0A;--tinta-60:rgba(11,10,10,.62);--tinta-30:rgba(11,10,10,.28);
+  --dorado:#E9B44C;--rojo:#C8322B;
+  --display:"Big Shoulders Display",Impact,sans-serif;--texto:"Inter Tight",system-ui,sans-serif;--dato:"DM Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--papel);color:var(--tinta);font-family:var(--texto);font-size:16.5px;line-height:1.6}
+a{color:var(--tinta);text-decoration-thickness:1px;text-underline-offset:3px}
+a:focus-visible,button:focus-visible{outline:3px solid var(--dorado);outline-offset:2px}
+.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px clamp(16px,4vw,32px);border-bottom:1px solid var(--tinta-30)}
+.marca{font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:.04em;text-decoration:none;min-height:44px;display:inline-flex;align-items:center}
+.marca span{color:var(--dorado)}
+.barra a.volver{font-family:var(--dato);font-size:12.5px;letter-spacing:.04em;min-height:44px;display:inline-flex;align-items:center}
+.doc{max-width:66ch;margin:0 auto;padding:clamp(28px,5vw,56px) clamp(16px,4vw,32px) 80px}
+.doc h1{font-family:var(--display);font-weight:800;font-size:clamp(40px,9vw,64px);line-height:.95;text-transform:uppercase;margin:0 0 6px;text-wrap:balance}
+.version{font-family:var(--dato);font-size:12.5px;color:var(--tinta-60);letter-spacing:.03em;margin:0 0 28px}
+/* El resumen va primero porque casi nadie lee un contrato entero desde el
+   teléfono con la fila avanzando; lo que sigue es la letra completa. */
+.resumen{border:1px solid var(--tinta);border-radius:6px;padding:16px 18px;margin:0 0 34px}
+.resumen h2{font-family:var(--dato);font-size:12px;letter-spacing:.1em;text-transform:uppercase;margin:0 0 10px;color:var(--tinta-60)}
+.resumen ul{margin:0;padding-left:18px}
+.resumen li{margin:6px 0}
+.doc h2{font-family:var(--display);font-weight:700;font-size:26px;text-transform:uppercase;letter-spacing:.02em;margin:40px 0 10px;line-height:1.05}
+.doc h2 b{color:var(--dorado);margin-right:8px;font-weight:700}
+.doc p,.doc li{max-width:66ch}
+.doc ul{padding-left:20px}
+.doc p{margin:0 0 14px}
+.nota{font-family:var(--dato);font-size:13px;color:var(--tinta-60);border-left:3px solid var(--dorado);padding-left:12px;margin:18px 0}
+.pie{margin-top:52px;padding-top:18px;border-top:1px solid var(--tinta-30);font-family:var(--dato);font-size:12.5px;color:var(--tinta-60)}
+.pie a{min-height:44px;display:inline-flex;align-items:center}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}

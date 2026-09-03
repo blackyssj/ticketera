@@ -5,10 +5,48 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Entradas — TICKETAZO</title>
 <meta name="theme-color" content="#0B0A0A">
+<!-- La base y el storage viven en el mismo host: un apretón de manos para
+     la función `evento` y para el afiche. -->
+<link rel="preconnect" href="https://mjotxzcddhqqpuhkcetl.supabase.co" crossorigin>
+<script>
+/* Arranque temprano. La función `evento` tarda cerca de un segundo, y antes
+   app.js recién la pedía después de bajar las fuentes, el CSS y cuatro
+   scripts: todo eso en fila, y el pedido más lento al final de la fila. Acá
+   sale primero, antes de que el navegador sepa siquiera qué fuente usar, y la
+   promesa queda en window.__evento para que app.js la consuma en vez de
+   volver a pedir (API.evento).
+
+   Lee organizador y evento del path con la MISMA regla que app.js (CFG):
+   dos segmentos, y el primero no es una ruta reservada. Si cambia una, cambia
+   la otra. `?modo=demo` no pide nada, igual que allá.
+
+   La URL y la anon key están repetidas acá a propósito: config.js todavía no
+   cargó y esperar a que cargue es perder lo que se gana. Son públicas por
+   diseño (ver config.js), pero TIENEN QUE COINCIDIR con config.js — si se
+   cambia el proyecto, se cambian los dos lugares. */
+(function () {
+  try {
+    if (new URLSearchParams(location.search).get("modo") === "demo") return;
+    var seg = location.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+    if (seg.length < 2 || seg[0] === "admin" || seg[0] === "orden") return;
+    var URL_ = "https://mjotxzcddhqqpuhkcetl.supabase.co";
+    var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qb3R4emNkZGhxcXB1aGtjZXRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4NTk2NzMsImV4cCI6MjEwMzQzNTY3M30.yym969pECvbp_01-vM4d5QCVEvUV_kPUmNhtp51a0g0";
+    window.__evento = fetch(URL_ + "/functions/v1/evento", {
+      method: "POST",
+      headers: { apikey: ANON, Authorization: "Bearer " + ANON,
+                 "Content-Type": "application/json" },
+      body: JSON.stringify({ organizador: seg[0], evento: seg[1] })
+    });
+    // Nadie escucha todavía: sin esto un fallo de red se loguea como
+    // "unhandled rejection" aunque app.js lo vaya a manejar después.
+    window.__evento.catch(function () {});
+  } catch (e) { /* un path que no se puede decodificar: app.js ya lo dice */ }
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=26">
+<link rel="stylesheet" href="/styles.css?v=28">
 </head>
 <body>
 
@@ -20,13 +58,31 @@
   </div>
 </header>
 
-<!-- ══ paso 1 · hero + entradas ══════════════════════════════════ -->
+<!-- ══ paso 1 · hero + entradas ══════════════════════════════════
+     Los .hueso son el esqueleto: la forma de lo que va a llegar mientras la
+     función contesta. Desaparecen solos — app.js pisa el contenido de cada
+     elemento al pintar, y con él se van. -->
 <section class="hero" id="hero">
   <div class="carril">
-    <p class="eyebrow" id="heroLugar"></p>
-    <h1 class="titulo"><span class="l1" id="heroL1"></span><span class="l2" id="heroL2"></span></h1>
-    <p class="bajada" id="heroBajada"></p>
-    <div class="datos" id="heroDatos"></div>
+    <p class="eyebrow" id="heroLugar"><span class="hueso" style="width:42%"></span></p>
+    <h1 class="titulo">
+      <span class="l1" id="heroL1"><span class="hueso" style="width:48%"></span></span>
+      <span class="l2" id="heroL2"><span class="hueso" style="width:72%"></span></span>
+    </h1>
+    <!-- El afiche, chico y al costado. Es lo que la persona vio en WhatsApp o
+         en Instagram: verlo acá confirma que llegó al lugar correcto. Y de
+         paso queda en caché para el ticket, que se dibuja sobre esta misma
+         imagen: por eso el crossorigin, ticket.js la carga igual y sin él
+         el navegador la bajaría dos veces. app.js le pone el src cuando la
+         función trae arte_url; sin arte no aparece. -->
+    <img class="hero-arte" id="heroArte" alt="" fetchpriority="high" decoding="async"
+         crossorigin="anonymous" hidden>
+    <p class="bajada" id="heroBajada"><span class="hueso" style="width:92%"></span><span class="hueso" style="width:58%"></span></p>
+    <div class="datos" id="heroDatos"><span class="hueso" style="width:96px"></span><span class="hueso" style="width:120px"></span></div>
+    <button type="button" class="hero-compartir" id="btnCompartirEvento" hidden>
+      <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10V2M5 4.5 8 1.5l3 3"/><path d="M3 8v5.5h10V8"/></svg>
+      Compartir evento
+    </button>
   </div>
   <svg class="espuma-borde" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
     <path fill="#F6F1E4" d="M0,52 C60,30 110,66 170,56 C230,46 262,22 322,32 C382,42 404,70 470,62 C536,54 566,26 630,34 C694,42 726,68 790,60 C854,52 884,24 950,32 C1016,40 1046,70 1110,62 C1174,54 1206,28 1268,36 C1330,44 1372,66 1440,50 L1440,90 L0,90 Z"></path>
@@ -46,15 +102,58 @@
       <!-- ─── columna de contenido ─── -->
       <div class="lienzo-col">
 
-        <!-- PASO entradas -->
-        <section class="panel" data-paso="entradas">
+        <!-- PASO entradas. aria-busy mientras el esqueleto está puesto:
+             app.js lo saca cuando llega el evento. -->
+        <section class="panel" data-paso="entradas" aria-busy="true">
           <div class="panel-cab">
             <h2>Entradas</h2>
             <span class="fase" id="faseChip"></span>
             <!-- Sólo aparece si la fase trae fecha de cierre de verdad. -->
             <span class="cierre" id="faseCierre" hidden></span>
           </div>
-          <div class="tipos" id="tipos"></div>
+          <!-- Si este teléfono ya compró para ESTE evento, se lo recuerda
+               antes de que compre de nuevo por las dudas. -->
+          <p class="ya-tenes" id="yaTenes" hidden></p>
+          <div class="tipos" id="tipos">
+            <article class="tipo esqueleto" aria-hidden="true">
+              <span class="hueso" style="width:38%;height:22px"></span>
+              <span class="hueso" style="width:72%;height:12px"></span>
+              <span class="hueso" style="width:150px;height:34px"></span>
+            </article>
+            <article class="tipo esqueleto" aria-hidden="true">
+              <span class="hueso" style="width:26%;height:22px"></span>
+              <span class="hueso" style="width:60%;height:12px"></span>
+              <span class="hueso" style="width:150px;height:34px"></span>
+            </article>
+          </div>
+
+          <!-- Las dudas que llegan por WhatsApp mientras la persona todavía
+               no compró. Contestadas acá, antes de pedirle un dato. -->
+          <section class="dudas" id="dudas" aria-label="Dudas rápidas">
+            <h3>Dudas rápidas</h3>
+            <details>
+              <summary>¿Cómo recibo mi entrada?</summary>
+              <p>Apenas se confirma, aparece acá mismo en pantalla con un link para volver a
+                 verla cuando quieras<span id="dudaCorreo">, y también te la mandamos al correo</span>.
+                 Además queda guardada en <a href="/mis-entradas">Mis entradas</a>, en este teléfono.</p>
+            </details>
+            <details>
+              <summary>¿Puedo pasársela a otra persona?</summary>
+              <p>Sí: mandale el link o la imagen con el QR. Eso sí, cada entrada entra una sola
+                 vez — la primera que se escanea en la puerta es la que entra.</p>
+            </details>
+            <details>
+              <summary>¿Y si no me llega?</summary>
+              <p>El link de tu orden es tu entrada: guardalo y la vas a encontrar siempre ahí.
+                 Si igual algo falla, <a id="dudaWa" href="#" target="_blank" rel="noopener">escribinos
+                 por WhatsApp</a> y lo resolvemos.</p>
+            </details>
+            <!-- Sólo cuando el evento no cobra: en uno pago la pregunta sobra. -->
+            <details id="dudaGratis" hidden>
+              <summary>¿Es gratis de verdad?</summary>
+              <p>Sí. Elegís tu entrada, dejás tus datos y se confirma al toque, sin pagar nada.</p>
+            </details>
+          </section>
         </section>
 
         <!-- PASO datos -->
@@ -62,7 +161,16 @@
           <div class="panel-cab">
             <h2>Tus datos</h2>
             <p class="panel-nota">Acá te mandamos el QR.</p>
+            <!-- Sólo si el evento es para mayores (edad_min >= 18, app.js):
+                 se avisa antes de pedir un dato, no en la puerta. -->
+            <p class="panel-nota nota-edad" id="avisoEdad" hidden>Evento para mayores de 18. En la puerta pueden pedir tu carnet.</p>
           </div>
+          <!-- Se ve sólo si los campos vinieron precargados de una compra
+               anterior en este teléfono (localStorage ticketazo.comprador). -->
+          <p class="precargado" id="precargado" hidden>
+            <span>Precargamos tus datos de la última vez.</span>
+            <button type="button" class="link" id="btnNoSoy">No soy yo</button>
+          </p>
           <form class="form" id="form" novalidate>
             <label class="campo">
               <span>Nombre y apellido</span>
@@ -82,6 +190,17 @@
                      placeholder="vos@correo.com">
               <em class="error" id="eMail"></em>
             </label>
+            <!-- Obligatorio: crear-orden exige `tc` (la versión vigente, TC_VERSION
+                 en app.js) y sin eso no hay orden. Los links abren aparte para no
+                 perder lo ya escrito. Clic en un link no tilda el casillero: el
+                 navegador no dispara el label cuando el blanco es un <a>. -->
+            <div class="campo ancho tc">
+              <label class="tc-fila" for="fTc">
+                <input id="fTc" name="tc" type="checkbox" required>
+                <span class="tc-texto">Acepto los <a href="/terminos/" target="_blank" rel="noopener">términos y condiciones</a> y la <a href="/privacidad/" target="_blank" rel="noopener">política de privacidad</a>.</span>
+              </label>
+              <em class="error" id="eTc"></em>
+            </div>
           </form>
           <p class="letra-chica">Usamos tus datos para emitir la entrada y avisarte si el evento cambia. Nada más.</p>
         </section>
@@ -100,8 +219,8 @@
           </div>
           <div class="tickets" id="tickets"></div>
           <div class="listo-acciones">
-            <button class="btn primario" id="btnDescargar">Guardar las entradas</button>
-            <button class="btn plano" id="btnOtra">Comprar otra</button>
+            <button type="button" class="btn primario" id="btnDescargar">Guardar las entradas</button>
+            <button type="button" class="btn plano" id="btnOtra">Comprar otra</button>
           </div>
           <p class="guardar-nota">También podés mantener apretada la entrada y
             elegir <b>Guardar imagen</b>, o sacarle una captura de pantalla.</p>
@@ -118,6 +237,10 @@
           <p class="mias" id="listoMias" hidden>
             <a href="/mis-entradas">Ver todas mis entradas</a> guardadas en este teléfono.
           </p>
+          <!-- La cuenta del comprador (cuenta.js). Lo llena pintarCuentaListo
+               en app.js: "guardada en tu cuenta" si hay sesión, o el
+               formulario de crear/entrar si no. En modo demo no aparece. -->
+          <div class="cuenta-listo" id="cuentaListo" hidden></div>
 
           <!-- Llegar al evento. El día que importa nadie vuelve a esta
                pantalla; la agenda y el mapa del teléfono sí siguen ahí. -->
@@ -127,13 +250,24 @@
             <button type="button" class="btn plano chico" id="btnCompartir" hidden>Compartir mi entrada</button>
           </div>
           <p class="letra-chica" id="listoRef"></p>
+          <p class="letra-chica legales">Al comprar aceptaste los <a href="/terminos/">términos y condiciones</a> y la <a href="/privacidad/">política de privacidad</a>.</p>
         </section>
+
+        <!-- Ayuda a mano mientras se dejan los datos y se paga (pasos 2 y 3,
+             irA en app.js): son los dos momentos en los que alguien se traba
+             y cierra. Chico y en texto: no compite con el botón de seguir. -->
+        <p class="ayuda-wa" id="ayudaWa" hidden>¿Algo no cierra?
+          <a href="https://wa.me/59178183001?text=Hola,%20necesito%20ayuda%20con%20mi%20compra" target="_blank" rel="noopener">Escribinos por WhatsApp</a>
+        </p>
 
       </div>
 
-      <!-- ─── rail de resumen ─── -->
-      <aside class="rail" id="rail" aria-label="Tu compra">
-        <button class="rail-tirador" id="railTirador" aria-expanded="false">
+      <!-- ─── rail de resumen ───
+           data-vacio="1" de entrada: en el teléfono la barra de abajo se
+           esconde mientras el carrito está vacío (styles.css), y arranca
+           escondida para no asomar y volver a irse cuando carga el evento. -->
+      <aside class="rail" id="rail" aria-label="Tu compra" data-vacio="1">
+        <button type="button" class="rail-tirador" id="railTirador" aria-expanded="false">
           <span class="rail-resumen" id="railResumen">Elegí tus entradas</span>
           <span class="reloj movil" hidden><i></i><span class="relojTxt">10:00</span></span>
           <span class="rail-total" id="railTotalChico">0 Bs</span>
@@ -158,22 +292,46 @@
 
         <!-- el pie NO se pliega: la acción primaria siempre está a la vista -->
         <div class="rail-pie">
-          <button class="btn primario ancho" id="btnSeguir" disabled>Seguir</button>
-          <button class="btn plano ancho" id="btnAtras" hidden>Volver</button>
+          <button type="button" class="btn primario ancho" id="btnSeguir" disabled>Seguir</button>
+          <button type="button" class="btn plano ancho" id="btnAtras" hidden>Volver</button>
           <p class="letra-chica" id="railAviso"></p>
+          <!-- Se ve en el paso de datos, con algo que cobrar (pintarRail):
+               la persona lo lee al lado del total y del botón "Ir a pagar",
+               que es cuando decide. En un evento gratis no hay nada que
+               devolver y no se muestra. -->
+          <p class="letra-chica devolucion" id="devolucion" hidden>Sin devolución por no asistir. Si el evento se cancela, se devuelve la entrada.</p>
         </div>
       </aside>
     </div>
   </div>
 </main>
 
+<!-- El pie. En el teléfono la barra del carrito va fija abajo; styles.css le
+     da al pie el mismo espacio que la barra mide (--alto-barra) para que los
+     links no queden debajo de ella. -->
+<footer class="pie">
+  <div class="carril pie-in">
+    <span class="pie-marca">TICKETAZO</span>
+    <nav class="pie-links" aria-label="Legales">
+      <a href="/terminos/">Términos y condiciones</a>
+      <a href="/privacidad/">Privacidad</a>
+    </nav>
+  </div>
+</footer>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<!-- qrcode-generator recién se usa al dibujar los tickets, al final: con
+     defer no frena el arranque. Nada lo llama antes de DOMContentLoaded
+     (ticket.js y app.js sólo lo usan dentro de funciones). supabase-js ya no
+     se carga: eran 170 KB para un fetch que app.js hace solo. -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js" defer></script>
 <script src="/config.js"></script>
 <script src="/datos-demo.js?v=25"></script>
 <script src="/ticket.js?v=25"></script>
-<script src="/app.js?v=26"></script>
+<!-- La sesión del comprador. Antes de app.js: crearOrden le pide el token
+     y la pantalla "listo" le pide crear/entrar/vincular. -->
+<script src="/cuenta.js?v=1"></script>
+<script src="/app.js?v=29"></script>
 </body>
 </html>

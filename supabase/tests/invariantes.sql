@@ -5,7 +5,12 @@ declare v_malas text;
 begin
   select string_agg(t.tablename, ', ' order by t.tablename) into v_malas
   from pg_tables t
-  where t.schemaname = 'public' and t.tablename <> 'organizadores'
+  -- organizadores ES el tenant. contactos (0047) y cuenta_intentos (0049)
+  -- son de la plataforma y no de un cliente: un pedido de "quiero vender
+  -- con ustedes" y un intento de crear cuenta de comprador no pertenecen
+  -- a ningún organizador. Todo lo demás lleva organizador_id not null.
+  where t.schemaname = 'public'
+    and t.tablename not in ('organizadores', 'contactos', 'cuenta_intentos')
     and not exists (select 1 from information_schema.columns c
                      where c.table_schema = 'public' and c.table_name = t.tablename
                        and c.column_name = 'organizador_id' and c.is_nullable = 'NO');

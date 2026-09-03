@@ -14,6 +14,11 @@ const json = (b: unknown, s = 200) =>
 const SB  = Deno.env.get("SUPABASE_URL")!;
 const KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const H = { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" };
+/* La anon key la inyecta el runtime igual que las otras dos. Sirve para
+   reconocer cuándo el Authorization trae la anon key (un comprador sin
+   cuenta) y cuándo trae el JWT de un comprador logueado. */
+const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function rest(ruta: string, init: RequestInit = {}) {
   const r = await fetch(`${SB}/rest/v1/${ruta}`, { ...init, headers: { ...H, ...(init.headers ?? {}) } });
@@ -34,6 +39,33 @@ async function hashIp(req: Request) {
   const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "sin-ip";
   const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip + "|ticketera"));
   return Array.from(new Uint8Array(b)).slice(0, 12).map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+/* ── el comprador logueado ──
+   Si el comprador ya tiene cuenta (0049), el navegador manda su JWT en el
+   Authorization en vez de la anon key, y la orden nace con dueño: aparece
+   en "mis compras" sin que tenga que guardarla a mano después.
+
+   El token se verifica contra /auth/v1/user y no se decodifica — un atob()
+   lee lo que el token DICE sin comprobar quién lo firmó. Y si no vale
+   (venció, es basura, es la anon key), la respuesta es null y la compra
+   sigue EXACTAMENTE igual que sin cuenta: nunca se rechaza una venta por
+   un problema de sesión. Por eso tampoco tira: cualquier error acá es
+   "no hay comprador logueado". */
+async function compradorLogueado(req: Request): Promise<string | null> {
+  const cab = req.headers.get("Authorization") ?? "";
+  const token = /^Bearer\s+(.+)$/i.exec(cab)?.[1]?.trim();
+  if (!token || token === ANON) return null;
+  try {
+    const r = await fetch(`${SB}/auth/v1/user`, {
+      headers: { apikey: KEY, Authorization: `Bearer ${token}` },
+    });
+    if (!r.ok) return null;
+    const u = await r.json().catch(() => null);
+    return typeof u?.id === "string" && UUID_RE.test(u.id) ? u.id : null;
+  } catch {
+    return null;
+  }
 }
 
 /* Los errores de la base salen con prefijo (SIN_CUPO:, MESA_TOMADA:, …).
@@ -65,6 +97,13 @@ Deno.serve(async (req) => {
     if (nombre.length < 3) return json({ ok: false, motivo: "Falta el nombre del comprador." }, 400);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email))
       return json({ ok: false, motivo: "El correo no es válido." }, 400);
+    /* Los términos se aceptan por orden, no por comprador: lo que vale es la
+       versión vigente cuando se compró. El front manda la versión que mostró;
+       si no viene, la compra no sigue —una orden sin aceptación registrada no
+       sirve el día que haya que probarla. La versión se guarda tal cual llega
+       (texto corto) para que un cambio de términos no reescriba la historia. */
+    const tc = String(b?.tc ?? "").trim().slice(0, 40);
+    if (!tc) return json({ ok: false, motivo: "Tenés que aceptar los términos para seguir." }, 400);
 
     const o = await uno(`organizadores?slug=eq.${q(organizador)}&activo=is.true&select=id`);
     if (!o) return json({ ok: false, motivo: "Ese organizador no existe." }, 404);
@@ -96,6 +135,37 @@ Deno.serve(async (req) => {
       });
     } catch (err) {
       return json({ ok: false, motivo: traducir(String((err as Error).message)) }, 409);
+    }
+
+    /* El vínculo con la cuenta, si la hay. Va acá y no después del camino
+       gratis para que una entrada de Bs 0 también quede guardada. Sólo si
+       la orden todavía no tiene dueño: crear_orden es idempotente por
+       client_key y puede devolver una orden que ya existía. Si el PATCH
+       falla, la compra sigue: el comprador la puede guardar después con
+       `vincular`, y una venta no se pierde por un vínculo. */
+    if (data?.ok && data.orden) {
+      /* La aceptación va en un PATCH aparte y no dentro de crear_orden para no
+         tocar la firma de la RPC (0046). Sólo se escribe si la orden es nueva
+         (tc_version aún nulo): crear_orden es idempotente por client_key. */
+      try {
+        await rest(`ordenes?id=eq.${data.orden}&tc_version=is.null`, {
+          method: "PATCH", headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({ tc_version: tc, tc_aceptado_at: new Date().toISOString() }),
+        });
+      } catch (err) {
+        console.error(`no se pudo registrar la aceptación en la orden ${data.orden}: ${err}`);
+      }
+      const uid = await compradorLogueado(req);
+      if (uid) {
+        try {
+          await rest(`ordenes?id=eq.${data.orden}&comprador_user_id=is.null`, {
+            method: "PATCH", headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({ comprador_user_id: uid }),
+          });
+        } catch (err) {
+          console.error(`no se pudo vincular la orden ${data.orden} al comprador ${uid}: ${err}`);
+        }
+      }
     }
 
     /* Evento gratis. Si no hay nada que cobrar no hay pasarela que abrir: se

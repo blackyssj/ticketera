@@ -8,7 +8,9 @@
    portada. Cada compra guardada se dibuja con esas clases tal cual —
    `.evento.compra` reutiliza el troquelado entero y esta hoja sólo agrega
    lo que la portada no necesitaba: el rótulo de "pasó", la cantidad de
-   entradas en vez del precio, y los dos botones del talón (ver / quitar).
+   entradas en vez del precio, los botones del talón (ver / quitar /
+   guardar en mi cuenta) y, desde que hay cuenta, el formulario de entrar
+   y el renglón de "Tu cuenta".
    ══════════════════════════════════════════════════════════════════ */
 
 /* ── el aviso ──
@@ -19,6 +21,125 @@
   margin-top:14px;max-width:56ch;
   font-family:var(--mono);font-size:12px;letter-spacing:.02em;line-height:1.55;
   color:var(--hueso-40);
+}
+
+/* ── "Tu cuenta · correo · Salir" ──
+   Un renglón en el hero, no un bloque: es un dato de contexto (quién está
+   adentro) y una salida, nada que haya que mirar dos veces. El correo puede
+   ser largo y en 375px no entra con todo lo demás, así que corta con
+   puntos suspensivos antes que romper la línea; "Salir" queda a la derecha
+   con sus 44px de alto aunque el texto sea chico. */
+.cuenta-cab{
+  display:flex;align-items:center;gap:8px;flex-wrap:nowrap;
+  margin-top:16px;min-width:0;
+  font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--hueso-64);
+}
+.cuenta-rotulo{flex:0 0 auto;text-transform:uppercase;letter-spacing:.12em;font-size:10.5px;color:var(--fluor)}
+.cuenta-sep{flex:0 0 auto;color:var(--hueso-40)}
+.cuenta-mail{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--hueso)}
+.cuenta-salir{
+  flex:0 0 auto;min-height:44px;padding:0 12px;margin-right:-12px;
+  background:transparent;border:0;cursor:pointer;
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--hueso-64);text-decoration:underline;text-underline-offset:3px;
+  transition:color .18s ease;
+}
+.cuenta-salir:hover,.cuenta-salir:focus-visible{color:var(--hueso)}
+
+/* ── entrar / crear cuenta ──
+   Una caja sola, centrada, con el mismo borde punteado del cartel de vacío
+   (.cartel): es "lo que falta", no una pieza a la venta. Los campos copian
+   los del formulario comercial (comercial.css: fondo --tinta-2, filo, foco
+   en fluor) sin cargar esa hoja entera —son cuatro reglas— para que un
+   input acá se vea igual que en cualquier otro formulario del sitio. */
+.entrar{padding:0 0 clamp(26px,5vw,44px)}
+.entrar-caja{
+  max-width:520px;margin:0 auto;
+  border:1.5px dashed var(--tinta-3);border-radius:14px;
+  padding:clamp(22px,5vw,34px) clamp(18px,4.5vw,30px);
+}
+.entrar-titulo{
+  font-weight:900;font-stretch:104%;
+  font-size:clamp(21px,5vw,27px);letter-spacing:-.03em;text-transform:uppercase;
+  line-height:.98;text-wrap:balance;
+}
+.entrar-bajada{margin-top:10px;color:var(--hueso-64);font-size:14.5px;line-height:1.5}
+
+.forma{display:grid;gap:14px;margin-top:20px}
+.forma .campo{display:flex;flex-direction:column;gap:7px}
+.forma .campo span{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--hueso-40);
+}
+.forma .campo span em{font-style:normal;text-transform:none;letter-spacing:.04em;color:var(--hueso-40)}
+.forma input{
+  width:100%;min-height:50px;padding:0 14px;border-radius:11px;
+  background:var(--tinta-2);color:var(--hueso);
+  border:1px solid var(--filo);
+  font-family:var(--display);
+  /* 16px clavados: abajo de eso iOS hace zoom al tocar el campo y deja la
+     página corrida. La misma regla que .busca en la portada. */
+  font-size:16px;
+  transition:border-color .2s ease,background .2s ease;
+}
+.forma input:focus{outline:none;border-color:var(--fluor);background:var(--tinta-3)}
+.forma input[aria-invalid="true"]{border-color:#FFB4A8}
+.forma-error{color:#FFB4A8;font-size:14px;line-height:1.4}
+.forma-nota{font-size:12.5px;color:var(--hueso-40);line-height:1.45;margin-top:-4px}
+
+/* El botón de la caja: el mismo fluor de .cartel .btn, a todo el ancho
+   porque en un teléfono un botón de enviar que no ocupa el renglón parece
+   secundario. :disabled es "estamos en eso", no "no se puede". */
+.forma .btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:100%;min-height:48px;padding:0 22px;border:0;border-radius:11px;cursor:pointer;
+  background:var(--fluor);color:var(--tinta);
+  font-family:var(--display);font-size:15.5px;font-weight:700;letter-spacing:-.005em;
+  transition:background .16s ease,transform .16s var(--curva);
+}
+.forma .btn:hover:not(:disabled){background:#FFF08C;transform:translateY(-1px)}
+.forma .btn:disabled{opacity:.6;cursor:default;transform:none}
+
+/* "¿Primera vez? Crear cuenta" / "¿Ya tenés cuenta? Entrar": un botón con
+   cara de link, 44px de alto aunque la letra sea chica. */
+.forma-cambio{
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  font-size:14px;color:var(--hueso-64);
+}
+.forma-cambio button{
+  min-height:44px;padding:0 6px;margin-left:-6px;
+  background:transparent;border:0;cursor:pointer;
+  font:inherit;font-weight:600;color:var(--hueso);
+  text-decoration:underline;text-underline-offset:3px;
+}
+.forma-cambio button:hover,.forma-cambio button:focus-visible{color:var(--fluor)}
+
+/* El WhatsApp de soporte: la única recuperación de contraseña que existe. */
+.wa{
+  display:inline-flex;align-items:center;gap:9px;
+  min-height:44px;margin-top:14px;
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;
+  color:var(--hueso-64);text-decoration:underline;text-underline-offset:3px;
+  transition:color .18s ease;
+}
+.wa:hover,.wa:focus-visible{color:var(--hueso)}
+.wa svg{width:18px;height:18px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}
+
+/* ── el estado de la cuenta ──
+   "Buscando…" o "no se pudo": un renglón mono arriba de la lista. Con
+   error, un botón de reintentar al lado; la lista local sigue abajo igual. */
+.estado{padding-bottom:clamp(14px,3vw,22px)}
+.cuenta-estado{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  font-family:var(--mono);font-size:12px;letter-spacing:.02em;line-height:1.5;
+  color:var(--hueso-64);
+}
+.cuenta-estado[data-tipo="error"]{color:#FFB4A8}
+.cuenta-estado button{
+  min-height:44px;padding:0 10px;margin-left:-10px;
+  background:transparent;border:0;cursor:pointer;
+  font:inherit;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--hueso);text-decoration:underline;text-underline-offset:3px;
 }
 
 .proximas{padding-bottom:clamp(30px,5vw,50px)}
@@ -55,6 +176,16 @@
   text-transform:uppercase;font-variant-numeric:tabular-nums;
 }
 
+/* Dónde está guardada esta compra: en la cuenta (viaja) o sólo en este
+   teléfono (no). Una etiqueta mono al lado de la fecha; la que importa es
+   la segunda, que es la que pide hacer algo, y por eso va en fluor. */
+.cuando .etq{
+  margin-left:auto;flex:0 0 auto;
+  font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--hueso-40);
+}
+.cuando .etq.local{color:var(--fluor)}
+
 /* La fila de acciones reutiliza `.accion` (ya la trae la portada, para el
    precio + botón de la entrada grande). "Ver entrada" manda, "Quitar" es
    la salida chica y va al otro extremo. */
@@ -71,6 +202,21 @@
   transition:color .18s ease;
 }
 .quitar:hover,.quitar:focus-visible{color:var(--hueso)}
+
+/* "Guardar en mi cuenta": el botón que aparece con sesión en una compra
+   que sólo está en este teléfono. Contorneado y a todo el ancho del talón,
+   debajo de la fila de acciones: es la acción nueva de la tarjeta y no
+   puede confundirse con "Ver entrada" ni esconderse como "Quitar". */
+.vincular{
+  display:flex;align-items:center;justify-content:center;
+  width:100%;min-height:44px;margin-top:10px;padding:0 14px;
+  background:transparent;border:1px solid var(--filo);border-radius:8px;cursor:pointer;
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--hueso);
+  transition:border-color .18s ease,color .18s ease;
+}
+.vincular:hover:not(:disabled),.vincular:focus-visible{border-color:rgba(255,226,75,.5);color:var(--fluor)}
+.vincular:disabled{opacity:.5;cursor:default}
 
 /* ── lo que ya pasó ──
    Apagada y sin el gesto de "esto se abre": la misma idea que `.agotado`
@@ -99,6 +245,9 @@
 }
 .toast[data-on="1"]{transform:translate(-50%,0)}
 .toast span{padding:10px 0}
+/* Sin botón adentro (un aviso pelado) el texto necesita su propio margen
+   derecho; con botón, el botón ya lo trae. */
+.toast span:last-child{padding-right:16px}
 .toast button{
   flex:0 0 auto;min-height:44px;padding:0 14px;background:transparent;border:0;
   font-family:var(--mono);font-weight:600;font-size:12.5px;letter-spacing:.06em;
@@ -112,4 +261,5 @@
      alcanzada por esa regla si se cargara sola, así que se apaga acá
      también. */
   .toast{transition:none}
+  .forma .btn:hover:not(:disabled){transform:none}
 }

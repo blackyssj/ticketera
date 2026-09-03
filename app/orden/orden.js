@@ -232,12 +232,149 @@ async function cargar() {
     catch (err) { avisar("No se pudo copiar: " + err.message); }
   };
 
+  // No se espera: la cuenta es un extra sobre una página que ya cumplió.
+  pintarCuenta(r.orden.id, r.orden.email || "", r.orden.comprador || "");
+
   /* El uuid entero no le dice nada a nadie y ocupaba dos renglones. Los ocho
      primeros alcanzan para que la organización encuentre la compra, que es
      para lo único que el comprador va a leer este número. */
   $("#pie").textContent =
     `Orden #${String(r.orden.id).slice(0, 8).toUpperCase()}. ` +
     `Pasá este número si necesitás ayuda con tu compra.`;
+}
+
+/* ── la cuenta del comprador ──────────────────────────────────────
+   Con sesión: un botón para guardar esta compra en la cuenta. Antes de
+   ofrecerlo se pregunta si ya está ahí (mis compras): ofrecer "guardar"
+   algo que ya está guardado es mentirle a la persona sobre el estado de su
+   compra. Si esa consulta falla (sin red) se ofrece el botón igual: la
+   función es idempotente y guardar dos veces no rompe nada.
+   Sin sesión: un link chico a /mis-entradas, que es donde se entra. La
+   compra ya quedó en la lista local de este teléfono (sumarAMisEntradas),
+   así que al volver con la sesión abierta aparece ahí con su botón de
+   "Guardar en mi cuenta". */
+async function pintarCuenta(ordenId, emailCompra, nombreCompra) {
+  const caja = $("#cuentaOrden");
+  const Cuenta = window.Cuenta;
+  if (!caja || !Cuenta) return;
+  const s = Cuenta.sesion();
+  caja.hidden = false;
+  const guardada = (email, encabezado = "Guardada en tu cuenta") => {
+    caja.innerHTML = `<p class="mias cuenta-ok">${encabezado} (<b>${esc(email || "")}</b>). ` +
+      `<a href="/mis-entradas">Ver mis entradas</a></p>`;
+  };
+  if (!s) {
+    /* Quien PAGA de verdad vuelve de la pasarela a esta página, no a la
+       pantalla "listo" de la compra: si el formulario de cuenta viviera sólo
+       allá, lo vería únicamente quien consigue una entrada gratis. Por eso
+       acá está el mismo formulario, con el correo de la compra ya puesto. */
+    formularioCuenta(caja, ordenId, emailCompra, nombreCompra, guardada);
+    return;
+  }
+  try {
+    const mias = await Cuenta.misCompras();
+    if (mias.some(c => String(c.id) === ordenId)) { guardada(s.user.email); return; }
+  } catch (err) {
+    // La sesión murió (cuenta.js ya la borró): se vuelve a pintar, ahora sin sesión.
+    if (err.status === 401 && !Cuenta.sesion()) { pintarCuenta(ordenId); return; }
+    // Sin red o sin respuesta: el botón igual.
+  }
+  caja.innerHTML = `<button type="button" class="btn plano chico" id="btnVincular">Guardar en mi cuenta</button>`;
+  $("#btnVincular").onclick = async () => {
+    const b = $("#btnVincular");
+    b.disabled = true;
+    try {
+      await Cuenta.vincular(ordenId);
+      guardada(s.user.email);
+      avisar("Guardada en tu cuenta.");
+    } catch (err) {
+      avisar(err.message);
+      b.disabled = false;
+      if (err.status === 401 && !Cuenta.sesion()) pintarCuenta(ordenId);
+    }
+  };
+}
+
+/* El mismo formulario que la pantalla "listo" de la compra (app.js,
+   pintarCuentaListo): crear con el correo de la compra, o entrar si el correo
+   ya tiene cuenta (409). Está repetido y no compartido porque estas dos
+   páginas no comparten módulos —no hay build— y cuenta.js es la parte que sí
+   se comparte: la sesión y las llamadas. */
+const SOPORTE_WA = "59178183001";
+const correoValido = v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
+
+function formularioCuenta(caja, ordenId, emailCompra, nombreCompra, alGuardar) {
+  const Cuenta = window.Cuenta;
+  caja.innerHTML = `
+    <p class="link-recuperar-titulo">Vé tus entradas desde cualquier teléfono</p>
+    <p class="cuenta-txt" id="cuentaTxt"></p>
+    <form class="cuenta-form" id="cuentaForm" data-modo="crear" novalidate>
+      <label class="campo"><span>Correo</span>
+        <input type="email" id="cMail" autocomplete="email" inputmode="email" value="${esc(emailCompra || "")}"></label>
+      <label class="campo"><span>Contraseña</span>
+        <input type="password" id="cClave" autocomplete="new-password"></label>
+      <em class="error" id="cError" role="alert"></em>
+      <button type="submit" class="btn primario" id="cBtn">Crear mi cuenta</button>
+      <p class="letra-chica" id="cNota">Al menos 8 caracteres. Sin verificación por correo: si la
+        olvidás, <a href="https://wa.me/${SOPORTE_WA}?text=${encodeURIComponent("Hola, necesito ayuda con mi cuenta de TICKETAZO")}" target="_blank" rel="noopener">escribinos por WhatsApp</a>.</p>
+      <p class="cuenta-cambio"><span id="cCambioTxt"></span> <button type="button" id="cCambio"></button></p>
+    </form>`;
+  const form = $("#cuentaForm");
+  const ponerModo = modo => {
+    const crear = modo === "crear";
+    form.dataset.modo = modo;
+    $("#cBtn").textContent = crear ? "Crear mi cuenta" : "Entrar y guardar";
+    $("#cNota").hidden = !crear;
+    $("#cCambioTxt").textContent = crear ? "¿Ya tenés cuenta?" : "¿Primera vez?";
+    $("#cCambio").textContent = crear ? "Entrá" : "Crear mi cuenta";
+    $("#cClave").setAttribute("autocomplete", crear ? "new-password" : "current-password");
+    $("#cuentaTxt").textContent = crear
+      ? "Creá una cuenta con tu correo y esta compra queda guardada en ella."
+      : "Entrá con tu cuenta y esta compra queda guardada en ella.";
+    $("#cError").textContent = "";
+  };
+  ponerModo("crear");
+  $("#cCambio").onclick = () => {
+    ponerModo(form.dataset.modo === "crear" ? "entrar" : "crear");
+    $("#cClave").focus();
+  };
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const crear = form.dataset.modo === "crear";
+    const email = $("#cMail").value.trim(), clave = $("#cClave").value;
+    const err = $("#cError");
+    if (!correoValido(email)) { err.textContent = "Escribí un correo válido."; $("#cMail").focus(); return; }
+    if (crear ? clave.length < 8 : !clave) {
+      err.textContent = crear ? "La contraseña tiene que tener al menos 8 caracteres." : "Escribí tu contraseña.";
+      $("#cClave").focus();
+      return;
+    }
+    err.textContent = "";
+    const btn = $("#cBtn");
+    btn.disabled = true;
+    try {
+      if (crear) {
+        const r = await Cuenta.crear({ email, password: clave, nombre: nombreCompra || undefined, orden_id: ordenId });
+        if (r.vinculada) alGuardar(email, "Listo: tus entradas quedaron en tu cuenta");
+        else caja.innerHTML = `<p class="mias cuenta-ok">Tu cuenta quedó creada (<b>${esc(email)}</b>), pero esta ` +
+          `compra no se pudo guardar en ella. Podés hacerlo desde <a href="/mis-entradas">Mis entradas</a>.</p>`;
+      } else {
+        await Cuenta.entrar(email, clave);
+        try {
+          await Cuenta.vincular(ordenId);
+          alGuardar(email, "Listo: tus entradas quedaron en tu cuenta");
+        } catch (e2) {
+          caja.innerHTML = `<p class="mias cuenta-ok">Entraste, pero no pudimos guardar esta compra: ${esc(e2.message)} ` +
+            `Podés hacerlo desde <a href="/mis-entradas">Mis entradas</a>.</p>`;
+        }
+      }
+    } catch (e2) {
+      if (crear && e2.status === 409) ponerModo("entrar");
+      err.textContent = e2.message;
+      btn.disabled = false;
+      $("#cClave").focus();
+    }
+  };
 }
 
 /* ── guardar ─────────────────────────────────────────────────────── */

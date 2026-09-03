@@ -52,8 +52,14 @@ def main() -> int:
     # La primera carpeta es el organizador: así lo exige la policy del bucket.
     nombre_archivo = ("fase-" + fase_nombre.lower().replace(" ", "-")) if fase_nombre else "evento"
     destino = f"{org_q}/{ev_q}/{quote(nombre_archivo, safe='')}{img.suffix}"
+    # Storage guarda el cache-control del upload como metadata del objeto y lo
+    # devuelve tal cual en cada GET; sin mandarlo queda `no-cache` y el flyer
+    # (dos megas, antes) se baja entero en cada visita a la entrada. Un año:
+    # el nombre del archivo no cambia, pero cada arte nuevo del admin estrena
+    # nombre, y el del script se reemplaza tan poco que no vale un cache-bust.
     codigo, body = request(f"{base}/storage/v1/object/arte/{destino}", "POST",
-                           {**h, "Content-Type": tipo, "x-upsert": "true"},
+                           {**h, "Content-Type": tipo, "x-upsert": "true",
+                            "cache-control": "max-age=31536000"},
                            img.read_bytes())
     if codigo not in ("200", "201"):
         sys.exit(f"No se pudo subir: {body[:300]}")

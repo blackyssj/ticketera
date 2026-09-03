@@ -55,6 +55,12 @@ const REL = (() => {
 })();
 
 const HOLD_SEG = 600;
+/* La versión de los términos que esta página muestra (/terminos/). Viaja en
+   crear-orden como `tc` y queda en ordenes.tc_version: lo que vale es la
+   versión vigente cuando se compró. Cuando cambien los términos, cambia esto
+   junto con la fecha de /terminos/index.html, y la función va a exigir la
+   nueva. */
+const TC_VERSION = "2026-09-02.v1";
 /* Si `iniciar-pago` devuelve una URL, la pasarela es real y el comprador se
    va a ella. Si no, se queda en la pantalla de cobro por QR de acá. */
 /* Sin paso de mesa: el comprador elige un producto, no un lugar del plano.
@@ -230,20 +236,71 @@ function apiDemo() {
   };
 }
 
+/* fetch y no supabase-js. La librería pesaba 170 KB —desde jsdelivr, en el
+   camino crítico de la página— para hacer una sola cosa: sb.functions.invoke.
+   Y esa cosa la hacía mal para acá: convierte cualquier respuesta que no sea
+   2xx en un error genérico y tira el cuerpo, o sea justo el `motivo` que el
+   comprador necesita leer ("no queda cupo", "la orden venció"). Mismo camino
+   que llamarEquipo en admin/admin.js.
+
+   `cabecerasExtra` va al final para poder pisar el Authorization anónimo:
+   por ahí entra el token del comprador logueado el día que haya sesión. */
 function apiSupabase() {
-  const sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
-  const fn = async (nombre, body) => {
-    const { data, error } = await sb.functions.invoke(nombre, { body });
-    if (error) throw new Error(error.message || "No se pudo completar la operación.");
-    if (data && data.ok === false) throw new Error(data.motivo || "Operación rechazada.");
-    return data;
+  const leer = async (r) => {
+    const txt = await r.text();
+    let j = null;
+    try { j = txt ? JSON.parse(txt) : null; } catch { /* la reja del gateway no contesta JSON */ }
+    if (!j) throw new Error(`No se pudo completar (${r.status}).`);
+    /* Un status que no es 2xx es un rechazo aunque el cuerpo no diga ok:false:
+       la reja del gateway contesta {code, message} —función no encontrada,
+       sin recursos— y si eso pasara como éxito, crearOrden devolvería una
+       orden sin id y la compra seguiría a la pasarela con nada. */
+    if (j.ok === false || !r.ok) throw new Error(j.motivo || `No se pudo completar (${r.status}).`);
+    return j;
+  };
+  const fn = async (nombre, body, cabecerasExtra) => {
+    let r;
+    try {
+      r = await fetch(`${CFG.SUPABASE_URL}/functions/v1/${nombre}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json",
+                   apikey: CFG.SUPABASE_ANON_KEY,
+                   Authorization: `Bearer ${CFG.SUPABASE_ANON_KEY}`,
+                   ...(cabecerasExtra || {}) },
+        body: JSON.stringify(body || {})
+      });
+    } catch {
+      // fetch sólo tira cuando no hubo respuesta: sin red, DNS caído, CORS.
+      throw new Error("Sin conexión. Revisá tu internet y volvé a intentar.");
+    }
+    return leer(r);
+  };
+  /* El pedido que evento.html disparó desde el <head> (window.__evento),
+     antes de fuentes, CSS y scripts. Se consume una sola vez. Si falló en el
+     camino —se cortó la red a mitad— se pide de nuevo por el camino normal en
+     vez de dar el evento por perdido; si contestó, lo que contestó vale,
+     rechazo incluido. */
+  const evento = () => {
+    const temprano = window.__evento;
+    window.__evento = null;
+    const pedir = () => fn("evento", { organizador: CFG.ORGANIZADOR, evento: CFG.EVENTO });
+    return temprano ? temprano.then(leer, pedir) : pedir();
   };
   return {
-    evento: () => fn("evento", { organizador: CFG.ORGANIZADOR, evento: CFG.EVENTO }),
-    crearOrden: async (items, comprador) => {
+    evento,
+    // `tc` viene sólo si el casillero está tildado (pagar); sin él la función
+    // rechaza la orden, que es lo que corresponde.
+    crearOrden: async (items, comprador, tc) => {
+      /* Con sesión de comprador (cuenta.js) el JWT viaja en el Authorization
+         en lugar de la anon key, y la orden nace ya guardada en su cuenta:
+         crear-orden la vincula del lado del servidor. Cualquier problema con
+         la sesión —vencida, sin red para refrescarla— se traga y la compra
+         sigue como anónima: nunca se frena una venta por la cuenta. */
+      const tok = window.Cuenta ? await window.Cuenta.token().catch(() => null) : null;
       const r = await fn("crear-orden", { organizador: CFG.ORGANIZADOR, evento: CFG.EVENTO,
-                                          items, comprador, r: REL,
-                                          client_key: crypto.randomUUID() });
+                                          items, comprador, r: REL, tc,
+                                          client_key: crypto.randomUUID() },
+                         tok ? { Authorization: `Bearer ${tok}` } : undefined);
       return { id: r.orden, subtotal: r.subtotal, fee: r.fee, total: r.total,
                gratis: r.gratis === true, comprador };
     },
@@ -294,6 +351,19 @@ function pintarHero() {
     : e.datos;
   $("#heroDatos").innerHTML = datos
     .map(([k, v]) => `<span>${esc(k)} <b>${esc(v)}</b></span>`).join("");
+  /* El afiche, chico y al costado (evento.html). El mismo que usa el ticket
+     —la fase manda sobre el evento, igual que en ticket.js— así queda en
+     caché y al final las entradas se dibujan al toque. Sin arte, no hay
+     afiche; si el archivo no responde, tampoco: un ícono de imagen rota en
+     el hero es peor que nada. */
+  const arte = (D.fase && D.fase.arte_url) || e.arte_url;
+  const afiche = $("#heroArte");
+  if (arte) {
+    afiche.alt = `Afiche de ${e.marca_1} ${e.marca_2 || ""}`.trim();
+    afiche.onerror = () => { afiche.hidden = true; };
+    afiche.src = arte;
+    afiche.hidden = false;
+  }
   document.title = `${e.marca_1} ${e.marca_2} — ${VOCAB.titulo}`;
   $("#faseChip").innerHTML = `<i></i>${esc(D.fase.nombre)} · ${esc(D.fase.hasta_txt)}`;
   /* La nota se arma con las partes que el organizador realmente cobra. Con
@@ -450,8 +520,8 @@ function pintarRail() {
     ? lineas.map(l =>
         `<div class="rlinea"><span class="q">${l.q}</span>` +
         `<span class="n">${esc(l.n)}</span>` +
-        (l.quitarMesa ? `<button class="x" data-quitar-mesa="${l.quitarMesa}" aria-label="Quitar ${esc(l.n)}">×</button>` : "") +
-        (l.quitarTipo ? `<button class="x" data-quitar-tipo="${l.quitarTipo}" aria-label="Quitar ${esc(l.n)}">×</button>` : "") +
+        (l.quitarMesa ? `<button type="button" class="x" data-quitar-mesa="${l.quitarMesa}" aria-label="Quitar ${esc(l.n)}">×</button>` : "") +
+        (l.quitarTipo ? `<button type="button" class="x" data-quitar-tipo="${l.quitarTipo}" aria-label="Quitar ${esc(l.n)}">×</button>` : "") +
         `<span class="v">${bs(l.v)}</span></div>`).join("")
     : `<p class="rail-vacio">Todavía no elegiste nada.</p>`;
 
@@ -503,7 +573,18 @@ function pintarRail() {
   b.hidden = S.paso === "listo" || S.paso === "pago";
   atras.hidden = !cfg.atras;
 
+  /* En el teléfono la barra de abajo está sólo cuando hay algo que resumir.
+     Vacía, tapaba 150px de entradas para decir "0 Bs" con un botón apagado:
+     la primera tarjeta quedaba abajo de una barra que no hacía nada.
+     styles.css la desliza fuera con data-vacio y medirBarra deja de
+     reservarle lugar. En escritorio el atributo no cambia nada. */
+  $("#rail").dataset.vacio = (!hay && S.paso === "entradas") ? "1" : "0";
+
   $("#railAviso").textContent = "";
+  /* La política de devolución, al lado del total y del botón "Ir a pagar":
+     en el paso de datos, que es cuando se decide, y sólo si hay algo que
+     cobrar — en un evento gratis no hay nada que devolver. */
+  $("#devolucion").hidden = !(S.paso === "datos" && hay && total > 0);
   if (hay) arrancarReloj(); else pararReloj();
   medirBarra();
 }
@@ -521,7 +602,8 @@ function pintarRail() {
 function medirBarra() {
   const r = $("#rail");
   const fija = r && !r.hidden && getComputedStyle(r).position === "fixed";
-  const alto = fija
+  // Deslizada fuera de la pantalla (carrito vacío) no tapa nada: reserva cero.
+  const alto = fija && r.dataset.vacio !== "1"
     ? $("#railTirador").offsetHeight + $(".rail-pie").offsetHeight : 0;
   document.documentElement.style.setProperty("--alto-barra", alto + "px");
 }
@@ -569,6 +651,10 @@ function irA(paso) {
   $("#rail").hidden = paso === "listo";
   document.body.classList.toggle("sin-rail", paso === "listo");
   $("#hero").classList.toggle("compacto", paso !== "entradas");
+  // La ayuda por WhatsApp acompaña los dos pasos en los que alguien se traba:
+  // dejar los datos y pagar. Antes sobra (están las dudas) y después ya está
+  // el link de la orden.
+  $("#ayudaWa").hidden = !(paso === "datos" || paso === "pago");
   pintarPasos();
   if (paso === "entradas") pintarTipos();
   pintarRail();
@@ -589,20 +675,36 @@ const REGLAS = {
     msg:"7 u 8 dígitos, sin código de país." },
   fMail: { e:"#eMail", k:"email",
     ok: v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim()),
-    msg:"Revisá el correo: ahí te llega el QR." }
+    msg:"Revisá el correo: ahí te llega el QR." },
+  // Los términos. Sin `k`: la aceptación no es un dato del comprador, es de
+  // la orden (crear-orden la guarda con la versión, TC_VERSION). Se exige acá
+  // también en modo demo: la validación es del front.
+  fTc: { e:"#eTc", k:null,
+    ok: (v, el) => el.checked,
+    msg:"Necesitamos que aceptes los términos." }
 };
+function validarCampo(id) {
+  const r = REGLAS[id], el = $("#" + id);
+  if (!r || !el) return false;
+  const bien = r.ok(el.value, el);
+  el.setAttribute("aria-invalid", String(!bien));
+  $(r.e).textContent = bien ? "" : r.msg;
+  if (bien && r.k) S.comprador[r.k] = el.value.trim();
+  return bien;
+}
+
 function formValido(mostrar) {
   let ok = true;
   for (const [id, r] of Object.entries(REGLAS)) {
     const el = $("#" + id);
     if (!el) return false;
-    const bien = r.ok(el.value);
+    const bien = r.ok(el.value, el);
     if (!bien) ok = false;
     if (mostrar) {
       el.setAttribute("aria-invalid", String(!bien));
       $(r.e).textContent = bien ? "" : r.msg;
     }
-    if (bien) S.comprador[r.k] = el.value.trim();
+    if (bien && r.k) S.comprador[r.k] = el.value.trim();
   }
   return ok;
 }
@@ -621,6 +723,8 @@ async function pagar() {
      diciendo "Confirmación" dos centímetros más arriba. */
   const gratis = cotizar().total === 0;
   $('[data-paso="pago"] .panel-cab h2').textContent = gratis ? "Confirmación" : "Pago";
+  // El formulario ya pasó la validación: estos datos sirvieron, se recuerdan.
+  recordarComprador();
   irA("pago");
   try {
     pagoDice(`<div class="girador"></div><h3>Reservando tu lugar</h3>
@@ -628,7 +732,10 @@ async function pagar() {
                   : "Guardamos lo que elegiste por 10 minutos mientras pagás."}</p>`);
     const items = [];
     Object.entries(S.cant).forEach(([id, q]) => { if (q) items.push({ tipo_id: id, cantidad: q }); });
-      S.orden = await API.crearOrden(items, { ...S.comprador });
+    // Sólo si está tildado: formValido ya lo exigió, pero lo que se manda
+    // es lo que el casillero dice, no lo que la validación supone.
+    S.orden = await API.crearOrden(items, { ...S.comprador },
+                                   $("#fTc").checked ? TC_VERSION : undefined);
 
     /* Evento gratis: la orden ya nació emitida del lado del servidor, así que
        no hay pasarela que abrir ni pago que verificar. Se salta derecho a la
@@ -669,7 +776,7 @@ function pasarelaSimulada() {
       <div class="pasarela-qr" id="pasarelaQr"></div>
       <p class="pasarela-ref">Referencia ${esc(S.orden.pago_ref || "—")}</p>
     </div>
-    <button class="btn primario" id="btnVerificar">Verificar pago</button>
+    <button type="button" class="btn primario" id="btnVerificar">Verificar pago</button>
     <p class="letra-chica">Apretá cuando hayas pagado.</p>`);
 
   dibujarQrPasarela();
@@ -715,7 +822,7 @@ async function verificarPago() {
       pagoDice(`<h3>Todavía no figura pagado</h3>
         <p>La pasarela dice que la orden sigue <b>${esc(r.estado)}</b>. Si ya pagaste,
            esperá unos segundos y volvé a verificar.</p>
-        <button class="btn primario" id="btnVerificar">Verificar de nuevo</button>`);
+        <button type="button" class="btn primario" id="btnVerificar">Verificar de nuevo</button>`);
       $("#btnVerificar").onclick = verificarPago;
       return;
     }
@@ -729,7 +836,7 @@ async function verificarPago() {
 /* Un solo lugar donde se dibuja un fallo, para que digan todos lo mismo. */
 function pagoFallo(motivo, volverA) {
   pagoDice(`<h3>No se pudo completar</h3><p>${esc(motivo)}</p>
-    <button class="btn plano" id="btnReintentar">${volverA ? "Volver a intentar" : "Verificar de nuevo"}</button>`);
+    <button type="button" class="btn plano" id="btnReintentar">${volverA ? "Volver a intentar" : "Verificar de nuevo"}</button>`);
   $("#btnReintentar").onclick = volverA ? () => irA(volverA) : verificarPago;
 }
 
@@ -918,6 +1025,11 @@ async function mostrarListo() {
   // mientras se dibujan igual compró. Si el storage no deja, el link a
   // /mis-entradas no se ofrece.
   $("#listoMias").hidden = !recordarCompra();
+  // La cuenta: "guardada en la tuya" o la invitación a crearla, según haya
+  // sesión. Después del link y antes de dibujar, por lo mismo de arriba.
+  pintarCuentaListo();
+  // Si aprieta "Comprar otra", el aviso de arriba ya cuenta esta compra.
+  pintarYaTenes();
   armarLlegar(linkOrden);
 
   $("#tickets").innerHTML = `<p class="rail-vacio">Dibujando tus entradas…</p>`;
@@ -932,6 +1044,121 @@ async function mostrarListo() {
   // La tira la arma ticket.js, la misma que dibuja /orden/?id=…: son el mismo
   // momento y separarlas en dos plantillas es pedir que se despeguen.
   $("#tickets").innerHTML = window.tiraTickets(S.entradas);
+}
+
+/* ── la cuenta del comprador, en "listo" ──────────────────────────
+   Recién comprada la entrada es el único momento en que ofrecer una cuenta
+   tiene sentido: hay algo concreto que guardar. Tres casos:
+     · modo demo: nada. No hay servidor donde crear una cuenta, y un
+       formulario que no puede hacer lo que promete es peor que ninguno.
+     · con sesión: la orden ya nació vinculada —crearOrden mandó el JWT— y
+       se lo dice. Por las dudas se vuelve a vincular en silencio (la
+       función es idempotente): si la sesión venció justo entre medio, así
+       queda guardada igual; si tampoco eso se pudo, se dice.
+     · sin sesión: correo precargado (el que acaba de escribir), contraseña,
+       "Crear mi cuenta". La función `cuenta` crea la cuenta Y guarda esta
+       orden en un solo viaje. Si ese correo ya tiene cuenta (409), el mismo
+       formulario pasa a "Entrar" y, al entrar, se vincula la orden acá.
+   Sin verificación por correo: no hay SMTP en el proyecto y la nota lo dice
+   antes de que alguien espere un mail que no va a llegar. */
+function pintarCuentaListo() {
+  const caja = $("#cuentaListo");
+  if (!caja) return;
+  const Cuenta = window.Cuenta;
+  if (CFG.MODO !== "supabase" || !Cuenta || !S.orden) { caja.hidden = true; caja.innerHTML = ""; return; }
+  caja.hidden = false;
+  const ordenId = S.orden.id;
+  const enCuenta = (email, encabezado) => {
+    caja.innerHTML = `<p class="cuenta-ok">${encabezado} (<b>${esc(email || "")}</b>). ` +
+      `<a href="/mis-entradas">Ver mis entradas</a></p>`;
+  };
+
+  const s = Cuenta.sesion();
+  if (s) {
+    enCuenta(s.user.email, "Guardada en tu cuenta");
+    Cuenta.vincular(ordenId).catch(err => {
+      // La sesión murió en el medio: cuenta.js ya la borró, se ofrece crear/entrar.
+      if (err.status === 401 && !Cuenta.sesion()) { pintarCuentaListo(); return; }
+      caja.innerHTML = `<p class="cuenta-ok">No pudimos guardarla en tu cuenta: ${esc(err.message)} ` +
+        `Podés hacerlo desde <a href="/mis-entradas">Mis entradas</a>.</p>`;
+    });
+    return;
+  }
+
+  caja.innerHTML = `
+    <p class="link-recuperar-titulo">Vé tus entradas desde cualquier teléfono</p>
+    <p class="cuenta-txt" id="cuentaTxt"></p>
+    <form class="cuenta-form" id="cuentaForm" data-modo="crear" novalidate>
+      <label class="campo"><span>Correo</span>
+        <input type="email" id="cMail" autocomplete="email" inputmode="email" value="${esc(S.comprador.email || "")}"></label>
+      <label class="campo"><span>Contraseña</span>
+        <input type="password" id="cClave" autocomplete="new-password"></label>
+      <em class="error" id="cError" role="alert"></em>
+      <button type="submit" class="btn primario" id="cBtn">Crear mi cuenta</button>
+      <p class="letra-chica" id="cNota">Al menos 8 caracteres. Sin verificación por correo: si la
+        olvidás, <a href="https://wa.me/${SOPORTE_WA}?text=${encodeURIComponent("Hola, necesito ayuda con mi cuenta de TICKETAZO")}" target="_blank" rel="noopener">escribinos por WhatsApp</a>.</p>
+      <p class="cuenta-cambio"><span id="cCambioTxt"></span> <button type="button" id="cCambio"></button></p>
+    </form>`;
+  const form = $("#cuentaForm");
+  const ponerModo = modo => {
+    const crear = modo === "crear";
+    form.dataset.modo = modo;
+    $("#cBtn").textContent = crear ? "Crear mi cuenta" : "Entrar y guardar";
+    $("#cNota").hidden = !crear;
+    $("#cCambioTxt").textContent = crear ? "¿Ya tenés cuenta?" : "¿Primera vez?";
+    $("#cCambio").textContent = crear ? "Entrá" : "Crear mi cuenta";
+    $("#cClave").setAttribute("autocomplete", crear ? "new-password" : "current-password");
+    $("#cuentaTxt").textContent = crear
+      ? "Creá una cuenta con tu correo y esta compra queda guardada en ella."
+      : "Entrá con tu cuenta y esta compra queda guardada en ella.";
+    $("#cError").textContent = "";
+  };
+  ponerModo("crear");
+  $("#cCambio").onclick = () => {
+    ponerModo(form.dataset.modo === "crear" ? "entrar" : "crear");
+    $("#cClave").focus();
+  };
+
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const crear = form.dataset.modo === "crear";
+    const email = $("#cMail").value.trim(), clave = $("#cClave").value;
+    const err = $("#cError");
+    if (!REGLAS.fMail.ok(email)) { err.textContent = "Escribí un correo válido."; $("#cMail").focus(); return; }
+    if (crear ? clave.length < 8 : !clave) {
+      err.textContent = crear ? "La contraseña tiene que tener al menos 8 caracteres." : "Escribí tu contraseña.";
+      $("#cClave").focus();
+      return;
+    }
+    err.textContent = "";
+    const btn = $("#cBtn");
+    btn.disabled = true;
+    try {
+      if (crear) {
+        const r = await Cuenta.crear({ email, password: clave, nombre: S.comprador.nombre || undefined,
+                                       orden_id: ordenId });
+        if (r.vinculada) enCuenta(email, "Listo: tus entradas quedaron en tu cuenta");
+        else caja.innerHTML = `<p class="cuenta-ok">Tu cuenta quedó creada (<b>${esc(email)}</b>), pero esta ` +
+          `compra no se pudo guardar en ella. Podés hacerlo desde <a href="/mis-entradas">Mis entradas</a>.</p>`;
+      } else {
+        await Cuenta.entrar(email, clave);
+        try {
+          await Cuenta.vincular(ordenId);
+          enCuenta(email, "Listo: tus entradas quedaron en tu cuenta");
+        } catch (e2) {
+          // Entró, pero la compra no se guardó: la sesión queda, el motivo se dice.
+          caja.innerHTML = `<p class="cuenta-ok">Entraste, pero no pudimos guardar esta compra: ${esc(e2.message)} ` +
+            `Podés hacerlo desde <a href="/mis-entradas">Mis entradas</a>.</p>`;
+        }
+      }
+    } catch (e2) {
+      // 409: ese correo ya tiene cuenta. Mismo formulario, ahora para entrar.
+      if (crear && e2.status === 409) ponerModo("entrar");
+      err.textContent = e2.message;
+      btn.disabled = false;
+      $("#cClave").focus();
+    }
+  };
 }
 
 /* Guardar y no descargar: en un teléfono la descarga de seis PNG no deja
@@ -952,7 +1179,135 @@ async function descargar() {
   }
 }
 
+/* ── el comprador, recordado en este teléfono ─────────────────────
+   Nombre, WhatsApp y correo bajo `ticketazo.comprador`. La segunda vez que
+   alguien compra desde el mismo teléfono los encuentra puestos; "No soy yo"
+   los borra, para el amigo que pidió el teléfono prestado. Se guardan recién
+   cuando el formulario pasó la validación y se va a pagar: lo que se
+   recuerda es un dato que sirvió, no lo que quedó a medio escribir.
+   Todo en try: un storage bloqueado o lleno no puede frenar una compra. */
+const CLAVE_COMPRADOR = "ticketazo.comprador";
+
+function recordarComprador() {
+  try {
+    const { nombre, telefono, email } = S.comprador;
+    localStorage.setItem(CLAVE_COMPRADOR, JSON.stringify({ nombre, telefono, email }));
+  } catch { /* no persiste, no rompe */ }
+}
+
+function precargarComprador() {
+  let c = null;
+  try { c = JSON.parse(localStorage.getItem(CLAVE_COMPRADOR) || "null"); } catch { return; }
+  if (!c || typeof c !== "object") return;
+  let alguno = false;
+  [["fNombre", "nombre"], ["fTel", "telefono"], ["fMail", "email"]].forEach(([id, k]) => {
+    const el = $("#" + id);
+    // Lo que el navegador ya autocompletó no se pisa.
+    if (el && !el.value && typeof c[k] === "string" && c[k]) { el.value = c[k]; alguno = true; }
+  });
+  $("#precargado").hidden = !alguno;
+}
+
+function olvidarComprador() {
+  try { localStorage.removeItem(CLAVE_COMPRADOR); } catch { /* ídem */ }
+  ["fNombre", "fTel", "fMail"].forEach(id => {
+    const el = $("#" + id);
+    el.value = ""; el.removeAttribute("aria-invalid");
+  });
+  // La aceptación de los términos es de la persona, no del teléfono: la
+  // que sigue tiene que aceptar por su cuenta.
+  $("#fTc").checked = false; $("#fTc").removeAttribute("aria-invalid");
+  $$("#form .error").forEach(e => e.textContent = "");
+  S.comprador = { nombre: "", telefono: "", email: "" };
+  $("#precargado").hidden = true;
+  pintarRail();
+  $("#fNombre").focus();
+}
+
+/* ── "ya tenés entradas para este evento" ─────────────────────────
+   Lee la misma lista que /mis-entradas (`ticketazo.compras`) y suma las
+   entradas de las compras de ESTE evento. Por organizador y slug cuando los
+   hay; las que guardó /orden al volver de la pasarela vienen con los dos
+   vacíos (esa página no los conoce) y se reconocen por el nombre del evento,
+   que las dos escriben igual. No frena nada: hay quien compra dos veces a
+   propósito. Sólo le ahorra la compra doble al que no se acuerda si la
+   primera salió. */
+function pintarYaTenes() {
+  const el = $("#yaTenes");
+  let n = 0;
+  try {
+    const lista = JSON.parse(localStorage.getItem(CLAVE_COMPRAS) || "[]");
+    const org = CFG.ORGANIZADOR || "", slug = CFG.EVENTO || "";
+    const nombre = `${D.evento.marca_1} ${D.evento.marca_2 || ""}`.trim();
+    n = (Array.isArray(lista) ? lista : [])
+      .filter(c => c && (((org || slug) && c.org === org && c.slug === slug)
+                      || (!c.org && !c.slug && c.evento === nombre)))
+      .reduce((a, c) => a + (Number(c.entradas) || 0), 0);
+  } catch { n = 0; }
+  el.hidden = n <= 0;
+  if (n > 0) el.innerHTML =
+    `<span>Ya tenés <b>${n} ${n === 1 ? "entrada" : "entradas"}</b> para este evento.</span>` +
+    `<a href="/mis-entradas">Ver mis entradas</a>`;
+}
+
+/* ── mayores de 18 ───────────────────────────────────────────────
+   La función `evento` no manda edad_min suelto: viene adentro de `datos`,
+   como ["Edad mínima", "18"], que es lo que el hero pinta. Se lee de ahí, y
+   de e.edad_min primero si algún día llega como campo. Con 18 o más se avisa
+   en el paso de datos, antes de pedir nada: enterarse en la puerta es peor. */
+function edadMinima() {
+  const e = D.evento || {};
+  if (e.edad_min != null) return Number(e.edad_min) || 0;
+  const fila = (e.datos || []).find(d => Array.isArray(d) && /edad/i.test(d[0]));
+  return fila ? (Number(String(fila[1]).replace(/\D/g, "")) || 0) : 0;
+}
+
+/* ── dudas rápidas ───────────────────────────────────────────────
+   El texto vive en el HTML; acá sólo se ajusta lo que depende del evento:
+   si el correo no está configurado no se promete, la pregunta de "gratis"
+   sólo va en un evento gratis, y el WhatsApp lleva el nombre del evento ya
+   escrito. El número es el de TICKETAZO, el mismo CONTACTO.wa de
+   comercial.js (esa página no se carga acá): si cambia allá, cambia acá. */
+const SOPORTE_WA = "59178183001";
+
+function armarDudas() {
+  if (D.correo_configurado === false) $("#dudaCorreo").hidden = true;
+  $("#dudaGratis").hidden = !eventoGratis();
+  const nombre = `${D.evento.marca_1} ${D.evento.marca_2 || ""}`.trim();
+  $("#dudaWa").href = `https://wa.me/${SOPORTE_WA}?text=` +
+    encodeURIComponent(`Hola, compré entradas para ${nombre} y tengo un problema.`);
+}
+
+/* ── compartir el evento ─────────────────────────────────────────
+   navigator.share abre la hoja del sistema, que en un teléfono es WhatsApp
+   con la persona indicada dos toques después. Donde no existe (escritorio,
+   Firefox) se copia el link. Se comparte con el ?r= del relacionador si se
+   entró con uno: el amigo del que trajo el relacionador sigue siendo venta
+   del relacionador. Lo demás de la URL no viaja. */
+const linkDelEvento = () =>
+  location.origin + location.pathname + (REL ? `?r=${encodeURIComponent(REL)}` : "");
+
+async function compartirEvento() {
+  const e = D.evento;
+  const titulo = `${e.marca_1} ${e.marca_2 || ""}`.trim();
+  const url = linkDelEvento();
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: titulo, text: `${titulo} · ${e.fecha_txt || ""}`.trim(), url });
+      return;
+    } catch (err) {
+      if (err && err.name === "AbortError") return;   // cerró la hoja: no es un error
+      // cualquier otro fallo cae a copiar
+    }
+  }
+  try { await navigator.clipboard.writeText(url); avisar("Link copiado."); }
+  catch { avisar("No se pudo copiar el link."); }
+}
+
 /* ══ eventos ══════════════════════════════════════════════════════ */
+
+$("#btnNoSoy").addEventListener("click", olvidarComprador);
+$("#btnCompartirEvento").addEventListener("click", compartirEvento);
 
 $("#tipos").addEventListener("click", e => {
   const b = e.target.closest("button[data-paso-t]");
@@ -999,9 +1354,19 @@ $("#btnAtras").addEventListener("click", () => {
 
 Object.keys(REGLAS).forEach(id => {
   const el = $("#" + id);
-  el.addEventListener("blur", () => { formValido(true); pintarRail(); });
+  // El casillero se valida al tildar o destildar: perder el foco al pasar
+  // por encima con la tecla Tab no es no haber aceptado.
+  if (el.type === "checkbox") {
+    el.addEventListener("change", () => { formValido(true); pintarRail(); });
+    return;
+  }
+  /* Al salir de un campo se marca sólo ese campo: marcar todos hacía que el
+     error del casillero de términos apareciera al salir del nombre, tres
+     campos antes de llegar a él. El formulario entero se marca al apretar
+     "Ir a pagar" (formValido(true) en btnSeguir). */
+  el.addEventListener("blur", () => { validarCampo(id); pintarRail(); });
   el.addEventListener("input", () => {
-    if (el.getAttribute("aria-invalid") === "true") formValido(true);
+    if (el.getAttribute("aria-invalid") === "true") validarCampo(id);
     pintarRail();
   });
 });
@@ -1023,13 +1388,21 @@ $("#btnOtra").addEventListener("click", () => {
 
 /* ══ arranque ══ */
 async function arrancar() {
+  const panelEntradas = $('[data-paso="entradas"]');
   if (CFG.MODO === "supabase") {
-    $("#tipos").innerHTML = `<p class="rail-vacio">Cargando el evento…</p>`;
+    // La espera la cubre el esqueleto que ya vino en el HTML: no hace
+    // falta un "Cargando…" encima.
     try {
       const r = await API.evento();
       if (!r.ok) throw new Error(r.motivo || "No se pudo cargar el evento.");
       D = r;
     } catch (err) {
+      // Sin evento no hay hero que pintar: fuera los huesos, que si no laten
+      // para siempre arriba de un error.
+      $$(".hueso").forEach(h => h.remove());
+      $("#heroLugar").textContent = "TICKETAZO";
+      $("#dudas").hidden = true;
+      panelEntradas.removeAttribute("aria-busy");
       $("#tipos").innerHTML =
         `<article class="tipo"><h3 class="tipo-nombre">No se pudo cargar</h3>` +
         `<p class="tipo-desc">${esc(err.message)}</p></article>`;
@@ -1049,7 +1422,13 @@ async function arrancar() {
   fijarVocabulario();
   pintarHero();
   pintarCierre();
+  pintarYaTenes();
+  armarDudas();
+  precargarComprador();
+  $("#avisoEdad").hidden = edadMinima() < 18;
+  $("#btnCompartirEvento").hidden = false;
   pintarTipos();
+  panelEntradas.removeAttribute("aria-busy");
   irA("entradas");
 }
 arrancar();

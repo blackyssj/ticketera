@@ -8,7 +8,14 @@
    Que corra con service_role la convierte en el guardián, así que la lista
    de campos de acá abajo es la definición de "lo que el público puede ver".
    No sale una recaudación, ni un cupo, ni un comprador, ni el uuid del
-   evento: la portada no los necesita y lo que no viaja no se filtra. */
+   evento: la portada no los necesita y lo que no viaja no se filtra.
+
+   Un solo viaje a la base: `cartelera_publica()` (migración 0048) trae
+   los eventos a la venta con sus precios vivos y la disponibilidad ya
+   contada. Antes eran tres pedidos en fila por evento (fase, precios,
+   disponibilidad por tipo), y la portada es lo primero que ve alguien
+   que llega de WhatsApp. La regla del "desde" y del estado de venta se
+   quedó acá: la base cuenta, esta función decide. */
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -45,11 +52,6 @@ function partesFecha(fecha: string) {
   return { dia_semana: DIA[f.getUTCDay()], dia: String(f.getUTCDate()), mes: MES[f.getUTCMonth()] };
 }
 
-/* Hoy en La Paz (UTC-4, sin horario de verano). Un evento que ya pasó sale de
-   la cartelera al día siguiente, no a la medianoche UTC — que en Bolivia son
-   las 20:00 y todavía hay gente comprando en la puerta. */
-const hoyEnLaPaz = () => new Date(Date.now() - 4 * 3600 * 1000).toISOString().slice(0, 10);
-
 /* "Quedan pocas" con dos condiciones, no con una. Solo el porcentaje miente
    en los dos extremos: el 10% de un evento de 5.000 son 500 entradas y eso
    no es una urgencia, y el 10% de uno de 30 es 3 cuando todavía queda mesa.
@@ -61,44 +63,22 @@ const POCAS_ABS = 40;
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   try {
-    const hoy = hoyEnLaPaz();
+    /* Lo que decide qué evento entra vive en la base, en cartelera_publica():
+       publicado, con fecha de hoy (La Paz) en adelante, organizador activo
+       —`activo` es la llave que apaga un cliente entero sin tocarle los
+       eventos uno por uno— y con una fase abierta por la MISMA
+       fase_vigente() que usa `evento`: si acá se reescribiera el "cuál
+       está abierta", la portada podría anunciar un precio que la página de
+       compra no reconoce. Los tipos ya vienen filtrados por `activo` (se
+       vende) y `en_cartelera` (cuenta para lo que la portada dice): la
+       «Prueba de cobro» de Bs 1 está activa a propósito y no puede fijar
+       el "desde" de la fiesta ni inclinar el cupo a "últimas". */
+    const eventos = await rpc("cartelera_publica", {});
 
-    /* Un organizador dado de baja se lleva sus eventos con él: `activo` es
-       la llave que apaga un cliente entero sin tocarle los eventos uno por
-       uno. El embebido filtra por el padre — de ahí el `!inner`. */
-    const eventos = await rest(
-      `eventos?estado=eq.publicado&fecha=gte.${hoy}` +
-      `&select=id,slug,nombre,lugar,fecha,hora_inicio,flyer_url,organizadores!inner(slug,nombre)` +
-      `&organizadores.activo=is.true` +
-      `&order=fecha.asc,hora_inicio.asc`);
-
-    /* En paralelo: la portada es lo primero que ve alguien que llega de
-       WhatsApp, y encadenar una fase y sus precios por evento la vuelve
-       lineal en la cantidad de eventos. */
-    const cartelera = await Promise.all((eventos ?? []).map(async (e: any) => {
-      /* La misma fase que usa `evento`, y por la misma función: si acá se
-         reescribiera el "cuál está abierta", la portada podría anunciar un
-         precio que la página de compra no reconoce. */
-      const faseId = await rpc("fase_vigente", { p_evento: e.id });
-      if (!faseId) return null;   // publicado pero sin venta abierta: no es cartelera
-
-      const precios = await rest(
-        `fase_precio?fase_id=eq.${faseId}&select=precio,cupo,tipo_id,tipo_entrada(activo,en_cartelera)`);
-
-      /* Dos filtros y no uno. `activo` es el que decide si el producto se
-         vende; `en_cartelera` es el que decide si CUENTA para lo que la
-         portada dice del evento. La «Prueba de cobro» de Bs 1 está activa a
-         propósito —es lo que verifica la pasarela por el mismo camino que
-         usa un comprador— y por eso la tarjeta anunciaba "desde 1 Bs": un
-         instrumento de prueba fijando el precio de la fiesta. Tampoco entra
-         en la cuenta de cupo: tres unidades de prueba no pueden inclinar un
-         evento a "últimas entradas" ni taparle el "agotado". */
-      const vivos = (precios ?? []).filter(
-        (p: any) => p.tipo_entrada?.activo && p.tipo_entrada?.en_cartelera !== false);
-      const disp = await Promise.all(vivos.map((p: any) =>
-        p.cupo === null ? Promise.resolve(null)     // sin tope: corta por fecha, no por stock
-                        : rpc("disponibilidad_tipo", { p_fase: faseId, p_tipo: p.tipo_id })
-                            .then((d) => Number(d ?? 0))));
+    const cartelera = (eventos ?? []).map((e: any) => {
+      const vivos = e.precios ?? [];
+      // sin tope (cupo null) corta por fecha, no por stock: queda null
+      const disp = vivos.map((p: any) => p.cupo === null ? null : Number(p.disponible ?? 0));
 
       /* El "desde" es el más barato QUE SE PUEDE COMPRAR AHORA. Anunciar
          120 Bs cuando la General está agotada y lo único que queda es la VIP
@@ -146,9 +126,9 @@ Deno.serve(async (req) => {
         desde,
         venta,
       };
-    }));
+    });
 
-    return json({ ok: true, eventos: cartelera.filter(Boolean) });
+    return json({ ok: true, eventos: cartelera });
   } catch (err) {
     return json({ ok: false, motivo: String((err as Error).message ?? err) }, 500);
   }

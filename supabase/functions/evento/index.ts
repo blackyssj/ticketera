@@ -3,7 +3,15 @@
    security_invoker en un `create or replace` y quedar leyendo sin RLS (así se
    filtró v_stats_rrpp en Puerta). Una función no falla de esa manera.
    Devuelve la misma forma que datos-demo.js para que el frontend no distinga
-   el modo demo del real. */
+   el modo demo del real.
+
+   Un solo viaje a la base: `evento_publico()` (migración 0048) devuelve en
+   un jsonb lo que antes se juntaba con siete pedidos en fila a PostgREST
+   (organizador → evento → fase → precios → disponibilidad por tipo). Cada
+   ida y vuelta costaba más que la consulta que llevaba adentro, y la
+   página no podía pintar nada hasta que volviera el último. Acá queda
+   sólo el armado de la respuesta; qué es vendible lo decide la base con
+   las mismas funciones que usa crear_orden. */
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -24,7 +32,6 @@ async function rest(ruta: string, init: RequestInit = {}) {
   if (!r.ok) throw new Error(j?.message ?? j?.hint ?? t);
   return j;
 }
-const uno = async (ruta: string) => (await rest(ruta))?.[0] ?? null;
 const rpc = (fn: string, args: Record<string, unknown>) =>
   rest(`rpc/${fn}`, { method: "POST", body: JSON.stringify(args) });
 
@@ -44,7 +51,17 @@ const CORREO_CONFIGURADO = !!Deno.env.get("RESEND_API_KEY");
 
 const MES = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
 const DIA = ["DOM","LUN","MAR","MIÉ","JUE","VIE","SÁB"];
-const q = (s: string) => encodeURIComponent(s);
+
+/* Los cuatro motivos por los que la base no devuelve un evento, con el
+   mismo texto y el mismo código que tenía cada uno cuando eran cuatro
+   pedidos distintos. El comprador los ve en pantalla: "no existe" y
+   "todavía no está a la venta" no son la misma noticia. */
+const FALTA: Record<string, [string, number]> = {
+  organizador: ["Ese organizador no existe.", 404],
+  evento:      ["Ese evento no existe.", 404],
+  publicado:   ["El evento todavía no está a la venta.", 404],
+  fase:        ["No hay ninguna fase de venta abierta.", 409],
+};
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -57,29 +74,25 @@ Deno.serve(async (req) => {
     }
     if (!org || !ev) return json({ ok: false, motivo: "Falta organizador o evento." }, 400);
 
-    const o = await uno(`organizadores?slug=eq.${q(org)}&activo=is.true&select=id,nombre,fee_pct,fee_fijo_transaccion,fee_piso`);
-    if (!o) return json({ ok: false, motivo: "Ese organizador no existe." }, 404);
+    const d = await rpc("evento_publico", { p_org: org, p_slug: ev });
+    if (!d || d.falta || !d.evento) {
+      const [motivo, status] = FALTA[d?.falta] ?? FALTA.evento;
+      return json({ ok: false, motivo }, status);
+    }
+    const o = d.organizador, e = d.evento, fase = d.fase;
 
-    const e = await uno(`eventos?organizador_id=eq.${o.id}&slug=eq.${q(ev)}&select=id,nombre,descripcion,lugar,fecha,hora_inicio,edad_min,estado,tope_entradas_orden,arte_url`);
-    if (!e) return json({ ok: false, motivo: "Ese evento no existe." }, 404);
-    if (e.estado !== "publicado") return json({ ok: false, motivo: "El evento todavía no está a la venta." }, 404);
-
-    const faseId = await rpc("fase_vigente", { p_evento: e.id });
-    if (!faseId) return json({ ok: false, motivo: "No hay ninguna fase de venta abierta." }, 409);
-
-    const fase = await uno(`evento_fase?id=eq.${faseId}&select=nombre,hasta,arte_url`);
-    const precios = await rest(`fase_precio?fase_id=eq.${faseId}&select=tipo_id,precio,cupo,tipo_entrada(id,nombre,descripcion,incluye,categoria,manillas,orden,activo)`);
-
+    // `disponible` viene null cuando el tipo no tiene tope: 9999 es el
+    // "sin tope" que el front ya entiende. Con tope, lo que queda de verdad
+    // (vendido + retenido + cortesías ya restados por la base).
     const tipos = [];
-    for (const p of precios ?? []) {
+    for (const p of d.precios ?? []) {
       const t = p.tipo_entrada;
       if (!t?.activo) continue;
-      const disp = await rpc("disponibilidad_tipo", { p_fase: faseId, p_tipo: p.tipo_id });
       tipos.push({ id: t.id, nombre: t.nombre, desc: t.descripcion ?? "",
                    incluye: t.incluye ?? null,
                    categoria: t.categoria ?? "entrada",
                    precio: Number(p.precio), antes: null,
-                   cupo: p.cupo === null ? 9999 : Number(disp ?? 0),
+                   cupo: p.cupo === null ? 9999 : Number(p.disponible ?? 0),
                    manillas: t.manillas ?? 1, orden: t.orden });
     }
     tipos.sort((a, b) => a.orden - b.orden);
@@ -115,6 +128,8 @@ Deno.serve(async (req) => {
         // cliente la reconstruye adivinando el año por el día de semana.
         fecha: e.fecha,
         hora_inicio: String(e.hora_inicio).slice(0,5),
+        // Suelto además de en `datos`: el front decide con él si avisa "+18".
+        edad_min: e.edad_min == null ? null : Number(e.edad_min),
         fecha_txt: `${DIA[f.getDay()]} ${f.getDate()} ${MES[f.getMonth()]} · ${String(e.hora_inicio).slice(0,5)}`,
         bajada: e.descripcion ?? "",
         // El dato de reservas solo aparece si hay reservas. "0 disponibles"

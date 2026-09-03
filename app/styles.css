@@ -84,6 +84,51 @@ input{font:inherit}
 .hero.compacto .carril{padding-bottom:26px}
 .espuma-borde{display:block;width:100%;height:clamp(40px,6vw,74px);margin-bottom:-1px}
 
+/* El afiche al costado del texto. Una grilla de dos columnas: todo lo del
+   hero va a la izquierda y el afiche ocupa la derecha a lo largo de las
+   cuatro filas (lugar, nombre, bajada, datos). Si el afiche es más alto que
+   el texto, la última fila se estira y "Compartir" baja debajo de los dos;
+   si es más bajo, queda arriba y no molesta. Chico a propósito: en un
+   teléfono el hero ya se comía media pantalla, y esto no puede devolvérsela. */
+.hero .carril{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:clamp(16px,3vw,44px);align-items:start}
+.hero .carril > *{grid-column:1}
+.hero .hero-arte{
+  grid-column:2;grid-row:1 / span 4;align-self:start;
+  width:clamp(92px,24vw,230px);height:auto;max-height:min(62vw,410px);
+  object-fit:cover;object-position:top;border-radius:6px;
+  box-shadow:0 18px 44px rgba(0,0,0,.5);
+}
+/* Un link vestido de texto, no un botón más: la acción del hero es bajar a
+   comprar. 44px de alto por el dedo, y el margen negativo devuelve lo que
+   ese alto le agregaría al hero. */
+.hero-compartir{
+  grid-column:1 / -1;justify-self:start;display:inline-flex;align-items:center;gap:8px;
+  min-height:44px;margin:8px 0 -10px -8px;padding:0 8px;
+  font-family:var(--dato);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dorado);
+  transition:color .16s ease;
+}
+.hero-compartir svg{width:15px;height:15px;flex:0 0 auto}
+.hero-compartir:hover{color:var(--espuma)}
+.hero.compacto .hero-arte,.hero.compacto .hero-compartir{display:none}
+
+/* ─── esqueleto de carga ───
+   Mientras la función `evento` contesta (cerca de un segundo) la página no
+   está en blanco: tiene la forma de lo que va a llegar —dónde va el nombre,
+   dónde las tarjetas— y un pulso suave dice que está viva. Los huesos se
+   van solos cuando app.js pinta encima. Quien pidió menos movimiento ve el
+   esqueleto quieto: la regla global de prefers-reduced-motion ya lo apaga,
+   se repite abajo para que no dependa del orden del archivo. */
+.hueso{
+  display:inline-block;height:.72em;border-radius:4px;vertical-align:middle;
+  background:rgba(246,241,228,.13);animation:hueso-pulso 1.3s ease-in-out infinite;
+}
+@keyframes hueso-pulso{50%{opacity:.4}}
+.cuerpo .hueso{background:rgba(23,19,16,.09)}
+.bajada .hueso{display:block;margin-top:8px;height:.8em}
+.datos .hueso{height:1em}
+.tipo.esqueleto{display:flex;flex-direction:column;align-items:flex-start;gap:10px;min-height:104px;justify-content:center}
+.tipo.esqueleto .hueso:last-child{margin-top:4px}
+
 /* ─── cuerpo claro ─── */
 .cuerpo{background:var(--espuma);color:var(--tinta);padding:0 0 clamp(60px,9vw,110px);min-height:60vh}
 
@@ -175,6 +220,37 @@ input{font:inherit}
 .stepper button:disabled{color:rgba(23,19,16,.22);cursor:not-allowed}
 .stepper output{width:36px;text-align:center;font-family:var(--dato);font-size:15px;font-variant-numeric:tabular-nums}
 
+/* "Ya tenés N entradas para este evento". Un renglón, sin caja ni color de
+   alerta: es un recordatorio, no una advertencia. El link tiene sus 44px. */
+.ya-tenes{
+  display:flex;align-items:center;flex-wrap:wrap;gap:0 14px;margin:-6px 0 12px;
+  font-family:var(--dato);font-size:12px;color:var(--tinta-60);
+}
+.ya-tenes b{color:var(--tinta);font-weight:500}
+.ya-tenes a{display:inline-flex;align-items:center;min-height:44px;color:var(--tinta);text-underline-offset:3px;white-space:nowrap}
+
+/* ─── dudas rápidas ───
+   Al pie del primer paso, después de las entradas: contestan lo que hoy se
+   pregunta por WhatsApp antes de comprar. <details> nativo, sin JS, y el
+   renglón entero es el blanco del dedo. */
+.dudas{margin-top:34px;padding-top:6px;border-top:1.5px solid var(--tinta-16)}
+.dudas h3{font-size:22px;margin:16px 0 4px}
+.dudas details{border-bottom:1px solid var(--tinta-16)}
+.dudas summary{
+  display:flex;align-items:center;gap:12px;min-height:48px;padding:8px 0;
+  cursor:pointer;font-weight:500;font-size:15px;list-style:none;
+}
+.dudas summary::-webkit-details-marker{display:none}
+.dudas summary::after{content:"+";margin-left:auto;font-family:var(--dato);font-size:18px;color:var(--tinta-40);flex:0 0 auto}
+.dudas details[open] summary::after{content:"–"}
+.dudas p{padding:0 0 14px;font-size:14px;line-height:1.55;color:var(--tinta-60);max-width:60ch}
+/* Un link en medio de un párrafo no puede medir 44px sin partir el texto.
+   El padding vertical de un elemento en línea no cambia la altura del
+   renglón pero sí el área que responde al dedo. Ojo: suma al área de
+   contenido de la fuente (~17px con 14px de cuerpo), no al renglón de 22:
+   con 12px daba 41, con 14 da 45. */
+.dudas a{color:var(--tinta);text-underline-offset:3px;padding:14px 0}
+
 /* ─── planimetría ─── */
 
 .form{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:640px}
@@ -189,6 +265,47 @@ input{font:inherit}
 .campo input[aria-invalid="true"]{border-color:var(--rojo)}
 .error{font-family:var(--dato);font-size:11px;color:var(--rojo);font-style:normal;min-height:1em}
 .letra-chica{margin-top:16px;font-family:var(--dato);font-size:11px;color:var(--tinta-40);line-height:1.5}
+
+/* "Evento para mayores de 18". Hermana de .panel-nota, pero en su propio
+   renglón debajo del título (flex-basis 100% en un flex que envuelve) y un
+   tono más presente: es un dato que decide si la persona sigue o no. */
+.panel-cab .nota-edad{flex-basis:100%;margin-top:-6px;color:var(--tinta-60)}
+
+/* ─── términos ───
+   El casillero y su renglón son un solo blanco de 44px: se tilda tocando el
+   texto. Los links adentro abren aparte y llevan su propio padding vertical
+   —igual que en .dudas— para responder al dedo sin partir el renglón. */
+.campo.tc{gap:4px}
+.tc-fila{display:flex;align-items:center;gap:12px;min-height:44px;cursor:pointer}
+.tc-fila input{
+  width:22px;height:22px;margin:0;flex:0 0 auto;accent-color:var(--tinta);
+  padding:0;border-radius:3px;
+}
+.tc-fila input[aria-invalid="true"]{outline:2px solid var(--rojo);outline-offset:2px}
+.campo.tc .tc-texto{font:inherit;font-size:14px;letter-spacing:0;text-transform:none;color:var(--tinta);line-height:1.45}
+.tc-texto a{color:var(--tinta);text-underline-offset:3px;padding:14px 0}
+
+/* Ayuda por WhatsApp en los pasos 2 y 3. Un renglón de texto, no un botón:
+   está para el que se trabó, no para todos. */
+.ayuda-wa{margin-top:22px;font-family:var(--dato);font-size:12px;color:var(--tinta-60)}
+.ayuda-wa a{display:inline-flex;align-items:center;min-height:44px;color:var(--tinta);text-underline-offset:3px}
+
+/* Legales al pie de "listo": la misma letra chica de la referencia. */
+/* Cuerpo de 11px: el área de contenido ronda los 13px, 16 de padding
+   arriba y abajo lo llevan a 45. */
+.legales a{color:var(--tinta-60);text-underline-offset:3px;padding:16px 0}
+
+/* "Precargamos tus datos · No soy yo". El botón parece un link porque hace
+   lo que hace un link chico —deshacer una comodidad—, pero mide 44px. */
+.precargado{
+  display:flex;align-items:center;flex-wrap:wrap;gap:0 4px;margin:-8px 0 8px;
+  font-family:var(--dato);font-size:12px;color:var(--tinta-60);
+}
+.link{
+  display:inline-flex;align-items:center;min-height:44px;padding:0 6px;
+  font:inherit;color:var(--tinta);text-decoration:underline;text-underline-offset:3px;
+}
+.link:hover{color:var(--rojo)}
 
 /* ─── pago ─── */
 .pago-estado{
@@ -329,7 +446,18 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;text-decorat
 .rail-pie .btn{margin-top:14px}
 .rail-pie .btn.plano{margin-top:8px;font-size:15px;padding:9px 16px}
 .rail-pie .letra-chica{color:var(--humo-2)}
+/* La política de devolución: dos renglones al lado del total, sin caja. */
+.rail-pie .devolucion{margin-top:10px;color:var(--humo)}
 .reloj.movil{display:none}
+
+/* ─── pie de página ───
+   Sobre la noche, después del cuerpo claro. Los links miden 44px de alto. */
+.pie{background:var(--noche);color:var(--humo);border-top:1px solid var(--linea)}
+.pie-in{display:flex;align-items:center;flex-wrap:wrap;gap:8px 22px;min-height:64px;padding-top:8px;padding-bottom:8px}
+.pie-marca{font-family:var(--display);font-weight:800;font-size:17px;letter-spacing:.08em;text-transform:uppercase;color:var(--espuma)}
+.pie-links{display:flex;flex-wrap:wrap;gap:0 18px;margin-left:auto}
+.pie-links a{display:inline-flex;align-items:center;min-height:44px;font-family:var(--dato);font-size:12px;color:var(--humo);text-underline-offset:3px}
+.pie-links a:hover{color:var(--espuma)}
 
 /* ─── toast ─── */
 .toast{
@@ -379,6 +507,18 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;text-decorat
   .tipo-der{grid-column:1;grid-row:auto;justify-content:space-between}
   .tipo-precio{text-align:left}
   .tipo-cupo{grid-row:auto}
+
+  /* Con el carrito vacío la barra se va por abajo y aparece con lo primero
+     que se elige (data-vacio, app.js). visibility con retardo: sale de la
+     vista y del orden de tabulación recién cuando terminó de irse, y vuelve
+     al instante al mostrarse. prefers-reduced-motion la deja sin viaje. */
+  .rail{transition:transform .3s cubic-bezier(.2,.8,.3,1),visibility 0s}
+  .rail[data-vacio="1"]{transform:translateY(110%);visibility:hidden;transition:transform .3s ease-in,visibility 0s .3s}
+
+  /* El pie queda debajo de la barra fija si no se le deja el lugar: el
+     mismo --alto-barra que usa la columna, cero cuando la barra no está. */
+  .pie{padding-bottom:calc(var(--alto-barra,0px) + env(safe-area-inset-bottom))}
+  .pie-links{margin-left:0;width:100%}
 }
 
 /* ══ teléfono ═════════════════════════════════════════════════════
@@ -590,3 +730,22 @@ body.con-puerta{overflow:hidden}
 .tipo-incluye{grid-column:1;font-size:13px;color:var(--tinta-60);margin-top:2px}
 .tipo-incluye b{font-family:var(--dato);font-size:10.5px;letter-spacing:.1em;
   text-transform:uppercase;color:var(--dorado-hondo);margin-right:6px}
+
+/* ─── la cuenta del comprador (cuenta.js) ───
+   En "listo" (evento.html) y en /orden. Una caja hermana de .link-recuperar:
+   mismo blanco, mismo borde. Es la misma promesa —esto no se pierde— dicha
+   de la forma que sí viaja entre aparatos. Los campos reusan .campo y el
+   botón .btn.primario; acá sólo el armado y los 44px de toque de los links. */
+.cuenta-listo{margin-top:14px;padding:16px;background:#fff;border:1.5px solid var(--tinta-16);border-radius:4px}
+.cuenta-orden{margin-top:14px}
+.cuenta-txt,.cuenta-ok{margin:6px 0 0;font-size:14px;line-height:1.5;color:var(--tinta-60)}
+.cuenta-ok b{font-weight:500;color:var(--tinta);word-break:break-all}
+.cuenta-ok a,.cuenta-orden .mias a{display:inline-block;padding:13px 0;color:var(--tinta);text-underline-offset:3px}
+.cuenta-form{display:grid;gap:12px;margin-top:14px}
+/* 16px clavados en el input: abajo de eso iOS hace zoom al tocar el campo y
+   deja la página corrida. La misma regla que en la portada. */
+.cuenta-form .campo input{font-size:16px}
+.cuenta-form .letra-chica{margin-top:0}
+.cuenta-form .letra-chica a{color:var(--tinta-60);text-underline-offset:3px;padding:14px 0}
+.cuenta-cambio{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0;font-family:var(--dato);font-size:12px;color:var(--tinta-60)}
+.cuenta-cambio button{min-height:44px;padding:0 6px;margin-left:-6px;font:inherit;color:var(--tinta);text-decoration:underline;text-underline-offset:3px}

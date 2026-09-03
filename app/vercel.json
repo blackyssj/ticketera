@@ -41,6 +41,14 @@
       "destination": "/mis-entradas/index.html"
     },
     {
+      "source": "/terminos",
+      "destination": "/terminos/index.html"
+    },
+    {
+      "source": "/privacidad",
+      "destination": "/privacidad/index.html"
+    },
+    {
       "source": "/:organizador/:evento",
       "destination": "/evento.html"
     }

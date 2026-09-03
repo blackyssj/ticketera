@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mis entradas — TICKETAZO</title>
-<!-- Es una lista de compras de un teléfono puntual, no una página para -->
+<!-- Es una lista de compras de una persona puntual, no una página para -->
 <!-- indexar: no hay nada acá que le sirva a alguien que no sea el dueño. -->
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#180E3A">
@@ -24,7 +24,7 @@
      troquelada. Esta página no inventa una paleta propia, así que no
      necesita más que sumarle lo puntual en mis.css. -->
 <link rel="stylesheet" href="/portada.css?v=32">
-<link rel="stylesheet" href="/mis-entradas/mis.css?v=1">
+<link rel="stylesheet" href="/mis-entradas/mis.css?v=2">
 </head>
 <body>
 
@@ -41,13 +41,80 @@
   <section class="hero">
     <div class="carril">
       <h1 class="titulo">Mis <span class="fluor">entradas</span></h1>
-      <p class="bajada">Las compras que hiciste desde este teléfono, guardadas
+      <p class="bajada" id="bajada">Las compras que hiciste desde este teléfono, guardadas
         acá para volver a verlas sin buscar el correo.</p>
+
+      <!-- Con sesión: quién está adentro y la salida, en un renglón. Lo llena
+           mis.js; sin sesión queda oculto y en su lugar aparece el formulario
+           de más abajo. -->
+      <div class="cuenta-cab" id="cuentaCab" hidden>
+        <span class="cuenta-rotulo">Tu cuenta</span>
+        <span class="cuenta-sep" aria-hidden="true">·</span>
+        <span class="cuenta-mail" id="cuentaMail"></span>
+        <button type="button" class="cuenta-salir" id="btnSalir">Salir</button>
+      </div>
+
       <!-- El aviso honesto que pide el spec: una sola línea, sin drama, pero
-           dicha de entrada y no escondida abajo del todo. -->
-      <p class="mia-aviso">Se guardan en este navegador, no en una cuenta: si
+           dicha de entrada y no escondida abajo del todo. El texto cambia
+           según haya sesión o no (mis.js): sin cuenta, lo que hay es de este
+           navegador; con cuenta, lo de la cuenta viaja y lo local todavía no. -->
+      <p class="mia-aviso" id="aviso">Se guardan en este navegador, no en una cuenta: si
         borrás los datos del sitio o cambiás de teléfono, se pierden. Lo que
         nunca se pierde es el link de cada entrada.</p>
+    </div>
+  </section>
+
+  <!-- ══ entrar / crear cuenta ══
+       Un solo formulario con dos modos (data-modo="entrar" | "crear"): son
+       los mismos dos campos y cambiar de pantalla para agregar uno sería
+       mandar a la gente a otro lado por un renglón de más. Sin verificación
+       por correo porque no hay SMTP; la nota lo dice antes de que alguien
+       espere un mail. -->
+  <section class="entrar" id="entrar" hidden>
+    <div class="carril">
+      <div class="entrar-caja">
+        <h2 class="entrar-titulo">Entrá para ver tus entradas desde cualquier teléfono</h2>
+        <p class="entrar-bajada" id="entrarBajada">Las compras que guardes en tu cuenta te siguen
+          aunque cambies de aparato.</p>
+        <form class="forma" id="formCuenta" data-modo="entrar" novalidate>
+          <label class="campo" id="campoNombre" hidden>
+            <span>Nombre <em>(opcional)</em></span>
+            <input type="text" id="fNombre" name="nombre" autocomplete="name" maxlength="80">
+          </label>
+          <label class="campo">
+            <span>Correo</span>
+            <input type="email" id="fMail" name="email" autocomplete="email" inputmode="email" required>
+          </label>
+          <label class="campo">
+            <span>Contraseña</span>
+            <input type="password" id="fClave" name="password" autocomplete="current-password" required>
+          </label>
+          <p class="forma-error" id="formError" role="alert" hidden></p>
+          <p class="forma-nota" id="notaCrear" hidden>Al menos 8 caracteres. Sin verificación por correo:
+            si la olvidás, escribinos por WhatsApp.</p>
+          <button type="submit" class="btn btn-fluor" id="btnEnviar">Entrar</button>
+          <p class="forma-cambio">
+            <span id="cambioTxt">¿Primera vez?</span>
+            <button type="button" id="btnModo">Crear cuenta</button>
+          </p>
+        </form>
+        <!-- La única recuperación que existe hoy. Va acá, junto al
+             formulario, porque es donde alguien se da cuenta de que no se
+             acuerda la clave. -->
+        <a class="wa" href="https://wa.me/59178183001?text=Hola,%20necesito%20ayuda%20con%20mi%20cuenta%20de%20TICKETAZO" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Z"/><path d="M8.5 8.4c.2-.4.5-.4.8-.4h.6c.2 0 .4 0 .6.5l.8 1.9c.1.2.1.4 0 .6l-.5.7c-.1.2-.2.3 0 .6a6.5 6.5 0 0 0 3.2 2.8c.3.1.4.1.6-.1l.8-.9c.2-.2.4-.2.6-.1l1.9.9c.3.1.5.2.5.4 0 .3 0 1.1-.5 1.6-.5.5-1.4.9-2 .9-1 0-2.5-.4-4.5-1.9a11 11 0 0 1-3.2-3.9c-.5-1-.5-1.9 0-2.6.2-.4.5-.7.6-.9Z"/></svg>
+          ¿Olvidaste la contraseña? Escribinos por WhatsApp
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- El estado de la cuenta mientras se pide la lista o si no se pudo:
+       una línea arriba de las tarjetas, nunca en lugar de ellas. La lista
+       local se pinta igual, con red o sin red. -->
+  <section class="estado" id="seccionEstado" hidden>
+    <div class="carril">
+      <p class="cuenta-estado" id="cuentaEstado" role="status" aria-live="polite"></p>
     </div>
   </section>
 
@@ -93,6 +160,12 @@
   <button type="button" id="toastDeshacer" hidden>Deshacer</button>
 </div>
 
-<script src="/mis-entradas/mis.js?v=1"></script>
+<!-- config.js trae la URL y la anon key que cuenta.js necesita para hablar
+     con Auth y con la función `cuenta`. Antes esta página no cargaba nada
+     de eso porque no hablaba con el servidor; ahora habla, pero sólo con
+     sesión. -->
+<script src="/config.js"></script>
+<script src="/cuenta.js?v=1"></script>
+<script src="/mis-entradas/mis.js?v=2"></script>
 </body>
 </html>
