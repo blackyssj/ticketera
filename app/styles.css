@@ -144,6 +144,14 @@ input{font:inherit}
 .fase{display:inline-flex;align-items:center;gap:8px;background:var(--tinta);color:var(--espuma);font-family:var(--dato);font-size:11.5px;letter-spacing:.05em;padding:5px 11px;border-radius:999px;text-transform:uppercase}
 .fase i{width:6px;height:6px;border-radius:50%;background:var(--dorado);box-shadow:0 0 0 3px rgba(233,180,76,.25);flex:0 0 auto}
 
+/* Cuánto le queda a la fase. Al lado de la pastilla y no adentro: la fase es
+   una etiqueta que está siempre, esto aparece sólo cuando hay una fecha de
+   cierre de verdad. Y en texto plano, sin caja ni color, salvo cuando quedan
+   menos de 24 horas: si todo grita, el día que hay que apurarse no se
+   distingue del resto. */
+.cierre{font-family:var(--dato);font-size:11.5px;color:var(--tinta-60);letter-spacing:.02em}
+.cierre[data-urgente="1"]{color:var(--rojo);font-weight:500}
+
 /* ─── tipos de entrada ─── */
 .tipos{display:grid;gap:12px}
 .tipo{
@@ -254,6 +262,28 @@ body.sin-rail .lienzo-col{padding-bottom:0}
 .link-recuperar-titulo{margin:0 0 4px;font-family:var(--dato);font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--tinta-60)}
 .link-recuperar code{font-family:var(--dato);font-size:12.5px;color:var(--tinta);word-break:break-all}
 .link-recuperar .btn{margin-left:auto;flex:0 0 auto;padding:9px 16px;font-size:15px}
+
+/* El link a /mis-entradas. Va pegado al bloque del link de recuperación
+   porque es la misma promesa dicha de la otra forma: eso es esta compra,
+   esto son todas. */
+.mias{margin-top:12px;font-family:var(--dato);font-size:12px;color:var(--tinta-60)}
+.mias a{color:var(--tinta);text-underline-offset:3px}
+
+/* ─── llegar al evento ───
+   Tres cosas que no sirven hoy y sirven el día del evento: la agenda, el
+   mapa y el link para el que viene con vos. Por eso van al final, después de
+   guardar la entrada, y en botón plano: ninguna compite con la acción que
+   importa ahora.
+   min-width:0 y no el ancho del texto: un ítem flex no baja de lo que mide su
+   contenido salvo que se le diga, y con "Agregar al calendario" adentro eso
+   empujaba la página de costado en un teléfono angosto. */
+.llegar{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.llegar .btn{flex:1 1 150px;min-width:0}
+
+/* Un ancla vestida de botón necesita que le digan que es una caja y que no va
+   subrayada; el <button> ya lo trae de fábrica. */
+a.btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+.btn.chico{padding:10px 16px;font-size:15px}
 
 /* ─── botones ─── */
 .btn{padding:13px 20px;border-radius:3px;font-family:var(--display);font-size:19px;text-transform:uppercase;letter-spacing:.04em;transition:background .16s ease,transform .1s ease,color .16s ease}
@@ -395,6 +425,11 @@ body.sin-rail .lienzo-col{padding-bottom:0}
   .paso,.btn,.stepper button,.rlinea .x{min-height:44px}
   .stepper button{width:44px}
   .stepper output{width:42px}
+  /* La × que saca una línea del resumen tenía 44px de alto y 15 de ancho:
+     una franja, no un blanco. Con la yema encima se le pega al nombre de al
+     lado, que no hace nada, y el que quería corregir la compra cree que la
+     página no responde. */
+  .rlinea .x{min-width:44px}
 }
 
 @media (prefers-reduced-motion:reduce){

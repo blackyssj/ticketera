@@ -110,6 +110,11 @@ Deno.serve(async (req) => {
         marca_1: partes[0],
         marca_2: partes.slice(1).join(" "),
         lugar: e.lugar ?? "",
+        // La fecha también cruda: el texto de abajo no trae año, y el front la
+        // necesita entera para el .ics y para "Mis entradas". Sin esto el
+        // cliente la reconstruye adivinando el año por el día de semana.
+        fecha: e.fecha,
+        hora_inicio: String(e.hora_inicio).slice(0,5),
         fecha_txt: `${DIA[f.getDay()]} ${f.getDate()} ${MES[f.getMonth()]} · ${String(e.hora_inicio).slice(0,5)}`,
         bajada: e.descripcion ?? "",
         // El dato de reservas solo aparece si hay reservas. "0 disponibles"
@@ -122,7 +127,9 @@ Deno.serve(async (req) => {
         tope_entradas_orden: e.tope_entradas_orden,
         arte_url: e.arte_url ?? null,
       },
-      fase: { nombre: fase?.nombre ?? "", arte_url: fase?.arte_url ?? null, hasta_txt: fase?.hasta
+      // `hasta` en crudo para que el front diga "cierra en 3 días" sólo
+      // cuando hay un cierre de verdad; `hasta_txt` sigue para el chip.
+      fase: { nombre: fase?.nombre ?? "", arte_url: fase?.arte_url ?? null, hasta: fase?.hasta ?? null, hasta_txt: fase?.hasta
         ? "hasta el " + new Date(fase.hasta).toLocaleDateString("es-BO",
             { day: "numeric", month: "long", timeZone: "America/La_Paz" })
         : "" },

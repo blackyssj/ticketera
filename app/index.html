@@ -27,7 +27,7 @@
      esperar el saludo. En 4G eso es medio segundo. -->
 <link rel="preconnect" href="https://mjotxzcddhqqpuhkcetl.supabase.co" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Azeret+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/portada.css?v=31">
+<link rel="stylesheet" href="/portada.css?v=32">
 <!-- La clase `js` la pone el propio script, en línea y antes de pintar nada:
      de ella cuelga el estado inicial invisible de las tarjetas. Si el script
      no llega a correr, la clase no está, las tarjetas nunca se esconden y la
@@ -43,7 +43,23 @@
     <!-- El "-azo" es el aumentativo que hace el nombre: un ticketazo no es un
          ticket. Marcarlo en fluor es toda la identidad que se necesita acá. -->
     <a class="logo" href="/" aria-label="TICKETAZO, inicio">TICKET<span>AZO</span></a>
-    <span class="barra-lugar">Santa Cruz de la Sierra</span>
+    <div class="barra-der">
+      <span class="barra-lugar">Santa Cruz de la Sierra</span>
+      <!-- La puerta a lo ya comprado. Nace oculta y portada.js la abre SÓLO
+           si el aparato tiene compras guardadas: un link a una lista vacía
+           es una promesa rota, y en la barra de la portada es además un
+           competidor del evento. El que llega por WhatsApp viene a comprar;
+           el que viene a buscar su entrada ya compró alguna vez, y para ese
+           —y sólo para ese— el acceso aparece. -->
+      <a class="mis" id="misEntradas" href="/mis-entradas" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 8.5A1.5 1.5 0 0 1 4.5 7h15A1.5 1.5 0 0 1 21 8.5v2a2 2 0 0 0 0 3v2a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 15.5v-2a2 2 0 0 0 0-3z"/>
+        </svg>
+        <span class="mis-txt">Mis entradas</span>
+        <span class="sep" aria-hidden="true">·</span>
+        <b id="misCuenta">0</b>
+      </a>
+    </div>
   </div>
 </header>
 
@@ -93,9 +109,47 @@
       <div class="rotulo">
         <h2 id="rotuloTxt">La cartelera</h2>
         <span class="rotulo-linea" aria-hidden="true"></span>
-        <span class="rotulo-cuenta" id="rotuloCuenta">Cargando…</span>
+        <span class="rotulo-cuenta" id="rotuloCuenta" aria-live="polite">Cargando…</span>
       </div>
+
+      <!-- Buscar y filtrar. Nace oculto y portada.js lo descubre sólo con la
+           cartelera larga (seis eventos, el mismo umbral que arma el
+           carrusel): sobre cinco tarjetas que entran en dos pantallas, un
+           buscador es un control que hay que leer para decidir no usarlo.
+
+           Y vive ACÁ, debajo del afiche y del rótulo, y no arriba de todo:
+           el que llega por WhatsApp viene a ver el evento, no a buscarlo.
+           Un campo de búsqueda en la primera pantalla del teléfono le come
+           al flyer los 60px que le costó ganar. -->
+      <div class="filtros" id="filtros" role="search" hidden>
+        <div class="busca-caja">
+          <svg class="lupa" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"/><path d="M16.3 16.3 21 21"/>
+          </svg>
+          <label class="solo-lector" for="busca">Buscar por evento, organizador o lugar</label>
+          <input class="busca" id="busca" type="search" autocomplete="off"
+                 placeholder="Buscar evento o lugar">
+          <!-- La equis nativa mide 12px y sólo la dibujan algunos
+               navegadores. Ésta mide 44 y está en todos. -->
+          <button class="busca-x" id="buscaX" type="button" aria-label="Borrar la búsqueda" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <!-- Los botones los arma portada.js con los meses que REALMENTE hay
+             en la cartelera. Un filtro "noviembre" sin nada detrás es una
+             puerta a un cuarto vacío. -->
+        <div class="meses" id="meses" role="group" aria-label="Filtrar por mes"></div>
+      </div>
+
       <div class="grilla" id="grilla" aria-busy="true"></div>
+
+      <!-- El otro lado del buscador. Va afuera de la grilla porque la grilla
+           se repinta entera con la cartelera y esto no. -->
+      <div class="cartel" id="sinNada" hidden>
+        <h3>No encontramos nada</h3>
+        <p>Probá con menos letras, o volvé a la cartelera completa.</p>
+        <button class="btn" id="sinNadaBtn" type="button">Ver todo</button>
+      </div>
     </div>
   </section>
 </main>
@@ -117,7 +171,7 @@
 <script src="/config.js"></script>
 <!-- Sólo se usa con ?demo=1. Son 3 KB y evita una segunda ruta de la
      portada; cargarlo siempre cuesta menos que mantener dos páginas. -->
-<script src="/datos-demo-cartelera.js?v=1"></script>
-<script src="/portada.js?v=31"></script>
+<script src="/datos-demo-cartelera.js?v=2"></script>
+<script src="/portada.js?v=32"></script>
 </body>
 </html>

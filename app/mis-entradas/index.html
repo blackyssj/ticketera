@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es-BO">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mis entradas — TICKETAZO</title>
+<!-- Es una lista de compras de un teléfono puntual, no una página para -->
+<!-- indexar: no hay nada acá que le sirva a alguien que no sea el dueño. -->
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#180E3A">
+<!-- El mismo ícono que la portada: la entrada troquelada dibujada en línea,
+     para no pedir un archivo más ni dejar que el navegador salga a buscar
+     /favicon.ico por su cuenta. -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,
+  %3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E
+  %3Crect width='32' height='32' rx='7' fill='%23180E3A'/%3E
+  %3Crect x='6' y='8' width='20' height='16' rx='2.5' fill='%23FFE24B'/%3E
+  %3Ccircle cx='6' cy='16' r='3' fill='%23180E3A'/%3E
+  %3Ccircle cx='26' cy='16' r='3' fill='%23180E3A'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Azeret+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- El sistema de la portada tal cual: tokens, tipografía, la entrada
+     troquelada. Esta página no inventa una paleta propia, así que no
+     necesita más que sumarle lo puntual en mis.css. -->
+<link rel="stylesheet" href="/portada.css?v=32">
+<link rel="stylesheet" href="/mis-entradas/mis.css?v=1">
+</head>
+<body>
+
+<a class="saltar" href="#lista">Ir a mis entradas</a>
+
+<header class="barra">
+  <div class="carril barra-in">
+    <a class="logo" href="/" aria-label="TICKETAZO, inicio">TICKET<span>AZO</span></a>
+    <span class="barra-lugar">Mis entradas</span>
+  </div>
+</header>
+
+<main id="lista">
+  <section class="hero">
+    <div class="carril">
+      <h1 class="titulo">Mis <span class="fluor">entradas</span></h1>
+      <p class="bajada">Las compras que hiciste desde este teléfono, guardadas
+        acá para volver a verlas sin buscar el correo.</p>
+      <!-- El aviso honesto que pide el spec: una sola línea, sin drama, pero
+           dicha de entrada y no escondida abajo del todo. -->
+      <p class="mia-aviso">Se guardan en este navegador, no en una cuenta: si
+        borrás los datos del sitio o cambiás de teléfono, se pierden. Lo que
+        nunca se pierde es el link de cada entrada.</p>
+    </div>
+  </section>
+
+  <section class="proximas" id="seccionProximas" hidden>
+    <div class="carril">
+      <div class="rotulo">
+        <h2>Próximas</h2>
+        <span class="rotulo-linea" aria-hidden="true"></span>
+      </div>
+      <div class="grilla" id="grillaProximas"></div>
+    </div>
+  </section>
+
+  <!-- No se borran: son el comprobante de que ya entraste. Apagadas y bajo
+       su propio rótulo, para que la lista de arriba sea sólo lo que falta. -->
+  <section class="pasadas" id="seccionPasadas" hidden>
+    <div class="carril">
+      <div class="rotulo">
+        <h2>Ya pasaron</h2>
+        <span class="rotulo-linea" aria-hidden="true"></span>
+      </div>
+      <div class="grilla" id="grillaPasadas"></div>
+    </div>
+  </section>
+
+  <section class="vacio" id="seccionVacio" hidden>
+    <div class="carril" id="carrilVacio"></div>
+  </section>
+</main>
+
+<footer class="pie">
+  <div class="carril pie-in">
+    <span class="logo chico" aria-hidden="true">TICKET<span>AZO</span></span>
+    <p class="pie-lugar">Santa Cruz de la Sierra</p>
+  </div>
+</footer>
+
+<!-- Deshacer vive en el propio toast: quitar una entrada es una decisión
+     que se puede lamentar diez segundos después, y ahí tiene que estar la
+     salida. -->
+<div class="toast" id="toast" role="status" aria-live="polite">
+  <span id="toastTxt"></span>
+  <button type="button" id="toastDeshacer" hidden>Deshacer</button>
+</div>
+
+<script src="/mis-entradas/mis.js?v=1"></script>
+</body>
+</html>

@@ -97,6 +97,9 @@ Deno.serve(async (req) => {
       evento: {
         id: e.id, marca_1: partes[0], marca_2: partes.slice(1).join(" "),
         lugar: e.lugar ?? "",
+        // Cruda además del texto: "Mis entradas" ordena por fecha real.
+        fecha: e.fecha,
+        hora_inicio: String(e.hora_inicio).slice(0,5),
         fecha_txt: `${DIA[f.getDay()]} ${f.getDate()} ${MES[f.getMonth()]} · ${String(e.hora_inicio).slice(0,5)}`,
         arte_url: e.arte_url ?? null,
       },

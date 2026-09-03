@@ -124,6 +124,71 @@ function avisar(txt) {
 
 const tipoDe = id => D.tipos.find(t => t.id === id);
 const esperar = ms => new Promise(r => setTimeout(r, ms));
+const linkDeOrden = () => `${location.origin}/orden/?id=${S.orden.id}`;
+
+/* 9999 es como la función `evento` dice "este tipo no tiene tope" (cupo nulo
+   en la base). Pintarlo tal cual dejaba "9999 disponibles" en la tarjeta, que
+   no es un dato: es un número de relleno con cara de dato. */
+const SIN_TOPE = 9999;
+
+/* Gratis de verdad. No alcanza con que las entradas valgan cero: el fijo por
+   transacción y el piso del organizador también tienen que estar en cero,
+   porque si no el carrito suma algo y ese algo hay que cobrarlo. Decir
+   "gratis" ahí sería la mentira al revés de decir "pagá" cuando no hay nada
+   que pagar. */
+function eventoGratis() {
+  const o = D.organizador || {};
+  return D.tipos.length > 0 && D.tipos.every(t => Number(t.precio) === 0)
+      && !Number(o.fee_fijo) && !Number(o.fee_piso);
+}
+
+/* ── cuándo es el evento ──────────────────────────────────────────
+   La fecha en ISO no viaja: la función `evento` arma `fecha_txt` ("SÁB 12 SEP
+   · 21:00") y manda sólo eso. El .ics y lo que se guarda en el dispositivo
+   necesitan una fecha de verdad, así que se reconstruye de ese texto. El año
+   no está escrito, y no se adivina a ciegas: se prueban éste y el que viene, y
+   gana el que caiga en el día de semana que el propio texto declara. Si
+   ninguno coincide, el que no esté en el pasado. Si nada de eso cierra,
+   devuelve null y el botón de calendario no aparece — meterle a alguien una
+   fecha equivocada en su agenda es peor que no darle el botón. */
+const MES_TXT = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
+const DIA_TXT = ["DOM","LUN","MAR","MIÉ","JUE","VIE","SÁB"];
+/* Bolivia no mueve el reloj en todo el año: -04:00 fijo. Por eso el día se lee
+   corriendo cuatro horas atrás y mirando el UTC, y no con getDay()/getDate(),
+   que contestan según el reloj del que está mirando la página: a las 21:00 de
+   Santa Cruz, en Madrid ya es el día siguiente. */
+const enBolivia = d => new Date(d.getTime() - 4 * 3600e3);
+
+function fechaEvento() {
+  const e = D.evento || {};
+  // Si algún día la función manda la fecha en crudo, esa manda y no se adivina.
+  if (e.fecha) {
+    const d = new Date(`${e.fecha}T${String(e.hora_inicio || "21:00").slice(0, 5)}:00-04:00`);
+    if (!isNaN(d.getTime())) return d;
+  }
+  const txt = String(e.fecha_txt || "").toUpperCase();
+  const md = txt.match(/(\d{1,2})\s+([A-ZÁÉÍÓÚÑ]{3})/);
+  const mes = md ? MES_TXT.indexOf(md[2]) : -1;
+  if (mes < 0) return null;
+  const hm = txt.match(/(\d{1,2}):(\d{2})/);
+  const semana = (txt.match(/^([A-ZÁÉÍÓÚÑ]{3})/) || [])[1];
+  const p2 = n => String(n).padStart(2, "0");
+  const anio = new Date().getFullYear();
+  const dia = Number(md[1]);
+  const cand = [0, 1]
+    .map(n => new Date(`${anio + n}-${p2(mes + 1)}-${p2(dia)}` +
+                       `T${hm ? p2(hm[1]) : "21"}:${hm ? hm[2] : "00"}:00-04:00`))
+    /* Un 31 de abril no explota: el navegador lo corre al 1 de mayo y no dice
+       nada. Si el día que vuelve no es el que se pidió, esa fecha no existía y
+       se descarta — de lo contrario el .ics saldría con el día corrido. */
+    .filter(d => !isNaN(d.getTime()) && enBolivia(d).getUTCDate() === dia);
+  /* Primero las que todavía no pasaron: esta página vende un evento futuro, y
+     la del año pasado nunca es la respuesta. Recién entre ésas manda el día de
+     semana que declara el propio texto; si ninguna coincide, la más cercana.
+     El día de gracia es para el evento que empieza esta noche. */
+  const futuras = cand.filter(d => d.getTime() > Date.now() - 864e5);
+  return futuras.find(d => DIA_TXT[enBolivia(d).getUTCDay()] === semana) || futuras[0] || null;
+}
 
 /* ══ el backend ═══════════════════════════════════════════════════
    Cuatro llamadas, las mismas que expone el Bloque 2. El adaptador de
@@ -220,7 +285,14 @@ function pintarHero() {
   $("#heroL1").textContent = e.marca_1;
   $("#heroL2").textContent = e.marca_2;
   $("#heroBajada").textContent = e.bajada;
-  $("#heroDatos").innerHTML = e.datos
+  /* El dato "Pago · Con QR" lo manda la función para todo evento, gratis
+     incluido. Ahí arriba, en el afiche, es lo primero que lee el invitado a
+     algo que no cobra: un cobro anunciado que después no aparece por ningún
+     lado. Se cae solo cuando no hay nada que cobrar. */
+  const datos = eventoGratis()
+    ? e.datos.filter(([k]) => String(k).toLowerCase() !== "pago")
+    : e.datos;
+  $("#heroDatos").innerHTML = datos
     .map(([k, v]) => `<span>${esc(k)} <b>${esc(v)}</b></span>`).join("");
   document.title = `${e.marca_1} ${e.marca_2} — ${VOCAB.titulo}`;
   $("#faseChip").innerHTML = `<i></i>${esc(D.fase.nombre)} · ${esc(D.fase.hasta_txt)}`;
@@ -233,6 +305,40 @@ function pintarHero() {
   if (o.fee_piso > 0) notaFee.push(`mínimo ${o.fee_piso} Bs`);
   $("#feeNota").textContent =
     notaFee.join(", ") + ". Ya incluye el procesamiento del pago.";
+}
+
+/* ── cuánto le queda a la fase ────────────────────────────────────
+   La única urgencia que se muestra es la que existe: si la fase no trae
+   fecha de cierre (`hasta`), acá no aparece nada. Un cartel que apura sin
+   tener de qué es el negocio de otros, y además se nota — el que vuelve
+   mañana ve el mismo "últimas horas" y ya no cree ninguno.
+   Tampoco es una cuenta regresiva al segundo: un número latiendo al lado del
+   precio apura, no informa, y se pelea con el reloj del hold, que ese sí
+   cuenta algo que se vence de verdad. Se escribe una vez, al cargar.        */
+function pintarCierre() {
+  const el = $("#faseCierre");
+  const hasta = D.fase && D.fase.hasta ? new Date(D.fase.hasta) : null;
+  const falta = hasta && !isNaN(hasta.getTime()) ? hasta.getTime() - Date.now() : 0;
+  if (falta <= 0) { el.hidden = true; return; }
+  const nombre = String(D.fase.nombre || "").trim();
+  el.textContent = `${nombre ? "La " + nombre.toLowerCase() : "La venta"} cierra en ${cuantoFalta(falta)}`;
+  // Bajo las 24 horas "cierra mañana" pasa a ser "cierra hoy", y ahí sí
+  // corresponde el acento del evento.
+  el.dataset.urgente = falta <= 24 * 3600e3 ? "1" : "0";
+  el.hidden = false;
+}
+
+// Redondea siempre para abajo: prometer un día entero cuando quedan trece
+// horas es la clase de exageración que después se cobra en la puerta.
+function cuantoFalta(ms) {
+  const h = Math.floor(ms / 3600e3);
+  if (h < 1) {
+    const m = Math.max(1, Math.floor(ms / 60e3));
+    return `${m} ${m === 1 ? "minuto" : "minutos"}`;
+  }
+  if (h < 24) return `${h} ${h === 1 ? "hora" : "horas"}`;
+  const d = Math.floor(h / 24);
+  return `${d} ${d === 1 ? "día" : "días"}`;
 }
 
 /* El nombre de cada paso va en su propio span porque en un teléfono no entran
@@ -299,19 +405,32 @@ function pintarTipos() {
 function tarjetaTipo(t, tope, usadas) {
   const q = S.cant[t.id];
   const esMesa = (t.categoria || "entrada") === "mesa";
-  const cls = t.cupo === 0 ? "agotado" : t.cupo <= 20 ? "poco" : "";
-  const txtCupo = t.cupo === 0 ? "Agotado"
-    : t.cupo <= 20 ? `Quedan ${t.cupo}` : `${t.cupo} disponibles`;
   const topeMas = q >= t.cupo || usadas >= tope;
+
+  /* El renglón del cupo dice el número real o no dice nada. Sin tope en la
+     base llegaba el 9999 de la función y la tarjeta anunciaba "9999
+     disponibles": un número que nadie escribió y que además delata que no
+     hay cuenta. Y cuando quedan pocas, el número es el argumento — "quedan
+     6" vende, "últimas unidades" no. */
+  const sinTope = t.cupo >= SIN_TOPE;
+  const cls = t.cupo === 0 ? "agotado" : (!sinTope && t.cupo <= 20) ? "poco" : "";
+  const partes = [];
+  if (t.cupo === 0) partes.push("Agotado");
+  else if (!sinTope) partes.push(t.cupo <= 20 ? `Quedan ${t.cupo}` : `${t.cupo} disponibles`);
+  if (esMesa && t.manillas > 1) partes.push(`entran ${t.manillas}`);
+  const txtCupo = partes.join(" · ");
 
   return `<article class="tipo${esMesa ? " es-mesa" : ""}" data-activo="${q ? 1 : 0}">
     <h3 class="tipo-nombre">${esc(t.nombre)}</h3>
     <p class="tipo-desc">${esc(t.desc)}</p>
     ${t.incluye ? `<p class="tipo-incluye"><b>Incluye</b> ${esc(t.incluye)}</p>` : ""}
-    <p class="tipo-cupo ${cls}">${txtCupo}${
-      esMesa && t.manillas > 1 ? ` · entran ${t.manillas}` : ""}</p>
+    ${txtCupo ? `<p class="tipo-cupo ${cls}">${esc(txtCupo)}</p>` : ""}
     <div class="tipo-der">
-      <span class="tipo-precio">${bs(t.precio)}${t.antes ? `<s>antes ${t.antes} Bs</s>` : ""}</span>
+      <span class="tipo-precio">${
+        // "0 Bs" es un precio y esto no tiene precio. Además el resumen ya dice
+        // Gratis: dos palabras distintas para lo mismo en la misma pantalla.
+        Number(t.precio) === 0 ? "Gratis" : bs(t.precio)
+      }${t.antes ? `<s>antes ${t.antes} Bs</s>` : ""}</span>
       <div class="stepper">
         <button type="button" data-paso-t="-1" data-tipo="${t.id}"
           aria-label="Quitar ${esc(t.nombre)}"${q === 0 ? " disabled" : ""}>−</button>
@@ -336,11 +455,29 @@ function pintarRail() {
         `<span class="v">${bs(l.v)}</span></div>`).join("")
     : `<p class="rail-vacio">Todavía no elegiste nada.</p>`;
 
+  /* Con todo en cero, "Subtotal 0 Bs" y "Servicio 0 Bs" son dos renglones que
+     el invitado a un evento gratis tiene que descartar solo, y la nota del fee
+     abajo le explica el procesamiento de un pago que no existe. Queda el
+     total, y el total dice Gratis: es la única palabra que hace falta. */
+  const gratis = hay && total === 0;
   $("#railTotales").hidden = !hay;
+  $("#vSubtotal").closest("div").hidden = gratis;
+  $("#vFee").closest("div").hidden = gratis;
+  $("#feeNota").hidden = gratis;
   $("#vSubtotal").textContent = bs(subtotal);
   $("#vFee").textContent = bs(fee);
-  $("#vTotal").textContent = bs(total);
-  $("#railTotalChico").textContent = bs(total);
+  $("#vTotal").textContent = gratis ? "Gratis" : bs(total);
+  $("#railTotalChico").textContent = gratis ? "Gratis" : bs(total);
+
+  /* El rótulo del tercer paso sale de lo que suma el carrito y no de una
+     constante: si no hay nada que cobrar, no hay un paso de pago que
+     anunciar. Se repinta el rail sólo cuando cambió, que es la única forma de
+     que el cartel no quede un paso atrasado respecto del carrito. */
+  // Con algo en el carrito manda el carrito; con el carrito vacío manda el
+  // evento, que ya se sabe si cobra o no. Si no, el invitado a un evento
+  // gratis lee "3 · Pago" desde que entra y antes de elegir nada.
+  const rotulo = (hay ? total === 0 : eventoGratis()) ? "Confirmación" : "Pago";
+  if (PASOS[2].txt !== rotulo) { PASOS[2].txt = rotulo; pintarPasos(); }
 
   const partes = [];
   const mesas = D.tipos.filter(t => t.categoria === "mesa")
@@ -478,13 +615,17 @@ function pagoDice(html) { $("#pagoEstado").innerHTML = html; }
 
 async function pagar() {
   /* En un evento gratis el tercer paso no es un pago: llamarlo así deja al
-     invitado esperando un cobro que no existe. El rótulo se decide acá, que
-     es el único momento en que ya se sabe cuánto suma el carrito. */
-  PASOS[2].txt = cotizar().total === 0 ? "Confirmación" : "Pago";
+     invitado esperando un cobro que no existe. El rótulo del rail lo pone
+     pintarRail; el h2 del panel estaba escrito a mano en el HTML y no lo
+     tocaba nadie, así que la pantalla decía "PAGO" en 44px con el rail
+     diciendo "Confirmación" dos centímetros más arriba. */
+  const gratis = cotizar().total === 0;
+  $('[data-paso="pago"] .panel-cab h2').textContent = gratis ? "Confirmación" : "Pago";
   irA("pago");
   try {
     pagoDice(`<div class="girador"></div><h3>Reservando tu lugar</h3>
-      <p>Guardamos lo que elegiste por 10 minutos mientras pagás.</p>`);
+      <p>${gratis ? "Guardamos lo que elegiste mientras lo confirmamos."
+                  : "Guardamos lo que elegiste por 10 minutos mientras pagás."}</p>`);
     const items = [];
     Object.entries(S.cant).forEach(([id, q]) => { if (q) items.push({ tipo_id: id, cantidad: q }); });
       S.orden = await API.crearOrden(items, { ...S.comprador });
@@ -495,7 +636,7 @@ async function pagar() {
        rechaza y el comprador se queda trabado en una pantalla que no avanza. */
     if (S.orden.gratis) {
       pagoDice(`<div class="girador"></div><h3>Confirmando tu lugar</h3>
-        <p>No hay nada que pagar.</p>`);
+        <p>Es gratis. Estamos emitiendo tu entrada.</p>`);
       S.entradas = await API.emitir(S.orden);
       await mostrarListo();
       return;
@@ -598,15 +739,159 @@ function pagoFallo(motivo, volverA) {
    así que el escáner de la puerta lo lee sin cambiarle una línea.   */
 const dibujarTicket = (t) => window.dibujarTicket(t, D.evento, D.fase);
 
+/* ── la compra, guardada en este teléfono ─────────────────────────
+   Sin correo configurado la entrada vive en la pantalla y en el link, y
+   cerrar la pestaña sin copiarlo es perderla. Esta lista es la red: la lee
+   /mis-entradas. El formato es un contrato con esa página — id, evento, org,
+   slug, fecha, lugar, entradas, guardada— y no se le cambia una clave sin
+   avisar del otro lado.
+
+   Todo adentro de un try, sin excepción: hay navegadores con el storage
+   bloqueado y modos privados que tiran al escribir, y una compra que ya salió
+   bien no se puede caer porque no se pudo guardar un recuerdo de ella.
+   Devuelve si quedó guardada, que es lo que decide si el link a /mis-entradas
+   tiene algo que mostrar. */
+const CLAVE_COMPRAS = "ticketazo.compras";
+const TOPE_COMPRAS = 50;
+
+function recordarCompra() {
+  try {
+    const cuando = fechaEvento();
+    const compra = {
+      id: S.orden.id,
+      evento: `${D.evento.marca_1} ${D.evento.marca_2 || ""}`.trim(),
+      org: CFG.ORGANIZADOR || "",
+      slug: CFG.EVENTO || "",
+      fecha: cuando ? cuando.toISOString() : null,
+      lugar: D.evento.lugar || "",
+      entradas: S.entradas.length,
+      guardada: Date.now()
+    };
+    const previas = JSON.parse(localStorage.getItem(CLAVE_COMPRAS) || "[]");
+    // Filtrar por id es a la vez "no duplicar" y "actualizar": la compra que
+    // ya estaba sale de donde estaba y vuelve a entrar con los datos de ahora.
+    const lista = Array.isArray(previas) ? previas.filter(c => c && c.id !== compra.id) : [];
+    // Adelante la última, que es la que se viene a buscar. Y de a 50: un
+    // storage lleno no avisa, empieza a tirar al escribir.
+    // Se ordena por `guardada` antes de cortar en vez de confiar en cómo vino
+    // la lista: el día que otra página escriba acá y agregue al final, cortar
+    // por posición tiraría la compra más nueva en vez de la más vieja.
+    lista.unshift(compra);
+    lista.sort((a, b) => (Number(b.guardada) || 0) - (Number(a.guardada) || 0));
+    localStorage.setItem(CLAVE_COMPRAS, JSON.stringify(lista.slice(0, TOPE_COMPRAS)));
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+/* ── el evento en la agenda ───────────────────────────────────────
+   El .ics se arma acá y no lo trae nadie: son quince renglones de texto y una
+   dependencia menos. Dos cosas que parecen ceremonia y no lo son: escapar (una
+   coma sin barra invertida parte el campo en dos y el evento entra sin lugar)
+   y plegar a 75 octetos, que es lo que el formato pide y lo que hace que
+   Outlook no lo abra en blanco.                                             */
+const escIcs = s => String(s ?? "")
+  .replace(/\\/g, "\\\\").replace(/[;,]/g, m => "\\" + m).replace(/\r?\n/g, "\\n");
+
+// El corte se cuenta en bytes y no en letras: la "ñ" de Cañoto ocupa dos, y
+// partirla al medio deja un archivo que el calendario no sabe leer.
+function plegar(linea) {
+  const enc = new TextEncoder();
+  const filas = [];
+  let fila = "", bytes = 0;
+  for (const ch of linea) {
+    const n = enc.encode(ch).length;
+    if (bytes + n > 73) { filas.push(fila); fila = " "; bytes = 1; }
+    fila += ch; bytes += n;
+  }
+  filas.push(fila);
+  return filas.join("\r\n");
+}
+
+const selloIcs = d => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+
+function textoIcs(cuando, link) {
+  const e = D.evento;
+  // Una fiesta no publica hora de cierre. Cinco horas es lo que dura una
+  // noche y no se come el día siguiente en la agenda de nadie.
+  const fin = new Date(cuando.getTime() + 5 * 3600e3);
+  return [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//TICKETAZO//ES", "CALSCALE:GREGORIAN",
+    "BEGIN:VEVENT",
+    `UID:${S.orden.id}@ticketazo`,
+    `DTSTAMP:${selloIcs(new Date())}`,
+    `DTSTART:${selloIcs(cuando)}`,
+    `DTEND:${selloIcs(fin)}`,
+    `SUMMARY:${escIcs(`${e.marca_1} ${e.marca_2 || ""}`.trim())}`,
+    `LOCATION:${escIcs(e.lugar || "")}`,
+    // El link va también en la descripción porque hay calendarios que no
+    // muestran el campo URL, y ese link es la entrada.
+    `DESCRIPTION:${escIcs("Tu entrada: " + link)}`,
+    // URL no es un campo de texto: escaparlo le metería barras al link.
+    `URL:${link}`,
+    "END:VEVENT", "END:VCALENDAR"
+  ].map(plegar).join("\r\n") + "\r\n";
+}
+
+// Mismo camino que usa ticket.js para bajar los PNG: blob, ancla, click y a
+// soltar la URL. Un <a download> escrito en el HTML no sirve — el archivo se
+// arma recién cuando se aprieta.
+function bajarIcs(cuando, link) {
+  const b = new Blob([textoIcs(cuando, link)], { type: "text/calendar;charset=utf-8" });
+  const u = URL.createObjectURL(b);
+  const a = document.createElement("a");
+  a.href = u;
+  a.download = `${CFG.EVENTO || "evento"}.ics`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 10000);
+}
+
+/* Lo que hace falta el día del evento y no hoy. La entrada ya está en la
+   pantalla; esto es para que además se llegue al lugar y a la hora. Cada
+   botón aparece sólo si tiene con qué: sin fecha reconocible no hay
+   calendario, sin lugar no hay mapa, y sin navigator.share no hay compartir.
+   Nada de fallbacks — el link para copiar ya está tres centímetros arriba, y
+   dos botones que hacen lo mismo no ayudan a nadie.                        */
+function armarLlegar(link) {
+  const cuando = fechaEvento();
+  const lugar = String(D.evento.lugar || "").trim();
+  const cal = $("#btnCalendario"), mapa = $("#btnMapa"), comp = $("#btnCompartir");
+
+  cal.hidden = !cuando;
+  if (cuando) cal.onclick = () => bajarIcs(cuando, link);
+
+  mapa.hidden = !lugar;
+  // Sin API key ni mapa embebido: la búsqueda de Google Maps abre la app del
+  // teléfono si está instalada, que es lo que la persona va a usar igual.
+  if (lugar) mapa.href =
+    "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(lugar);
+
+  comp.hidden = !navigator.share;
+  if (navigator.share) comp.onclick = async () => {
+    try {
+      await navigator.share({
+        title: `${D.evento.marca_1} ${D.evento.marca_2 || ""}`.trim(),
+        text: `Mi entrada para ${D.evento.marca_1} ${D.evento.marca_2 || ""}`.trim(),
+        url: link
+      });
+    } catch (err) { /* cancelar la hoja del sistema no es un error */ }
+  };
+
+  $("#llegar").hidden = cal.hidden && mapa.hidden && comp.hidden;
+}
+
 async function mostrarListo() {
   irA("listo");
   pararReloj();
   $("#listoNota").textContent =
     `${S.entradas.length} ${S.entradas.length === 1 ? "entrada" : "entradas"} a nombre de ${S.comprador.nombre}.`;
+  // Al que no le cobraron nada no le vendiste nada: consiguió un lugar.
+  $("#btnOtra").textContent = cotizar().total === 0 ? "Conseguir otra" : "Comprar otra";
 
   // Este link es el único camino de vuelta si se cierra la pestaña sin
   // descargar: por eso se muestra siempre, no solo cuando el correo falla.
-  const linkOrden = `${location.origin}/orden/?id=${S.orden.id}`;
+  const linkOrden = linkDeOrden();
   $("#listoLink").textContent = linkOrden;
   $("#btnCopiarLink").onclick = async () => {
     try {
@@ -628,6 +913,13 @@ async function mostrarListo() {
   $("#listoRef").textContent =
     `Orden #${String(S.orden.id).slice(0, 8).toUpperCase()}.` +
     (correoOk ? ` También te las mandamos a ${S.comprador.email}.` : "");
+
+  // Antes de dibujar nada: los tickets tardan y el que cierra la pestaña
+  // mientras se dibujan igual compró. Si el storage no deja, el link a
+  // /mis-entradas no se ofrece.
+  $("#listoMias").hidden = !recordarCompra();
+  armarLlegar(linkOrden);
+
   $("#tickets").innerHTML = `<p class="rail-vacio">Dibujando tus entradas…</p>`;
 
   if (document.fonts && document.fonts.ready) await document.fonts.ready;
@@ -744,9 +1036,19 @@ async function arrancar() {
       return;
     }
   }
+  /* Sin RESEND_API_KEY no sale un correo nunca, y la página lo prometía dos
+     veces antes de que el comprador escribiera una letra: en el encabezado del
+     formulario y en el error del campo. El dato lo manda la función `evento`;
+     si dice que no, la página deja de prometerlo. El correo se sigue pidiendo
+     —es como la organización encuentra la compra— pero deja de ser un envío. */
+  if (D.correo_configurado === false) {
+    $('[data-paso="datos"] .panel-nota').textContent = "Con esto emitimos tu entrada.";
+    REGLAS.fMail.msg = "Revisá el correo: queda en tu comprobante.";
+  }
   D.tipos.forEach(t => S.cant[t.id] = 0);
   fijarVocabulario();
   pintarHero();
+  pintarCierre();
   pintarTipos();
   irA("entradas");
 }

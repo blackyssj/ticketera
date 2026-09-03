@@ -1,0 +1,115 @@
+/* ══════════════════════════════════════════════════════════════════
+   MIS ENTRADAS — lo puntual de esta página, arriba del sistema de la
+   portada (portada.css, cargado antes que esto en index.html).
+
+   No hay paleta ni tipografía propia acá: los tokens (--tinta-2, --fluor,
+   --hueso, --mono...), la barra, el carril y sobre todo LA ENTRADA
+   (.evento → .afiche/.papel → .perf → .talon) son los mismos de la
+   portada. Cada compra guardada se dibuja con esas clases tal cual —
+   `.evento.compra` reutiliza el troquelado entero y esta hoja sólo agrega
+   lo que la portada no necesitaba: el rótulo de "pasó", la cantidad de
+   entradas en vez del precio, y los dos botones del talón (ver / quitar).
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── el aviso ──
+   Mono y apagado, como cualquier letra chica del sitio: se lee si se busca,
+   no grita. Va debajo de la bajada y no en el pie, porque el momento en que
+   importa es ANTES de que alguien confíe en que la lista va a estar mañana. */
+.mia-aviso{
+  margin-top:14px;max-width:56ch;
+  font-family:var(--mono);font-size:12px;letter-spacing:.02em;line-height:1.55;
+  color:var(--hueso-40);
+}
+
+.proximas{padding-bottom:clamp(30px,5vw,50px)}
+/* El corte entre lo que sigue en pie y lo que ya pasó: una línea, no una
+   caja. Con eventos guardados de sobra la lista de abajo puede ser larga y
+   no hace falta más ceremonia que la que ya usa el resto del sitio. */
+.pasadas{
+  border-top:1px solid var(--filo);
+  padding:clamp(30px,5vw,46px) 0 clamp(40px,6vw,62px);
+}
+
+.vacio{padding:clamp(24px,5vw,40px) 0 clamp(56px,9vw,90px)}
+
+/* ── la tarjeta de una compra ──
+   Vive sobre `.evento`: fondo, radio, sombra, el respiro del troquel a
+   210/152px de ancho de contenedor, todo eso lo trae la portada gratis.
+   Acá sólo lo que le falta a una tarjeta que junta dos botones en vez de
+   ser un solo link. */
+.compra{cursor:default}   /* no es la pieza la que se toca, son sus botones */
+
+/* Sin flyer nunca (esta lista no guarda artes), el papel es la única
+   superficie de la tarjeta y por eso NO lleva aria-hidden: a diferencia de
+   la cartelera, acá no hay una imagen con su propio alt que ya diga el
+   nombre por otro lado. */
+.compra .papel{justify-content:flex-end}
+
+/* La cuenta de entradas ocupa el lugar del precio en el talón: mismo
+   tratamiento tipográfico (mono, gris, versalitas), otro dato. No se
+   reusa `.desde` a propósito — esa clase dice "precio" en el resto del
+   sitio y esto no lo es. */
+.cant{
+  flex:0 0 auto;color:var(--hueso-40);
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;
+  text-transform:uppercase;font-variant-numeric:tabular-nums;
+}
+
+/* La fila de acciones reutiliza `.accion` (ya la trae la portada, para el
+   precio + botón de la entrada grande). "Ver entrada" manda, "Quitar" es
+   la salida chica y va al otro extremo. */
+.compra .accion{margin-top:16px}
+/* `.ver` ya mide 46px y ya tiene su forma; sólo le faltaba reaccionar al
+   toque porque en la portada ese relleno lo dispara el :hover de un padre
+   (`.destacado`) que acá no existe. */
+.compra .ver:hover,.compra .ver:focus-visible{background:var(--fluor);color:var(--tinta)}
+
+.quitar{
+  min-height:44px;padding:0 8px;background:transparent;border:0;
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--hueso-40);cursor:pointer;
+  transition:color .18s ease;
+}
+.quitar:hover,.quitar:focus-visible{color:var(--hueso)}
+
+/* ── lo que ya pasó ──
+   Apagada y sin el gesto de "esto se abre": la misma idea que `.agotado`
+   en la cartelera (grises, quieta), aplicada a una tarjeta que ya cumplió
+   su función y ahora sólo sirve de comprobante. "Ver entrada" se queda
+   activo — sigue siendo el QR de esa noche, por si alguna vez hace falta
+   probar que se entró. */
+.compra.pasada{opacity:.6}
+.compra.pasada:hover{transform:none;box-shadow:inset 0 0 0 1px var(--canto)}
+.compra.pasada .papel{filter:grayscale(.7)}
+
+/* ── el toast con deshacer ──
+   Mismo mecanismo que el resto del sitio (abajo, centrado, entra desde el
+   piso) pero con los tokens de la portada y un botón adentro: acá el toast
+   no es sólo un aviso, es la salida de "me arrepentí". */
+.toast{
+  position:fixed;left:50%;bottom:max(16px,env(safe-area-inset-bottom));
+  transform:translate(-50%,150%);
+  z-index:200;max-width:calc(100vw - 32px);
+  display:flex;align-items:center;gap:4px;
+  background:var(--hueso);color:var(--tinta);border-radius:6px;
+  padding-left:16px;min-height:50px;
+  font-family:var(--display);font-size:14.5px;line-height:1.3;
+  box-shadow:0 12px 40px rgba(0,0,0,.5);
+  transition:transform .3s var(--curva);
+}
+.toast[data-on="1"]{transform:translate(-50%,0)}
+.toast span{padding:10px 0}
+.toast button{
+  flex:0 0 auto;min-height:44px;padding:0 14px;background:transparent;border:0;
+  font-family:var(--mono);font-weight:600;font-size:12.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--tinta);text-decoration:underline;
+  text-underline-offset:2px;cursor:pointer;
+}
+
+@media (prefers-reduced-motion:reduce){
+  /* La regla general ya vive en portada.css (frena todo lo que anima con
+     `*`), pero la transición del toast la escribe esta hoja y no queda
+     alcanzada por esa regla si se cargara sola, así que se apaga acá
+     también. */
+  .toast{transition:none}
+}

@@ -99,6 +99,14 @@ img{max-width:100%;display:block}
 
 .carril{width:100%;max-width:var(--carril);margin:0 auto;padding:0 20px}
 
+/* Fuera de la pantalla pero dentro del árbol: es la etiqueta que el lector
+   lee y el ojo no necesita, porque el ícono y el sitio ya la dicen.
+   `display:none` la sacaría también del árbol, que es lo contrario. */
+.solo-lector{
+  position:absolute;width:1px;height:1px;margin:-1px;padding:0;
+  overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;
+}
+
 /* 44px medidos y no calculados de cabeza: con el relleno solo quedaba en
    43,5 — medio píxel, pero la regla de la casa no tiene comas. */
 .saltar{
@@ -128,7 +136,8 @@ img{max-width:100%;display:block}
   background:rgba(18,10,44,.86);backdrop-filter:blur(14px);
   border-bottom:1px solid var(--filo);
 }
-.barra-in{display:flex;align-items:center;justify-content:space-between;height:58px}
+.barra-in{display:flex;align-items:center;justify-content:space-between;height:58px;gap:12px}
+.barra-der{display:flex;align-items:center;gap:14px;min-width:0}
 /* Debajo de 560px el nombre ya llena la barra y la ciudad pasa a ser un
    renglón que hay que esquivar. En el pie sigue estando. */
 .barra-lugar{display:none}
@@ -137,6 +146,49 @@ img{max-width:100%;display:block}
     display:block;font-family:var(--mono);font-size:10.5px;
     letter-spacing:.16em;text-transform:uppercase;color:var(--hueso-40);
   }
+}
+
+/* ─── el acceso a lo ya comprado ──────────────────────────────────
+   Un boleto contorneado y la cuenta. Contorneado y no relleno, y en hueso y
+   no en fluor: es la única otra cosa que se puede tocar en la barra y no
+   puede pelear con el evento, que es a lo que la persona vino. El fluor se
+   lo queda el número —el único dato nuevo del renglón— y el borde recién se
+   enciende al tocarlo. */
+.mis{
+  display:inline-flex;align-items:center;gap:8px;
+  min-height:44px;padding:0 13px;
+  border:1px solid var(--filo);border-radius:999px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--hueso-64);white-space:nowrap;
+  transition:border-color .2s ease,color .2s ease;
+}
+.mis:hover{border-color:rgba(255,226,75,.45);color:var(--hueso)}
+.mis svg{
+  width:16px;height:16px;flex:0 0 auto;
+  fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round;
+}
+.mis .sep{opacity:.45}
+.mis b{font-weight:500;color:var(--fluor);font-variant-numeric:tabular-nums}
+/* En un teléfono angosto el logotipo ya se lleva la mitad de la barra, y
+   "MIS ENTRADAS · 2" al lado desborda o empuja el nombre. Queda el boleto y
+   la cuenta, que es la forma en que se reconoce este acceso en cualquier
+   aplicación; el texto no se borra, se corre fuera de la pantalla, así que
+   el lector de pantalla sigue diciendo "Mis entradas · 2". */
+@media (max-width:479px){
+  .mis .mis-txt{
+    position:absolute;width:1px;height:1px;margin:-1px;padding:0;
+    overflow:hidden;clip-path:inset(50%);white-space:nowrap;
+  }
+  .mis .sep{display:none}
+  .mis{gap:7px;padding:0 12px}
+}
+/* Y en la franja de en medio —donde la ciudad ya volvió pero la barra
+   todavía es angosta— los dos no entran. Gana el acceso, que es un control;
+   la ciudad es un rótulo y sigue estando en el pie. La clase la pone
+   portada.js, que es el único que sabe si el acceso llegó a mostrarse: sin
+   compras guardadas la barra queda exactamente como estaba. */
+@media (max-width:719px){
+  .barra-in.con-mis .barra-lugar{display:none}
 }
 
 /* ─── hero ────────────────────────────────────────────────────── */
@@ -188,6 +240,73 @@ img{max-width:100%;display:block}
 .rotulo-cuenta{
   font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;
   text-transform:uppercase;color:var(--hueso-40);flex:0 0 auto;
+}
+
+/* ─── buscar y filtrar ────────────────────────────────────────────
+   Aparece con la cartelera larga y vive DEBAJO del afiche, nunca arriba: en
+   un teléfono, un campo de búsqueda en la primera pantalla le come 60px al
+   flyer, que es lo único que la persona vino a mirar. El que busca ya
+   scrolleó — buscar es lo que se hace después de mirar, no antes. */
+.filtros{display:flex;flex-direction:column;gap:10px;margin-bottom:clamp(18px,3vw,26px)}
+.busca-caja{position:relative;display:flex;align-items:center}
+.lupa{
+  position:absolute;left:15px;width:17px;height:17px;pointer-events:none;
+  fill:none;stroke:var(--hueso-40);stroke-width:1.8;stroke-linecap:round;
+}
+.busca{
+  width:100%;min-height:48px;padding:0 46px;
+  background:var(--tinta-2);color:var(--hueso);
+  border:1px solid var(--filo);border-radius:9px;
+  font-family:var(--display);
+  /* 16px clavados y no una escala. Abajo de 16, iOS hace zoom solo al tocar
+     el campo y deja la página corrida a la derecha con el afiche a medio
+     salir de la pantalla — un desborde que no está en el CSS y aparece
+     igual. Es el único número de este archivo que no se puede tocar. */
+  font-size:16px;
+  transition:border-color .2s ease;
+}
+.busca::placeholder{color:var(--hueso-40)}
+.busca:focus{border-color:rgba(255,226,75,.5)}
+/* La equis nativa mide 12px, la dibujan sólo algunos navegadores y no hay
+   forma de agrandarla. Se apaga y se pone una de 44 que está en todos. */
+.busca::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+.busca-x{
+  position:absolute;right:2px;
+  width:44px;height:44px;display:grid;place-items:center;
+  background:transparent;border:0;color:var(--hueso-40);cursor:pointer;
+  transition:color .2s ease;
+}
+.busca-x svg{width:15px;height:15px;fill:none;stroke:currentColor;
+  stroke-width:1.9;stroke-linecap:round}
+.busca-x:hover{color:var(--hueso)}
+
+/* Los meses se envuelven en vez de deslizarse: son dos o tres botones, y un
+   carrusel horizontal para tres botones esconde el tercero detrás de un
+   gesto que nadie sabe que tiene que hacer. */
+.meses{display:flex;flex-wrap:wrap;gap:8px}
+.chip{
+  min-height:44px;padding:0 16px;
+  background:transparent;color:var(--hueso-64);
+  border:1px solid var(--filo);border-radius:999px;cursor:pointer;
+  font-family:var(--mono);font-weight:500;
+  font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;
+  transition:background-color .2s ease,color .2s ease,border-color .2s ease;
+}
+.chip:hover:not(.activo){border-color:var(--hueso-40);color:var(--hueso)}
+/* El puesto va en fluor lleno: en una fila de botones iguales, el que está
+   aplicado tiene que verse desde la otra punta de la pantalla, porque es lo
+   único que explica por qué faltan tarjetas. */
+.chip.activo{background:var(--fluor);color:var(--tinta);border-color:var(--fluor)}
+
+/* De 720 para arriba los dos controles entran en un renglón. Estirado al
+   ancho del carril el campo mide 1160px y deja de leerse como un buscador
+   para leerse como la barra de direcciones del navegador; con tope, el
+   campo y los meses son una sola tira de controles y no dos franjas.
+   Los meses van pegados al campo y no empujados al canto derecho: son la
+   otra mitad de la misma pregunta. */
+@media (min-width:720px){
+  .filtros{flex-direction:row;align-items:center;flex-wrap:wrap;gap:12px}
+  .busca-caja{flex:0 1 360px}
 }
 
 /* ═══ LA ENTRADA ══════════════════════════════════════════════════
@@ -320,6 +439,20 @@ img{max-width:100%;display:block}
   font-size:12.5px;letter-spacing:.05em;color:var(--fluor);
 }
 .cuando span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* "Hoy" y "Mañana", estampados. Es el mismo gesto que la calcomanía del
+   afiche y por la misma razón: es lo único de la pieza que cambia todos los
+   días, así que se lee como algo recién puesto encima y no como parte de la
+   impresión. Va en el renglón de la fecha porque REEMPLAZA a la fecha —el
+   día de la semana y el número son la cuenta que esta palabra ya hizo.
+   `line-height:1` para que el relleno no engorde el renglón: con la altura
+   heredada, la tarjeta de hoy quedaba tres píxeles más alta que la de al
+   lado y el nombre desalineado en toda la fila. */
+.cuando .ya{
+  display:inline-block;vertical-align:baseline;
+  background:var(--fluor);color:var(--tinta);
+  padding:3px 7px;border-radius:3px;
+  font-weight:500;line-height:1;letter-spacing:.1em;text-transform:uppercase;
+}
 /* La punta de flecha: la única señal de "esto se abre". No dice "VER MÁS"
    encima del flyer, que es lo que en las otras carteleras tapa justo la
    parte del afiche que la gente vino a mirar. */
@@ -725,12 +858,26 @@ body.yendo{opacity:.35;transition:opacity .19s ease}
    comercial. Fluor porque tiene que encontrarse, chico porque no compite con
    la cartelera. */
 .pie-vender a{
+  position:relative;
   font-size:14px;color:var(--fluor);font-weight:600;
   border-bottom:1px solid rgba(255,226,75,.32);padding-bottom:2px
 }
 .pie-vender a:hover{border-bottom-color:var(--fluor)}
+/* El renglón mide 19px de alto y el pulgar necesita 44. Se agranda el área
+   de toque con un pseudo-elemento estirado hacia arriba y hacia abajo, que
+   no ocupa lugar en el flujo: con relleno de verdad, el subrayado se
+   despegaría del texto y el pie entero se correría hacia abajo. Alrededor
+   sólo hay texto que no se toca, así que no le roba el clic a nada. */
+.pie-vender a::after{content:"";position:absolute;inset:-13px -4px}
 
 /* El único precio que se dice con una palabra y no con una cifra. Va en
    fluor porque en una pared de nueve carteles, el gratis es el que decide
    la noche de alguien que estaba mirando de paso. */
 .desde.gratis b{color:var(--fluor);font-weight:600}
+/* Y en la tarjeta de la grilla, además, más grande que el resto del talón.
+   En dos columnas a 375px el renglón del precio baja a 10px, y ahí "GRATIS"
+   era el cuarto renglón gris de un talón de cuatro renglones: la palabra que
+   podía cambiarle el plan a alguien, dicha en el cuerpo más chico de la
+   pieza. En em y no en px porque el mismo renglón mide 11,5 cuando la
+   tarjeta va a ancho completo — una regla, los dos tamaños. */
+.evento .desde.gratis b{font-size:1.45em;font-weight:700;letter-spacing:-.01em}

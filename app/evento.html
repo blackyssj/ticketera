@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=25">
+<link rel="stylesheet" href="/styles.css?v=26">
 </head>
 <body>
 
@@ -51,6 +51,8 @@
           <div class="panel-cab">
             <h2>Entradas</h2>
             <span class="fase" id="faseChip"></span>
+            <!-- Sólo aparece si la fase trae fecha de cierre de verdad. -->
+            <span class="cierre" id="faseCierre" hidden></span>
           </div>
           <div class="tipos" id="tipos"></div>
         </section>
@@ -110,6 +112,20 @@
             </div>
             <button type="button" class="btn plano chico" id="btnCopiarLink">Copiar link</button>
           </div>
+          <!-- Se muestra sólo si la compra pudo guardarse en este teléfono:
+               mandar a /mis-entradas a alguien que va a encontrar la lista
+               vacía es peor que no ofrecerle el link. -->
+          <p class="mias" id="listoMias" hidden>
+            <a href="/mis-entradas">Ver todas mis entradas</a> guardadas en este teléfono.
+          </p>
+
+          <!-- Llegar al evento. El día que importa nadie vuelve a esta
+               pantalla; la agenda y el mapa del teléfono sí siguen ahí. -->
+          <div class="llegar" id="llegar" hidden>
+            <button type="button" class="btn plano chico" id="btnCalendario" hidden>Agregar al calendario</button>
+            <a class="btn plano chico" id="btnMapa" target="_blank" rel="noopener" hidden>Cómo llegar</a>
+            <button type="button" class="btn plano chico" id="btnCompartir" hidden>Compartir mi entrada</button>
+          </div>
           <p class="letra-chica" id="listoRef"></p>
         </section>
 
@@ -158,6 +174,6 @@
 <script src="/config.js"></script>
 <script src="/datos-demo.js?v=25"></script>
 <script src="/ticket.js?v=25"></script>
-<script src="/app.js?v=25"></script>
+<script src="/app.js?v=26"></script>
 </body>
 </html>

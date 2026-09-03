@@ -18,6 +18,68 @@ function avisar(txt) {
   tToast = setTimeout(() => t.dataset.on = "0", 4000);
 }
 
+/* ── mis entradas: la única escritura de esta página sobre esa clave ──
+   Quien compra ya queda guardado por la propia pantalla de compra. Este
+   link es la otra puerta: alguien lo abre en un teléfono donde la compra
+   nunca pasó —típicamente, quien lo recibió por WhatsApp— y si no se suma
+   acá, esa persona jamás tiene "Mis entradas", sólo el link suelto. Se
+   agrega una sola vez (por id) y nunca se pisa lo que ya estaba: esta
+   página no sabe nada del resto de las compras de ese aparato como para
+   decidir por ellas. */
+const MES_TXT = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
+const DIA_TXT = ["DOM","LUN","MAR","MIÉ","JUE","VIE","SÁB"];
+const diaBoliviano = d => new Date(d.getTime() - 4 * 3600e3).getUTCDay();
+
+/* fecha_txt ("SÁB 12 SEP · 21:00") no trae año: nunca hizo falta para
+   mostrarlo. Se prueban este año y el que viene, y gana el que caiga en el
+   día de semana que el propio texto declara -la misma reconstrucción que
+   usa app.js para el botón de calendario, repetida acá porque esta página
+   no comparte módulos con esa. Si ninguno cierra, se guarda sin fecha
+   antes que inventar una: mis-entradas sabe mostrar ese caso. */
+function fechaDesdeTexto(txt) {
+  txt = String(txt || "").toUpperCase();
+  const md = txt.match(/(\d{1,2})\s+([A-ZÁÉÍÓÚÑ]{3})/);
+  const mes = md ? MES_TXT.indexOf(md[2]) : -1;
+  if (mes < 0) return null;
+  const hm = txt.match(/(\d{1,2}):(\d{2})/);
+  const semana = (txt.match(/^([A-ZÁÉÍÓÚÑ]{3})/) || [])[1];
+  const p2 = n => String(n).padStart(2, "0");
+  const anio = new Date().getFullYear();
+  const cand = [0, 1]
+    .map(n => new Date(`${anio + n}-${p2(mes + 1)}-${p2(md[1])}` +
+                       `T${hm ? p2(hm[1]) : "21"}:${hm ? hm[2] : "00"}:00-04:00`))
+    .filter(d => !isNaN(d.getTime()));
+  return cand.find(d => DIA_TXT[diaBoliviano(d)] === semana)
+      || cand.find(d => d.getTime() > Date.now() - 864e5)
+      || null;
+}
+
+function sumarAMisEntradas(r) {
+  try {
+    const KEY = "ticketazo.compras";
+    const lista = JSON.parse(localStorage.getItem(KEY) || "[]");
+    if (!Array.isArray(lista) || lista.some(c => c && c.id === r.orden.id)) return;
+    // Si la función manda la fecha cruda, ésa manda; el texto es el respaldo.
+    const cruda = r.evento.fecha
+      ? new Date(`${r.evento.fecha}T${String(r.evento.hora_inicio || "21:00").slice(0, 5)}:00-04:00`) : null;
+    const f = cruda && !isNaN(cruda.getTime()) ? cruda : fechaDesdeTexto(r.evento.fecha_txt);
+    lista.push({
+      id: r.orden.id,
+      evento: `${r.evento.marca_1} ${r.evento.marca_2}`.trim(),
+      // Esta página sólo tiene el uuid de la orden; el organizador y el
+      // slug del evento no viajan en la respuesta de `orden`, así que
+      // quedan vacíos. mis-entradas no los necesita para nada: el botón de
+      // cada tarjeta abre este mismo link, por id.
+      org: "", slug: "",
+      fecha: f ? f.toISOString() : "",
+      lugar: r.evento.lugar || "",
+      entradas: r.entradas.length,
+      guardada: Date.now(),
+    });
+    localStorage.setItem(KEY, JSON.stringify(lista));
+  } catch { /* storage bloqueado o clave corrupta: no es motivo para romper esta página */ }
+}
+
 /* Un solo lugar donde la página dice en qué está. El estado va en el panel
    porque de él dependen el sello y todo lo que no corresponde mostrar
    mientras la compra no aparezca. */
@@ -143,6 +205,8 @@ async function cargar() {
   $("#cuandoHora").textContent = r.evento.fecha_txt;
   $("#cuandoLugar").textContent = r.evento.lugar || "—";
   $("#cuando").hidden = !r.evento.lugar && !r.evento.fecha_txt;
+
+  sumarAMisEntradas(r);
 
   $("#tickets").innerHTML = `<p class="rail-vacio">Dibujando…</p>`;
   if (document.fonts && document.fonts.ready) await document.fonts.ready;

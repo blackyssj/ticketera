@@ -20,6 +20,11 @@
      2 a 4     → la más próxima grande y el resto en la grilla.
      5 o más   → carrusel con las cinco más próximas y la grilla completa
                  debajo. Recién ahí "lo destacado" separa algo de algo.
+
+   Y de seis para arriba aparecen además el buscador y los filtros por mes,
+   porque a partir de ahí la cartelera deja de recorrerse de un vistazo y
+   pasa a recorrerse a dedo. El umbral es uno solo (MUCHOS) y manda las tres
+   decisiones: son la misma idea vista tres veces.
    ══════════════════════════════════════════════════════════════════ */
 (() => {
 "use strict";
@@ -48,6 +53,42 @@ const SELLOS = {
 
 const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio",
                "agosto","septiembre","octubre","noviembre","diciembre"];
+
+/* El umbral de "cartelera larga", una sola vez y para las tres decisiones
+   que en realidad son la misma: el carrusel de arriba, las dos columnas del
+   teléfono y el buscador. Una cartelera de veinte no es una de tres con más
+   tarjetas — y hasta cinco, un buscador es un control que hay que leer para
+   decidir no usarlo. */
+const MUCHOS = 6;
+
+/* Buscar como se escribe en un teléfono. Nadie tipea "Aniversario" con
+   mayúscula ni "San Martín" con la tilde cuando está buscando una fiesta con
+   el pulgar. NFD separa cada letra de su acento y el rango borra los acentos
+   sueltos, así "san martin" encuentra "Av. San Martín". */
+const plano = s => String(s ?? "").normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/* Hoy en La Paz (UTC-4, sin horario de verano), calculado igual que en la
+   Edge Function que arma la cartelera. Con la fecha local del aparato, un
+   teléfono con la zona horaria en otro país diría "mañana" en el evento de
+   esta noche — y eso es alguien que se queda afuera. */
+const hoyLaPaz = () => new Date(Date.now() - 4 * 3600 * 1000).toISOString().slice(0, 10);
+
+/* ── hoy y mañana, con palabras ──
+   "SÁB 5 SEP" obliga a saber qué día es hoy para saber si el evento sirve.
+   Es la cuenta que hace todo el mundo parado frente a una cartelera y la
+   única que la página puede hacer por vos.
+   Dos días y ni uno más: "en 3 días" ya no es una palabra, es otra cuenta.
+   Las dos fechas se comparan a mediodía UTC —no en horas— porque lo que se
+   mide son días de calendario: entre las 23:00 de hoy y la 01:00 de mañana
+   hay dos horas y un día de diferencia, y lo que importa es el día. */
+function cerca(fecha) {
+  const a = Date.parse(`${hoyLaPaz()}T12:00:00Z`);
+  const b = Date.parse(`${fecha}T12:00:00Z`);
+  if (isNaN(a) || isNaN(b)) return null;
+  const d = Math.round((b - a) / 86400000);
+  return d === 0 ? "Hoy" : d === 1 ? "Mañana" : null;
+}
 
 /* Con `?demo=1` la cartelera sale de un archivo y no de la base. Es para
    mostrar la ticketera llena en una reunión: con un solo evento a la venta,
@@ -155,13 +196,23 @@ const perf = `<div class="perf" aria-hidden="true"><i class="p1"></i><i class="p
    "SÁB 12 SEP · 2…". Marcada, el CSS la saca a ese ancho y queda la fecha
    completa, que es la que decide si el evento te sirve; la hora está a un
    toque de distancia y casi siempre impresa en el flyer. */
+/* Y cuando el evento es hoy o mañana, la fecha se dice con la palabra y no
+   con el número: ahí el renglón deja de ser un dato para verificar y pasa a
+   ser un aviso. Sellado en fluor, como la calcomanía del afiche — es lo que
+   más rápido cambia de toda la pieza. */
+function cuandoTxt(e) {
+  const ya = cerca(e.fecha);
+  return ya ? `<b class="ya">${esc(ya)}</b>`
+            : `${esc(e.dia_semana)} ${esc(e.dia)} ${esc(e.mes)}`;
+}
+
 function tarjeta(e, i) {
   const conFlyer = !!e.flyer_url;
   return `<a class="evento${e.venta === "agotado" ? " agotado" : ""}" href="${esc(e.url)}">
     ${afiche(e, i < 2)}
     ${perf}
     <div class="talon">
-      <div class="cuando"><span>${esc(e.dia_semana)} ${esc(e.dia)} ${esc(e.mes)}<i class="hora"> · ${esc(e.hora)}</i></span>
+      <div class="cuando"><span>${cuandoTxt(e)}<i class="hora"> · ${esc(e.hora)}</i></span>
         <i class="flecha" aria-hidden="true"></i></div>
       ${conFlyer ? `<h3 class="nombre">${esc(e.nombre)}</h3>` : ""}
       <div class="pie-talon">
@@ -197,11 +248,16 @@ function tarjeta(e, i) {
    La fecha sigue siendo el número grande y no se lo cede: es la convención
    del talón, y el que compra guarda la entrada por la fecha. */
 function destacado(e, i) {
+  /* Acá el día del mes ya está en el `fechon`, así que lo que reemplaza la
+     palabra no es la fecha entera sino el día de la semana: "HOY · 22:00"
+     arriba del 5 en fluor, que es la misma información contada dos veces
+     bien — primero para decidir, después para guardar. */
+  const ya = cerca(e.fecha);
   return `<a class="destacado${e.venta === "agotado" ? " agotado" : ""}" href="${esc(e.url)}">
     ${afiche(e, i === 0)}
     ${perf}
     <div class="talon">
-      <span class="cuando">${esc(e.dia_semana)} · ${esc(e.hora)}</span>
+      <span class="cuando">${ya ? `<b class="ya">${esc(ya)}</b>` : esc(e.dia_semana)} · ${esc(e.hora)}</span>
       <div class="fechon"><b>${esc(e.dia)}</b><span>${esc(MESES[Number(e.fecha.slice(5, 7)) - 1] || e.mes)}</span></div>
       ${e.flyer_url ? `<h3 class="nombre">${esc(e.nombre)}</h3>` : ""}
       <p class="donde">${esc(e.lugar)}</p>
@@ -214,22 +270,46 @@ function destacado(e, i) {
   </a>`;
 }
 
-/* El separador de mes aparece SÓLO si la cartelera cruza más de uno. Con
-   todo en septiembre, un rótulo que dice "septiembre" arriba de todo no
-   separa nada: es una línea que hay que leer y descartar. */
+const claveMes = e => e.fecha.slice(0, 7);
+
+/* El rótulo del mes, con el año sólo cuando NO es este. "diciembre" y
+   "diciembre 2027" en la misma cartelera es la diferencia entre la fiesta
+   de este fin de año y la del que viene. */
+function rotuloMes(clave) {
+  const mes = MESES[Number(clave.slice(5, 7)) - 1] || clave;
+  const anio = clave.slice(0, 4);
+  return anio === String(new Date().getFullYear()) ? mes : `${mes} ${anio}`;
+}
+
+/* Los separadores de mes se dibujan TODOS y después se decide cuál se ve.
+   Antes la decisión se tomaba acá, al armar el HTML, y con el buscador eso
+   dejó de alcanzar: filtrando por "bowie" pueden quedar dos eventos de
+   octubre colgando de una cabecera de septiembre que se quedó dibujada, o
+   un "septiembre" solo arriba de todo separando una cosa de nada.
+   Nacen ocultos para que no parpadeen antes de que `acomodarMeses` opine. */
 function conMeses(lista) {
-  const clave = e => e.fecha.slice(0, 7);
-  const unico = new Set(lista.map(clave)).size < 2;
   let ultimo = null;
   return lista.map((e, i) => {
-    const html = tarjeta(e, i);
-    if (unico || clave(e) === ultimo) return html;
-    ultimo = clave(e);
-    const anio = e.fecha.slice(0, 4);
-    const mes = MESES[Number(e.fecha.slice(5, 7)) - 1];
-    const hoy = String(new Date().getFullYear());
-    return `<h3 class="mes">${esc(mes)}${anio === hoy ? "" : " " + esc(anio)}</h3>` + html;
+    const clave = claveMes(e);
+    let cabeza = "";
+    if (clave !== ultimo) {
+      ultimo = clave;
+      cabeza = `<h3 class="mes" data-mes="${esc(clave)}" hidden>${esc(rotuloMes(clave))}</h3>`;
+    }
+    return cabeza + tarjeta(e, i);
   }).join("");
+}
+
+/* Un rótulo de mes sólo separa si hay algo del otro lado. Con todo lo que
+   se ve en septiembre —porque la cartelera es corta, o porque el filtro
+   dejó un mes solo— la palabra "septiembre" arriba de todo es una línea que
+   hay que leer y descartar. Es la misma regla de siempre, ahora aplicada a
+   lo que quedó a la vista y no a lo que se dibujó. */
+function acomodarMeses(zona, visibles) {
+  const cruza = visibles.size > 1;
+  zona.querySelectorAll(".mes").forEach(h => {
+    h.hidden = !cruza || !visibles.has(h.dataset.mes);
+  });
 }
 
 /* Un cartel ocupa la pared entera. Se usa para las dos situaciones en que
@@ -394,8 +474,136 @@ function cablearSalida() {
   });
 }
 
-function contar(n) {
-  $("#rotuloCuenta").textContent = n === 1 ? "1 evento" : `${n} eventos`;
+/* La cuenta del rótulo. Con un filtro puesto dice de cuántos: "3 de 14
+   eventos". Sin el total, un "3 eventos" después de tipear se lee como una
+   cartelera que se achicó sola, y no como una búsqueda que encontró tres. */
+function contar(n, total) {
+  $("#rotuloCuenta").textContent = total
+    ? `${n} de ${total} eventos`
+    : (n === 1 ? "1 evento" : `${n} eventos`);
+}
+
+/* ── la puerta a "mis entradas" ──
+   Aparece sólo si hay algo del otro lado, y por eso la barra la trae oculta.
+   El localStorage lo escribe otra página: puede tener basura de una versión
+   vieja, de otra pestaña o de nadie, así que se lee sin confiar. Un
+   JSON.parse que explota acá dejaría la portada entera sin pintar —y hasta
+   `localStorage` mismo tira en el modo privado de Safari—, así que el
+   try/catch envuelve las dos cosas y la respuesta de la duda es cero. */
+function comprasGuardadas() {
+  try {
+    const x = JSON.parse(localStorage.getItem("ticketazo.compras") || "[]");
+    return Array.isArray(x) ? x.length : 0;
+  } catch { return 0; }
+}
+
+function abrirPuerta() {
+  const n = comprasGuardadas();
+  if (!n) return;
+  $("#misCuenta").textContent = String(n);
+  $("#misEntradas").hidden = false;
+  /* La barra avisa que ahora tiene dos cosas: en el tramo angosto donde la
+     ciudad y el acceso no entran juntos, el CSS calla la ciudad. Sin compras
+     guardadas esta clase no se pone nunca y la barra queda como estaba. */
+  $(".barra-in").classList.add("con-mis");
+}
+
+/* ── buscar y filtrar ──
+   Sólo con la cartelera larga (MUCHOS). Y no repinta la grilla: esconde y
+   muestra las tarjetas que ya están. Repintar con innerHTML en cada tecla
+   volvería a crear los <img>, y con flyers de verdad eso es la cartelera
+   entera parpadeando mientras se escribe — el navegador los tiene en caché,
+   pero un elemento nuevo arranca vacío igual. Esconder es instantáneo y
+   además conserva las que ya se revelaron.
+
+   Nada de "buscar" con un botón: son veinte eventos en memoria, filtrar es
+   comparar veinte cadenas, y hacerle apretar Enter a alguien para eso es
+   pedirle una ceremonia por un trabajo que ya está hecho. */
+function cablearFiltros(lista, grilla) {
+  const campo = $("#busca"), borrar = $("#buscaX");
+  const meses = $("#meses"), vacio = $("#sinNada");
+  const piezas = Array.from(grilla.querySelectorAll(".evento"));
+
+  /* El índice se arma una vez. Normalizar tres campos de veinte eventos en
+     cada tecla es hacer sesenta veces el mismo trabajo por letra tipeada.
+     Van los tres que alguien usa para buscar una fiesta: cómo se llama,
+     quién la hace y dónde es. En Santa Cruz el lugar es la mitad de lo que
+     dice qué clase de noche es, así que "equipetrol" tiene que encontrar. */
+  const indice = lista.map(e =>
+    plano(`${e.nombre} ${e.organizador_nombre} ${e.lugar}`));
+
+  /* Los meses salen de la cartelera, en el orden en que llegan —que ya es
+     cronológico— y no de un calendario: un botón "noviembre" sin nada
+     detrás es una puerta a un cuarto vacío. */
+  const claves = [];
+  lista.forEach(e => {
+    const k = claveMes(e);
+    if (claves.indexOf(k) < 0) claves.push(k);
+  });
+
+  meses.innerHTML =
+    `<button type="button" class="chip activo" data-mes="" aria-pressed="true">Todos</button>` +
+    claves.map(k => `<button type="button" class="chip" data-mes="${esc(k)}"` +
+      ` aria-pressed="false">${esc(rotuloMes(k))}</button>`).join("");
+  /* Con un mes solo, los filtros serían "Todos" y "septiembre": dos botones
+     que llevan al mismo lugar. La misma regla que el corte de mes. */
+  if (claves.length < 2) meses.hidden = true;
+
+  let texto = "", mes = "";
+
+  const aplicar = () => {
+    const visibles = new Set();
+    let n = 0;
+    lista.forEach((e, i) => {
+      const pasa = (!texto || indice[i].indexOf(texto) >= 0)
+                && (!mes || claveMes(e) === mes);
+      piezas[i].hidden = !pasa;
+      if (pasa) { n++; visibles.add(claveMes(e)); }
+    });
+    acomodarMeses(grilla, visibles);
+    vacio.hidden = n > 0;
+    borrar.hidden = !texto;
+    contar(n, (texto || mes) ? lista.length : 0);
+  };
+
+  campo.addEventListener("input", () => {
+    texto = plano(campo.value.trim());
+    aplicar();
+  });
+  /* Devolver el foco al campo y no dejarlo en un botón que se acaba de
+     esconder: sin esto el foco se cae al <body> y el teclado del teléfono
+     se cierra justo cuando la persona iba a escribir de nuevo. */
+  borrar.addEventListener("click", () => {
+    campo.value = ""; texto = ""; campo.focus(); aplicar();
+  });
+
+  meses.addEventListener("click", ev => {
+    const b = ev.target.closest(".chip");
+    if (!b) return;
+    mes = b.dataset.mes;
+    meses.querySelectorAll(".chip").forEach(c => {
+      const puesto = c === b;
+      c.classList.toggle("activo", puesto);
+      c.setAttribute("aria-pressed", puesto ? "true" : "false");
+    });
+    aplicar();
+  });
+
+  /* El botón del cartel vacío limpia LAS DOS COSAS. Es el único lugar de la
+     página donde alguien está mirando una pared en blanco, y ahí un botón
+     que deshace la mitad del filtro la deja igual de vacía. */
+  $("#sinNadaBtn").addEventListener("click", () => {
+    campo.value = ""; texto = ""; mes = "";
+    meses.querySelectorAll(".chip").forEach((c, i) => {
+      c.classList.toggle("activo", i === 0);
+      c.setAttribute("aria-pressed", i === 0 ? "true" : "false");
+    });
+    aplicar();
+    campo.focus();
+  });
+
+  $("#filtros").hidden = false;
+  aplicar();
 }
 
 async function pintar() {
@@ -445,7 +653,7 @@ async function pintar() {
      descuido: son dos cosas distintas y se leen distinto. Arriba está lo que
      pasa primero; abajo está todo, que es lo que hace que se pueda ir a
      buscar un evento puntual sin tener que pasar el carrusel. */
-  const muchos = eventos.length >= 6;
+  const muchos = eventos.length >= MUCHOS;
   const arriba = eventos.slice(0, muchos ? Math.min(5, Math.ceil(eventos.length / 3)) : 1);
   const abajo  = muchos ? eventos : eventos.slice(1);
 
@@ -481,10 +689,17 @@ async function pintar() {
      (el CSS ignora la clase de 540px para arriba). */
   grilla.classList.toggle("densa", muchos);
   grilla.innerHTML = conMeses(abajo);
+  /* Los cortes de mes nacen ocultos, así que alguien tiene que decidir
+     cuáles se ven aunque nunca haya un filtro. Con la cartelera corta esto
+     es todo lo que corre; con la larga, `cablearFiltros` vuelve a opinar en
+     cada tecla sobre lo que quedó a la vista. */
+  acomodarMeses(grilla, new Set(abajo.map(claveMes)));
   vigilarImagenes(grilla);
   revelar(grilla);
+  if (muchos) cablearFiltros(abajo, grilla);
 }
 
 cablearSalida();
+abrirPuerta();
 pintar();
 })();

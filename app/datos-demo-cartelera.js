@@ -19,9 +19,13 @@
    ocupa el flyer que cada organizador ya publicó en redes.
    ══════════════════════════════════════════════════════════════════ */
 window.DEMO_CARTELERA = (() => {
-  const DIAS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
-  const MES3 = ["ene", "feb", "mar", "abr", "may", "jun",
-                "jul", "ago", "sep", "oct", "nov", "dic"];
+  /* En mayúsculas porque así los manda la Edge Function que arma la
+     cartelera de verdad, y la demo no puede verse mejor ni distinta de lo
+     que la ticketera muestra: en minúscula, el renglón de la fecha tenía
+     otro peso del que tiene en producción. */
+  const DIAS = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
+  const MES3 = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN",
+                "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
 
   /* Fechas relativas a hoy: la demo no envejece. Una cartelera con eventos
      del mes pasado se lee como una ticketera abandonada. */
@@ -31,9 +35,17 @@ window.DEMO_CARTELERA = (() => {
     return d;
   };
 
+  /* La fecha se arma con los getters locales y no con `toISOString`, que
+     devuelve el día en UTC: en Bolivia, después de las 20:00 el ISO ya es el
+     día siguiente mientras `getDate()` sigue en el de hoy. La tarjeta se
+     quedaba con el número de un día y la fecha de otro — y ahora que la
+     portada dice "Hoy" comparando contra `fecha`, eso serían las nueve de la
+     noche en que la demo empieza a mentir. */
+  const dosDig = n => String(n).padStart(2, "0");
+
   const evento = (dias, hora, nombre, org, lugar, desde, venta, papel) => {
     const f = en(dias);
-    const iso = f.toISOString().slice(0, 10);
+    const iso = `${f.getFullYear()}-${dosDig(f.getMonth() + 1)}-${dosDig(f.getDate())}`;
     return {
       url: "/amstel/red-circle?modo=demo",
       nombre, organizador_nombre: org, lugar, desde, venta,
@@ -48,10 +60,13 @@ window.DEMO_CARTELERA = (() => {
 
   /* Nueve eventos, dos meses, tres estados de venta y precios de Bs 0 a 350
      — el rango real de una noche en Santa Cruz. El de Bs 0 está a propósito:
-     enseña el evento gratis sin tener que explicarlo. */
+     enseña el evento gratis sin tener que explicarlo. Y los dos primeros son
+     hoy y mañana, que es lo que hace visible el aviso en palabras: una demo
+     que arranca dentro de tres días no puede mostrar la mitad de lo que la
+     tarjeta sabe decir. */
   return [
-    evento(  3, "22:00", "RED CIRCLE",        "Amstel",          "Fexpo · Santa Cruz",      120, "ultimas", ["#3A2478", "#231550"]),
-    evento(  6, "21:30", "NOCHE BLANCA",      "Bowie",           "Equipetrol",              100, "abierta", ["#1E4A5F", "#12303E"]),
+    evento(  0, "22:00", "RED CIRCLE",        "Amstel",          "Fexpo · Santa Cruz",      120, "ultimas", ["#3A2478", "#231550"]),
+    evento(  1, "21:30", "NOCHE BLANCA",      "Bowie",           "Equipetrol",              100, "abierta", ["#1E4A5F", "#12303E"]),
     evento(  9, "20:00", "APERTURA DE VERANO","BurTown",         "Av. San Martín",           80, "abierta", ["#5E2440", "#3A1428"]),
     evento( 12, "19:00", "CATA DE CERVEZA",   "Amstel",          "Manzana Uno",               0, "abierta", ["#2C4A2A", "#17301A"]),
     evento( 16, "23:00", "TECHNO SUBSUELO",   "Colectivo Norte", "Zona Norte",              150, "abierta", ["#4A3A16", "#2C220C"]),

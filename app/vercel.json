@@ -37,6 +37,10 @@
       "destination": "/orden/index.html"
     },
     {
+      "source": "/mis-entradas",
+      "destination": "/mis-entradas/index.html"
+    },
+    {
       "source": "/:organizador/:evento",
       "destination": "/evento.html"
     }
