@@ -211,3 +211,85 @@ const CONTACTO = {
   [cant, precio, fee].forEach(c => c && c.addEventListener("input", pintar));
   pintar();
 })();
+
+/* ══════════════════════════════════════════════════════════════════
+   Quiero vender con TICKETAZO
+
+   Dos pasos y ninguno bloquea al otro. Primero se guarda el pedido en la
+   función `contacto` —para que exista aunque la conversación se pierda—
+   y después se abre WhatsApp con el mismo resumen ya escrito, que es el
+   único aviso que hay: no hay correo configurado, y un pedido que sólo
+   vive en una tabla es un pedido que nadie vio.
+
+   Si guardar falla (sin señal, función caída), el WhatsApp se abre igual.
+   Perder un cliente porque se cayó una tabla sería absurdo.
+   ══════════════════════════════════════════════════════════════════ */
+(function contacto(){
+  const forma = document.getElementById("formaContacto");
+  if (!forma) return;
+  const error = document.getElementById("formaError");
+  const boton = document.getElementById("formaEnviar");
+  const listo = document.getElementById("formaListo");
+  const cfg = window.CONFIG || {};
+
+  const v = n => (forma.elements[n]?.value ?? "").trim();
+
+  function resumen(){
+    const l = [`Hola, quiero vender mis entradas con TICKETAZO.`, ``,
+               `Soy ${v("nombre")}.`];
+    if (v("evento"))       l.push(`Evento: ${v("evento")}`);
+    if (v("fecha_evento")) l.push(`Fecha: ${v("fecha_evento")}`);
+    if (v("lugar"))        l.push(`Lugar: ${v("lugar")}`);
+    if (v("publico"))      l.push(`Público estimado: ${v("publico")} personas`);
+    if (v("mensaje"))      l.push(``, v("mensaje"));
+    l.push(``, `Me contactás en: ${v("contacto")}`);
+    return l.join("\n");
+  }
+
+  function fallar(msj){
+    error.textContent = msj; error.hidden = false;
+    boton.disabled = false; boton.textContent = "Quiero vender con TICKETAZO";
+  }
+
+  forma.addEventListener("submit", async ev => {
+    ev.preventDefault();
+    error.hidden = true;
+    if (v("nombre").length < 2)   return fallar("Contanos tu nombre.");
+    if (v("contacto").length < 5) return fallar("Dejanos un WhatsApp o un correo para responderte.");
+
+    boton.disabled = true; boton.textContent = "Enviando…";
+
+    /* El WhatsApp se arma antes de guardar y se muestra pase lo que pase. */
+    const wa = document.getElementById("formaWa");
+    wa.href = CONTACTO.wa
+      ? `https://wa.me/${CONTACTO.wa}?text=${encodeURIComponent(resumen())}`
+      : "#";
+
+    if (cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY) {
+      try {
+        const r = await fetch(`${cfg.SUPABASE_URL}/functions/v1/contacto`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json",
+                     apikey: cfg.SUPABASE_ANON_KEY,
+                     Authorization: `Bearer ${cfg.SUPABASE_ANON_KEY}` },
+          body: JSON.stringify({
+            nombre: v("nombre"), contacto: v("contacto"), evento: v("evento"),
+            fecha_evento: v("fecha_evento"), lugar: v("lugar"), publico: v("publico"),
+            mensaje: v("mensaje"), sitio: v("sitio"),
+            origen: location.pathname.includes("presentacion") ? "presentacion" : "organizadores",
+          }),
+        });
+        const j = await r.json().catch(() => ({}));
+        /* 429 es "demasiados desde esta IP": se le dice al que lo intenta y
+           NO se sigue a WhatsApp, que es lo que un script querría. */
+        if (r.status === 429) return fallar(j.motivo || "Probá de nuevo en un rato.");
+      } catch (e) {
+        console.warn("contacto: no se pudo guardar, se sigue por WhatsApp", e);
+      }
+    }
+
+    forma.hidden = true; listo.hidden = false;
+    listo.scrollIntoView({ block: "center", behavior:
+      matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  });
+})();

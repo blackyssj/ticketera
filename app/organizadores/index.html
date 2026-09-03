@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Azeret+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/comercial.css?v=7">
+<link rel="stylesheet" href="/comercial.css?v=8">
 <script>document.documentElement.className="js"</script>
 </head>
 <body>
@@ -350,16 +350,81 @@
     </div>
   </section>
 
-  <section class="cierre">
-    <div class="carril">
-      <h2>En 24 horas tu evento está vendiendo.</h2>
-      <p>
-        Escribinos con el nombre, la fecha, el lugar y el flyer. Mañana tenés el
-        link para publicar, las cuentas de puerta y el link de cada relacionador.
-      </p>
-      <div class="hero-acciones">
-        <a class="btn btn-fluor" data-wa href="#">Escribinos por WhatsApp</a>
-        <a class="btn btn-linea" href="/presentacion/">Ver la presentación completa</a>
+  <!-- ═══ QUIERO VENDER ═══════════════════════════════════════════
+       El panel no tiene auto-registro y no lo va a tener: una cuenta de
+       organizador se crea después de hablar. Esta es la puerta para pedir
+       esa conversación. Los datos se guardan (función `contacto`) y
+       después se abre WhatsApp con el mismo resumen — porque no hay correo
+       configurado y un pedido que sólo vive en una tabla es un pedido que
+       nadie vio. -->
+  <section class="seccion contacto" id="contacto">
+    <div class="carril contacto-in">
+      <div class="rev">
+        <span class="ojal">Quiero vender con TICKETAZO</span>
+        <h2 class="h2">Contanos de tu evento y te escribimos hoy.</h2>
+        <p class="bajada">
+          No hay registro ni cuenta que crear: nos contás qué vas a hacer, lo
+          hablamos por WhatsApp y en 24 horas tu evento está vendiendo con tus
+          fases, tus precios y tus relacionadores cargados.
+        </p>
+        <p class="bajada">
+          Si preferís, saltá el formulario:
+          <a class="enlace" data-wa href="#">escribinos directo por WhatsApp</a>.
+        </p>
+      </div>
+
+      <form class="forma rev" id="formaContacto" novalidate>
+        <div class="campo">
+          <label for="cNombre">Tu nombre</label>
+          <input id="cNombre" name="nombre" type="text" autocomplete="name" required maxlength="120">
+        </div>
+        <div class="campo">
+          <label for="cContacto">WhatsApp o correo</label>
+          <input id="cContacto" name="contacto" type="text" autocomplete="tel" inputmode="tel" required maxlength="120" placeholder="+591 …">
+        </div>
+        <div class="campo">
+          <label for="cEvento">Nombre del evento</label>
+          <input id="cEvento" name="evento" type="text" maxlength="160">
+        </div>
+        <div class="campo dos">
+          <div class="campo">
+            <label for="cFecha">Fecha</label>
+            <input id="cFecha" name="fecha_evento" type="date">
+          </div>
+          <div class="campo">
+            <label for="cPublico">Cuánta gente esperás</label>
+            <input id="cPublico" name="publico" type="number" inputmode="numeric" min="0" max="200000" step="50">
+          </div>
+        </div>
+        <div class="campo">
+          <label for="cLugar">Lugar</label>
+          <input id="cLugar" name="lugar" type="text" maxlength="160">
+        </div>
+        <div class="campo">
+          <label for="cMensaje">Algo más que tengamos que saber</label>
+          <textarea id="cMensaje" name="mensaje" rows="3" maxlength="1200"></textarea>
+        </div>
+        <!-- El campo trampa. Un humano no lo ve; un bot lo llena. -->
+        <div class="campo trampa" aria-hidden="true">
+          <label for="cSitio">Sitio</label>
+          <input id="cSitio" name="sitio" type="text" tabindex="-1" autocomplete="off">
+        </div>
+        <p class="forma-error" id="formaError" role="alert" hidden></p>
+        <button type="submit" class="btn btn-fluor" id="formaEnviar">Quiero vender con TICKETAZO</button>
+        <p class="forma-nota">Sin cuenta, sin costo y sin compromiso. Te respondemos por WhatsApp.</p>
+      </form>
+
+      <!-- Lo que se ve después de enviar. El botón de WhatsApp es el
+           paso que importa: el pedido ya quedó guardado, pero el aviso
+           somos nosotros leyendo el chat. -->
+      <div class="forma-listo" id="formaListo" hidden>
+        <span class="ojal">Recibido</span>
+        <h3>Ya tenemos tu pedido.</h3>
+        <p>
+          Falta un toque para que te contestemos hoy: mandanos el mismo
+          resumen por WhatsApp, ya viene escrito.
+        </p>
+        <a class="btn btn-fluor" id="formaWa" href="#" target="_blank" rel="noopener">Mandar el resumen por WhatsApp</a>
       </div>
     </div>
   </section>
@@ -382,6 +447,7 @@
   </div>
 </footer>
 
-<script src="/comercial.js?v=7"></script>
+<script src="/config.js"></script>
+<script src="/comercial.js?v=8"></script>
 </body>
 </html>

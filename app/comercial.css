@@ -519,3 +519,38 @@ html.js .rev.vista{
    son dos dígitos, y darle el mismo ancho que a un total de seis cifras lo
    hace parecer más importante de lo que es. */
 .calc.tres{grid-template-columns:1fr 1fr .62fr}
+
+/* ═══ QUIERO VENDER ═══════════════════════════════════════════════
+   El formulario de contacto. Mismos campos que la cuenta de la noche: el
+   que llenó uno ya sabe llenar el otro. */
+.contacto-in{display:grid;gap:clamp(28px,4.6vw,56px);grid-template-columns:1fr;align-items:start}
+@media (min-width:900px){ .contacto-in{grid-template-columns:1fr 460px} }
+.enlace{color:var(--fluor);border-bottom:1px solid rgba(255,226,75,.35);padding-bottom:1px}
+.enlace:hover{border-bottom-color:var(--fluor)}
+
+.forma{display:grid;gap:14px}
+.forma .campo.dos{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.forma textarea{
+  width:100%;padding:12px 14px;border-radius:11px;resize:vertical;min-height:84px;
+  background:var(--tinta-2);color:var(--hueso);border:1px solid var(--filo);
+  font-family:var(--display);font-size:15.5px;line-height:1.45
+}
+.forma textarea:focus{outline:none;border-color:var(--fluor);background:var(--tinta-3)}
+.forma input{font-family:var(--display);font-size:16px}   /* 16px: iOS no hace zoom */
+.forma input[type="date"]{color-scheme:dark}
+/* El campo trampa se saca de la vista, no del DOM: un bot lo encuentra igual
+   y lo llena; una persona no lo ve nunca. `display:none` lo saltarían los
+   bots más listos, así que va fuera de pantalla. */
+.forma .trampa{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.forma-error{color:#FFB4A8;font-size:14px;line-height:1.4}
+.forma-nota{font-size:12.5px;color:var(--hueso-40);line-height:1.45;margin-top:-4px}
+.forma .btn{width:100%}
+.forma .btn:disabled{opacity:.6;cursor:default;transform:none}
+
+.forma-listo{
+  border:1px solid var(--filo);border-radius:16px;padding:clamp(22px,3vw,30px);
+  background:linear-gradient(180deg, rgba(35,21,80,.55), rgba(35,21,80,0))
+}
+.forma-listo h3{font-size:clamp(22px,2.6vw,28px);font-weight:800;letter-spacing:-.022em}
+.forma-listo p{margin:12px 0 18px;color:var(--hueso-72);font-size:15.5px;line-height:1.5}
+.forma-listo .btn{width:100%}
