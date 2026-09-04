@@ -16,7 +16,7 @@ from _api import REF, pat, request
 BASE = pathlib.Path(__file__).resolve().parent.parent / "supabase" / "functions"
 TODAS = ["eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
          "barrer-pagos",
-         "orden", "enviar-entradas", "equipo", "cuenta", "contacto"]
+         "orden", "enviar-entradas", "equipo", "cuenta", "contacto", "liquidar"]
 
 # Por defecto False: eventos, evento, crear-orden, iniciar-pago, estado-orden y
 # orden las llama el público con la anon key, sin sesión. enviar-entradas es la
@@ -33,7 +33,7 @@ TODAS = ["eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
 # anon key para crear la cuenta (todavía no hay sesión que exigir). La
 # función verifica el JWT a mano contra /auth/v1/user en la acción que sí
 # lo necesita (vincular).
-VERIFY_JWT = {"enviar-entradas": True, "equipo": True}
+VERIFY_JWT = {"enviar-entradas": True, "equipo": True, "liquidar": True}
 
 def main() -> int:
     token = pat()
