@@ -68,6 +68,19 @@ async function consultar(pago_ref: string) {
   };
 }
 
+/* El correo importa más acá que en estado-orden. Si el barrido está emitiendo
+   esta orden es porque el navegador del comprador nunca volvió de la pasarela
+   —el caso que hizo existir esta función—, así que nadie le mostró sus
+   entradas en pantalla: el correo es lo único que le queda. Un fallo suyo no
+   puede tumbar una emisión ya hecha, por eso solo se registra. */
+function avisarPorCorreo(orden: string) {
+  return fetch(`${SB}/functions/v1/enviar-entradas`, {
+    method: "POST", headers: H, body: JSON.stringify({ orden }),
+  }).then(async (r) => {
+    if (!r.ok) console.error(`barrido: enviar-entradas devolvió ${r.status} para ${orden}`);
+  }).catch((e) => console.error(`barrido: enviar-entradas falló para ${orden}: ${e}`));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ ok: false, motivo: "Usá POST." }, 405);
@@ -79,6 +92,7 @@ Deno.serve(async (req) => {
     const pendientes: Array<{ id: string; pago_ref: string }> =
       await rpc("pagos_a_confirmar", { p_limite: 20 });
     let emitidas = 0, revision = 0;
+    const correos: Promise<void>[] = [];
 
     for (const o of pendientes ?? []) {
       const { pagado, monto } = await consultar(o.pago_ref);
@@ -90,11 +104,29 @@ Deno.serve(async (req) => {
       const r = await rpc("emitir_orden",
         { p_orden: o.id, p_monto_cobrado: monto, p_pago_ref: o.pago_ref });
       const res = Array.isArray(r) ? r[0] : r;
-      if (res?.ok) { emitidas++; console.log(`barrido: emitida ${o.id}`); }
+      if (res?.ok) {
+        emitidas++;
+        console.log(`barrido: emitida ${o.id}`);
+        // Solo la emisión nueva manda correo: emitir_orden es idempotente y
+        // devuelve repetida=true si la orden ya estaba emitida. Sin este
+        // guarda, una orden que el barrido vuelva a mirar le manda el mismo
+        // correo al comprador otra vez.
+        if (res.repetida === false) correos.push(avisarPorCorreo(o.id));
+      }
       else { revision++; console.error(`barrido: ${o.id} no se emitió — ${res?.motivo}`); }
     }
 
-    return json({ ok: true, revisadas: (pendientes ?? []).length, emitidas, revision });
+    /* Los correos no bloquean la emisión, pero sí tienen que sobrevivir al
+       return: si el isolate se apaga con los fetch a medio salir, la orden
+       queda emitida y el comprador sin aviso, que es el agujero que esta
+       función vino a tapar. Con waitUntil siguen después de responder; sin
+       él se esperan acá, que para un cron de veinte órdenes no es caro. */
+    const rt = (globalThis as any).EdgeRuntime;
+    if (rt && typeof rt.waitUntil === "function") rt.waitUntil(Promise.all(correos));
+    else await Promise.all(correos);
+
+    return json({ ok: true, revisadas: (pendientes ?? []).length, emitidas, revision,
+                  correos: correos.length });
   } catch (err) {
     console.error(`barrido falló: ${String((err as Error).message ?? err)}`);
     return json({ ok: false, motivo: String((err as Error).message ?? err) }, 500);
