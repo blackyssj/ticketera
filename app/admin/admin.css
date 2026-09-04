@@ -1079,6 +1079,10 @@ body[data-filtro="1"] .puerta-visor::before{
    comparten la misma grilla y el mismo tamaño de número — si uno se viera
    más importante que el otro, la diferencia dejaría de leerse como
    diferencia y pasaría a leerse como corrección. */
+/* El subtítulo de "Pagos hechos", adentro de la misma tarjeta que el saldo:
+   el historial es la prueba de lo que ya salió y tiene que leerse pegado al
+   número disponible, no en otra caja. */
+.liq-sub{font-size:15px;margin:22px 0 10px;padding-top:16px;border-top:1px solid var(--linea)}
 .liq-cab{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
 
 .liq-cifras{margin:18px 0 4px}

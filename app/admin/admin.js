@@ -1247,18 +1247,46 @@ async function conBoton(btn, txt, fn) {
    Si se anuló algo después del cierre, esa diferencia es lo primero que
    hay que ver — el que ya cobró contra la foto tiene un comprobante que
    no coincide con lo de hoy, y esconderlo no lo arregla. */
-const LIQ = { evento: null, ev: null, datos: null, pagando: null, cerrando: false };
+const LIQ = { evento: null, ev: null, datos: null, pagando: null, cerrando: false,
+              disp: null, pagos: [], editandoCuenta: false };
+
+/* Los códigos son los del catálogo del liquidador (bcp_bank_catalog): si acá
+   dice otra cosa, el pago lo rebota el banco y no nos enteramos hasta que el
+   organizador llama. Están los once bancos; las cooperativas se agregan
+   cuando alguna haga falta, pidiendo el código al equipo de BeePay. */
+const BANCOS = [
+  ["1005", "Banco de Crédito BCP"], ["1003", "Banco Mercantil Santa Cruz"],
+  ["1001", "Banco Nacional de Bolivia"], ["1014", "Banco Unión"],
+  ["1009", "Banco BISA"], ["1018", "Banco Ganadero"],
+  ["1016", "Banco Económico"], ["1017", "Banco Sol"],
+  ["1033", "Banco FIE"], ["1034", "Banco Fortaleza"],
+  ["1007", "Banco de la Nación Argentina"],
+];
+
+const ESTADO_PAGO = {
+  pedido: ["Sin confirmar", "dorada"], enviado: ["En camino", "verde"],
+  aprobacion_manual: ["Espera aprobación", "dorada"],
+  pagado: ["Pagado", "verde"], rechazado: ["Rechazado", "roja"],
+};
 
 async function pantallaCierre(eventoId) {
   $("#main").innerHTML = `<p class="cargando">Cargando…</p>`;
-  const [ev, res] = await Promise.all([
+  /* Las cuatro juntas: la pantalla no sirve de a pedazos, y el disponible
+     del organizador se mira ANTES de cerrar (los anticipos son durante la
+     venta), así que no puede colgar de que el evento esté cerrado. */
+  const [ev, res, disp, pagos] = await Promise.all([
     sb.from("eventos").select("id,nombre,slug,fecha,estado").eq("id", eventoId).single(),
     sb.rpc("liquidacion_evento", { p_evento: eventoId }),
+    sb.rpc("disponible_organizador", { p_evento: eventoId }),
+    sb.rpc("pagos_organizador", { p_evento: eventoId }),
   ]);
   if (ev.error || !ev.data) { avisar("Ese evento ya no existe."); mostrar("eventos"); return; }
   if (res.error) { $("#main").innerHTML = `<p class="error">${esc(res.error.message)}</p>`; return; }
   Object.assign(LIQ, { evento: eventoId, ev: ev.data, datos: res.data || {},
-                       pagando: null, cerrando: false });
+                       pagando: null, cerrando: false,
+                       disp: disp.error ? null : disp.data,
+                       pagos: pagos.error ? [] : (pagos.data || []),
+                       editandoCuenta: false });
   pintarCierre();
 }
 
@@ -1319,7 +1347,9 @@ function pintarCierre() {
         <ul class="lista">${foto.lineas.map(l => filaLinea(l)).join("")}</ul>
         ${resumenPagos(foto.lineas)}`
       : `<p class="vacio">Ningún relacionador vendió en este evento, así que no hay
-           comisiones que pagar.</p>`}`}`;
+           comisiones que pagar.</p>`}`}
+
+    ${bloqueOrganizador()}`;
 
   $("#btnVolver").onclick = () => abrirEvento(LIQ.evento);
   const irT = $("#btnIrTablero"); if (irT) irT.onclick = () => pantallaTablero(LIQ.evento);
@@ -1328,6 +1358,174 @@ function pintarCierre() {
   const bl = $("#btnCsvLiq"); if (bl) bl.onclick = () => conBoton(bl, "Armando…", bajarLiquidacion);
   document.querySelectorAll("#main [data-pagar]").forEach(b =>
     b.onclick = () => pedirPago(b.dataset.pagar));
+
+  const bcu = $("#btnCuenta");    if (bcu) bcu.onclick = () => { LIQ.editandoCuenta = true; pintarCierre(); };
+  const bcc = $("#btnCuentaNo");  if (bcc) bcc.onclick = () => { LIQ.editandoCuenta = false; pintarCierre(); };
+  const fc  = $("#formCuenta");   if (fc)  fc.onsubmit = (e) => { e.preventDefault(); guardarCuenta(); };
+  const bpo = $("#btnPagarOrg");  if (bpo) bpo.onclick = () => pedirPagoOrganizador();
+}
+
+/* ══ pagarle al organizador ══════════════════════════════════════
+   Vive en esta pantalla y no en una propia porque es la misma pregunta que
+   ya se está mirando: cuánto entró, cuánto es de cada uno. Y aparece esté
+   el evento cerrado o no — los anticipos se piden mientras se vende, que es
+   justo cuando el organizador los necesita.
+
+   Lo que se muestra es el DISPONIBLE, no el neto: hasta que el evento no
+   pasa se retiene una parte, porque si el evento se cae los reembolsos los
+   ponemos nosotros. Decirle "tenés 50.000" y dejarlo sacar 35.000 sin
+   explicar por qué es cómo se pierde la confianza que este botón vende. */
+function bloqueOrganizador() {
+  const d = LIQ.disp;
+  if (!d) return "";
+  const c = d.cuenta, disponible = Number(d.disponible || 0);
+  const retiene = !d.evento_pasado && Number(d.anticipo_pct) < 1;
+
+  return `
+    <h3 class="titulo-bloque">Pagarle al organizador</h3>
+    <section class="tarjeta">
+      ${c && !LIQ.editandoCuenta ? `
+        <div class="liq-cab">
+          <div>
+            <h3>${bs(disponible)} disponibles</h3>
+            <p class="ayuda">A ${esc(c.titular)} · ${esc(c.banco)} · cuenta ${esc(c.cuenta)}</p>
+          </div>
+          <button type="button" class="btn plano chico" id="btnCuenta">Cambiar la cuenta</button>
+        </div>
+        ${retiene ? `<p class="ayuda">De los ${bs(d.neto)} que le corresponden se
+          puede adelantar el ${Math.round(Number(d.anticipo_pct) * 100)}% hasta que
+          pase el evento. El resto queda para después, por si hay que devolver
+          entradas.</p>` : ""}
+        <div class="liq-cifras">
+          <dl>
+            <div><dt>Se vendió</dt><dd>${bs(d.bruto)}</dd></div>
+            <div class="tenue"><dt>Comisiones de relacionadores</dt><dd>−${bs(d.comisiones)}</dd></div>
+            <div><dt>Le corresponde</dt><dd>${bs(d.neto)}</dd></div>
+            <div class="tenue"><dt>Tope de hoy</dt><dd>${bs(d.tope)}</dd></div>
+            <div class="tenue"><dt>Ya pedido</dt><dd>−${bs(d.pagado)}</dd></div>
+            <div><dt>Disponible ahora</dt><dd>${bs(disponible)}</dd></div>
+          </dl>
+        </div>
+        <div class="acciones">
+          <button class="btn primario" id="btnPagarOrg"${disponible < 0.01 ? " disabled" : ""}>
+            ${disponible < 0.01 ? "Nada para pagar" : `Pagar ${bs(disponible)}`}</button>
+        </div>`
+      : LIQ.editandoCuenta ? formCuenta(c)
+      : `<h3>Falta la cuenta bancaria</h3>
+         <p class="ayuda">Sin ella no se le puede depositar. El nombre del titular
+           tiene que ser el que figura en el banco: si no coincide, la
+           transferencia rebota.</p>
+         <div class="acciones">
+           <button class="btn primario" id="btnCuenta">Cargar la cuenta</button>
+         </div>`}
+
+      ${LIQ.pagos.length ? `
+        <h4 class="liq-sub">Pagos hechos</h4>
+        <ul class="lista">${LIQ.pagos.map(filaPagoOrg).join("")}</ul>` : ""}
+    </section>`;
+}
+
+function filaPagoOrg(p) {
+  const [txt, color] = ESTADO_PAGO[p.estado] || [p.estado, "amarilla"];
+  return `
+    <li class="fila quieta liq-linea">
+      <span class="fila-nombre">${esc(p.titular)}
+        <em>${esc(p.banco)} · ${esc(p.cuenta)}${p.referencia ? " · ref " + esc(p.referencia) : ""}</em></span>
+      <span class="cifra destacada">${bs(p.monto)}</span>
+      <span class="pastilla ${color}">${esc(txt)}</span>
+      <span class="fila-dato tenue">${fmtFH(p.pedido_at)}${
+        p.pedido_por ? " · " + esc(p.pedido_por) : ""}${
+        p.motivo ? " · " + esc(p.motivo) : ""}</span>
+    </li>`;
+}
+
+/* El formulario pide exactamente lo que la API del liquidador exige, con los
+   nombres que el organizador entiende. La extensión del documento sólo la
+   pide el BCP; se muestra siempre porque esconderla y mostrarla según el
+   banco es más código y más confusión que un campo opcional de más. */
+function formCuenta(c) {
+  return `
+    <h3>${c ? "Cambiar la cuenta" : "Cuenta del organizador"}</h3>
+    <p class="ayuda">${c ? "La anterior queda guardada: los pagos viejos siguen diciendo a dónde fueron." : ""}
+      El titular tiene que estar escrito como en el banco.</p>
+    <form class="form-persona" id="formCuenta">
+      <label><span>Banco</span>
+        <select id="cuBanco">
+          ${BANCOS.map(([cod, nom]) =>
+            `<option value="${cod}"${c && c.banco === nom ? " selected" : ""}>${esc(nom)}</option>`).join("")}
+        </select></label>
+      <label><span>Número de cuenta</span>
+        <input id="cuNumero" inputmode="numeric" autocomplete="off"
+               value="${c ? esc(c.cuenta) : ""}" required></label>
+      <label><span>Nombres del titular</span>
+        <input id="cuNombres" autocomplete="off" required></label>
+      <label><span>Apellido del titular</span>
+        <input id="cuApellido" autocomplete="off" required></label>
+      <label><span>Documento</span>
+        <select id="cuTipoDoc">
+          <option value="CI">Carnet de identidad</option>
+          <option value="NIT">NIT</option>
+        </select></label>
+      <label><span>Número de documento</span>
+        <input id="cuDoc" autocomplete="off" required></label>
+      <label><span>Extensión <em class="ayuda">sólo BCP con carnet</em></span>
+        <input id="cuExt" autocomplete="off" placeholder="SC"></label>
+      <div class="acciones">
+        <button class="btn primario" type="submit">Guardar la cuenta</button>
+        <button class="btn plano" type="button" id="btnCuentaNo">Cancelar</button>
+      </div>
+    </form>`;
+}
+
+async function guardarCuenta() {
+  const cod = $("#cuBanco").value;
+  const datos = {
+    banco_codigo: cod,
+    banco_nombre: (BANCOS.find(b => b[0] === cod) || ["", cod])[1],
+    cuenta: $("#cuNumero").value.trim(),
+    titular_nombres: $("#cuNombres").value.trim(),
+    titular_apellido: $("#cuApellido").value.trim(),
+    documento_tipo: $("#cuTipoDoc").value,
+    documento_numero: $("#cuDoc").value.trim(),
+    documento_extension: $("#cuExt").value.trim(),
+  };
+  if (!datos.cuenta || !datos.titular_nombres || !datos.titular_apellido || !datos.documento_numero) {
+    avisar("Faltan datos de la cuenta."); return;
+  }
+  const { data, error } = await sb.rpc("guardar_cuenta_bancaria", { p_datos: datos });
+  if (error) { avisar(sinCodigo(error.message)); return; }
+  avisar(data.motivo);
+  LIQ.editandoCuenta = false;
+  await pantallaCierre(LIQ.evento);
+}
+
+/* El pago sale por la Edge Function y no por una RPC: del otro lado hay un
+   banco, y eso no se hace adentro de una transacción de Postgres. El token
+   viaja porque la base tiene que saber QUIÉN pide — el permiso lo decide
+   ella, no esta pantalla. */
+async function pedirPagoOrganizador() {
+  const d = LIQ.disp, monto = Number(d.disponible || 0);
+  if (monto < 0.01) return;
+  if (!confirm(`Pagar ${bs(monto)} a ${d.cuenta.titular}\n` +
+               `${d.cuenta.banco}, cuenta ${d.cuenta.cuenta}.\n\n` +
+               `Sale del monedero de TICKETAZO y no se deshace desde acá.`)) return;
+
+  const btn = $("#btnPagarOrg");
+  await conBoton(btn, "Enviando…", async () => {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) { avisar("Se cerró tu sesión. Entrá de nuevo."); return; }
+    const r = await fetch(`${CFG.SUPABASE_URL}/functions/v1/liquidar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: CFG.SUPABASE_ANON_KEY,
+                 Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ evento: LIQ.evento }),
+    });
+    const txt = await r.text();
+    let j = null;
+    try { j = txt ? JSON.parse(txt) : null; } catch { /* la reja del gateway no contesta JSON */ }
+    avisar(j?.motivo || `No se pudo completar (${r.status}).`);
+    await pantallaCierre(LIQ.evento);
+  });
 }
 
 /* ── el CSV de la liquidación ──
