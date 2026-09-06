@@ -1576,8 +1576,10 @@ function formCuenta(c) {
                value="${c ? esc(c.cuenta) : ""}" required></label>
       <label><span>Nombres del titular</span>
         <input id="cuNombres" autocomplete="off" required></label>
-      <label><span>Apellido del titular</span>
+      <label><span>Primer apellido</span>
         <input id="cuApellido" autocomplete="off" required></label>
+      <label><span>Segundo apellido <em class="ayuda">si tiene</em></span>
+        <input id="cuApellido2" autocomplete="off"></label>
       <label><span>Documento</span>
         <select id="cuTipoDoc">
           <option value="CI">Carnet de identidad</option>
@@ -1585,8 +1587,8 @@ function formCuenta(c) {
         </select></label>
       <label><span>Número de documento</span>
         <input id="cuDoc" autocomplete="off" required></label>
-      <label><span>Extensión <em class="ayuda">sólo BCP con carnet</em></span>
-        <input id="cuExt" autocomplete="off" placeholder="SC"></label>
+      <label><span>Extensión <em class="ayuda">obligatoria en el BCP con carnet</em></span>
+        <input id="cuExt" autocomplete="off" placeholder="SC" maxlength="4"></label>
       <div class="acciones">
         <button class="btn primario" type="submit">Guardar la cuenta</button>
         <button class="btn plano" type="button" id="btnCuentaNo">Cancelar</button>
@@ -1602,12 +1604,22 @@ async function guardarCuenta() {
     cuenta: $("#cuNumero").value.trim(),
     titular_nombres: $("#cuNombres").value.trim(),
     titular_apellido: $("#cuApellido").value.trim(),
+    titular_apellido2: $("#cuApellido2").value.trim(),
     documento_tipo: $("#cuTipoDoc").value,
     documento_numero: $("#cuDoc").value.trim(),
     documento_extension: $("#cuExt").value.trim(),
   };
   if (!datos.cuenta || !datos.titular_nombres || !datos.titular_apellido || !datos.documento_numero) {
     avisar("Faltan datos de la cuenta."); return;
+  }
+  /* El liquidador rechaza el pago del BCP con carnet y sin extensión —lo
+     valida antes de hablar con el banco—, así que sin esto la cuenta se
+     guardaría bien y fallaría recién al pagar. La base lo rechaza igual;
+     acá se dice antes, mientras la persona todavía tiene el carnet en la
+     mano. */
+  if (cod === "1005" && datos.documento_tipo === "CI" && !datos.documento_extension) {
+    avisar("Falta la extensión del carnet (SC, LP, CB…). El BCP no acepta el pago sin ella.");
+    return;
   }
   const { data, error } = await sb.rpc("guardar_cuenta_bancaria", { p_datos: datos });
   if (error) { avisar(sinCodigo(error.message)); return; }

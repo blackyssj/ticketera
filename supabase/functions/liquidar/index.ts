@@ -118,7 +118,15 @@ async function enviar(pedido: any, evento: string): Promise<Salida> {
        liquidador le adjunte la cabecera compartida. */
     callbackUrl: `${SB}/functions/v1/pago-callback`,
   };
-  // La extensión sólo la pide el BCP cuando el documento es CI.
+  /* El segundo apellido va separado, no pegado al primero: el banco
+     compara campo por campo y devuelve la transferencia si no coincide.
+     Se manda sólo si lo hay — una empresa con NIT no tiene ninguno. */
+  if (b.apellido2) cuerpo.secondLastName = b.apellido2;
+
+  /* La extensión la EXIGE el liquidador para el BCP con carnet, y lo
+     valida antes de hablar con el banco. La cuenta no se puede guardar sin
+     ella (0059), así que llegar acá sin extensión sería una cuenta cargada
+     antes de esa migración: se manda igual y el 4xx dice qué falta. */
   if (ES_BCP(b.banco_codigo) && b.documento_tipo === "CI" && b.documento_extension) {
     cuerpo.documentExtension = b.documento_extension;
   }
