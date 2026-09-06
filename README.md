@@ -6,15 +6,17 @@ TICKETAZO es una ticketera multi-tenant con portada pública y landing de autose
 - **Plan del bloque 1 (la base):** [`docs/plan-bloque1-base.md`](docs/plan-bloque1-base.md)
 - **Plan del bloque 4a (administración):** [`docs/plan-bloque4a-admin.md`](docs/plan-bloque4a-admin.md)
 
-**En producción:** https://ticketera-coral.vercel.app
+**En producción:** https://ticketazo.com.bo
+
+**Cómo se trabaja acá:** [`CLAUDE.md`](CLAUDE.md) — reglas, despliegue y trampas conocidas.
 
 ## Qué hay
 
 | Carpeta | Qué es |
 |---|---|
 | `app/` | La landing pública. HTML/CSS/JS planos, sin build |
-| `supabase/migrations/` | Las 11 migraciones, en orden |
-| `supabase/functions/` | Las 4 Edge Functions |
+| `supabase/migrations/` | Las 51 migraciones, en orden |
+| `supabase/functions/` | Las 13 Edge Functions |
 | `supabase/seed.sql` | El evento de prueba (Amstel Ferial) |
 | `supabase/tests/invariantes.sql` | Los 4 guardas estructurales |
 | `supabase/tests/carrera-puerta.py` | La carrera de la puerta, con dos sesiones de verdad |
