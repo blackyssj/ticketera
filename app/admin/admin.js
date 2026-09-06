@@ -1396,11 +1396,18 @@ function bloqueOrganizador() {
           puede adelantar el ${Math.round(Number(d.anticipo_pct) * 100)}% hasta que
           pase el evento. El resto queda para después, por si hay que devolver
           entradas.</p>` : ""}
+        ${topeRealManda(d) ? `<p class="ayuda aviso-real">El disponible está
+          limitado por lo que <b>realmente entró</b> por la pasarela:
+          ${bs(d.cobrado_real)}.${Number(d.simuladas) ? ` Hay ${d.simuladas}
+          ${Number(d.simuladas) === 1 ? "orden de prueba" : "órdenes de prueba"}
+          por ${bs(d.simuladas_bs)} que suman al total del evento pero nunca se
+          cobraron.` : ""}</p>` : ""}
         <div class="liq-cifras">
           <dl>
             <div><dt>Se vendió</dt><dd>${bs(d.bruto)}</dd></div>
             <div class="tenue"><dt>Comisiones de relacionadores</dt><dd>−${bs(d.comisiones)}</dd></div>
             <div><dt>Le corresponde</dt><dd>${bs(d.neto)}</dd></div>
+            <div class="tenue"><dt>Entró por la pasarela</dt><dd>${bs(d.cobrado_real)}</dd></div>
             <div class="tenue"><dt>Tope de hoy</dt><dd>${bs(d.tope)}</dd></div>
             <div class="tenue"><dt>Ya pedido</dt><dd>−${bs(d.pagado)}</dd></div>
             <div><dt>Disponible ahora</dt><dd>${bs(disponible)}</dd></div>
@@ -1423,6 +1430,13 @@ function bloqueOrganizador() {
         <h4 class="liq-sub">Pagos hechos</h4>
         <ul class="lista">${LIQ.pagos.map(filaPagoOrg).join("")}</ul>` : ""}
     </section>`;
+}
+
+/* Cuándo el techo que manda es la plata que entró y no el tope de anticipo.
+   Se avisa sólo en ese caso: explicar los dos techos siempre convertiría una
+   pantalla de plata en una clase de contabilidad. */
+function topeRealManda(d) {
+  return d.techo_real != null && Number(d.techo_real) < Number(d.tope);
 }
 
 function filaPagoOrg(p) {

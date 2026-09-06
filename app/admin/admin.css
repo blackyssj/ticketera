@@ -1082,6 +1082,10 @@ body[data-filtro="1"] .puerta-visor::before{
 /* El subtítulo de "Pagos hechos", adentro de la misma tarjeta que el saldo:
    el historial es la prueba de lo que ya salió y tiene que leerse pegado al
    número disponible, no en otra caja. */
+/* El aviso de "esto está limitado por la plata real": va en el color de
+   aviso y no en rojo — no es un error, es una explicación de por qué el
+   número es más chico de lo que el bruto sugiere. */
+.aviso-real{color:var(--aviso)}
 .liq-sub{font-size:15px;margin:22px 0 10px;padding-top:16px;border-top:1px solid var(--linea)}
 .liq-cab{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
 

@@ -100,6 +100,12 @@ Deno.serve(async (req) => {
       documentType: b.documento_tipo,
       documentNumber: b.documento_numero,
       firstDetail: `TICKETAZO ${String(evento).slice(0, 8)}`,
+      /* A dónde avisar cuando el banco termine. Va en cada pedido además de
+         estar registrada del lado del liquidador: si algún día alguien toca
+         esa configuración, el pago sigue sabiendo a dónde contestar. Tiene
+         que ser la MISMA URL registrada, porque de eso depende que el
+         liquidador le adjunte la cabecera compartida. */
+      callbackUrl: `${SB}/functions/v1/pago-callback`,
     };
     // La extensión sólo la pide el BCP cuando el documento es CI.
     if (ES_BCP(b.banco_codigo) && b.documento_tipo === "CI" && b.documento_extension) {
