@@ -58,9 +58,14 @@ a un archivo temporal primero.
 
 ## Lo que necesitás para trabajar
 
-Un PAT de Supabase tuyo (Account Settings → Access Tokens) en `~/.supabase_pat`.
-Con eso andan todos los scripts. No compartas el de otro: si algo sale mal,
-conviene saber quién fue.
+Un PAT de Supabase **tuyo** (Account Settings → Access Tokens), sacado con la
+cuenta que tenga acceso a la organización Ticketazo. Va en `~/.supabase_pat`, o
+en un archivo `.pat` en la raíz del repo si tu máquina tiene más de una cuenta
+de Supabase — ese archivo está ignorado por git y por el despliegue.
+
+No uses el de otro. Un PAT actúa como la persona en TODOS sus proyectos, así
+que compartirlo borra el rastro de quién hizo qué y obliga a rotarlo —
+rompiéndole el acceso a todos— el día que alguien se va.
 
 ## Estilo
 

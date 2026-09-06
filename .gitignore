@@ -26,3 +26,7 @@ node_modules/
 # Worktrees de los agentes y el ledger del plan en curso: andamio, no codigo.
 .claude/
 .superpowers/
+
+# El PAT de este repo: la ticketera vive en la cuenta de la empresa y
+# ~/.supabase_pat puede tener el de otra. Nunca se versiona.
+.pat

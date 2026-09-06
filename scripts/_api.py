@@ -21,12 +21,28 @@ REF = os.environ.get("TICKETERA_REF", "mjotxzcddhqqpuhkcetl")
 
 
 def pat() -> str:
+    """El PAT de Supabase, buscado en tres lugares y en este orden.
+
+    El `.pat` del repo existe por una razón concreta: una máquina puede tener
+    cuentas de Supabase distintas —esta ticketera vive en la cuenta de la
+    empresa, y otros proyectos en la personal— y `~/.supabase_pat` sólo puede
+    tener una. Sin esto, trabajar en dos proyectos obliga a pisar el archivo de
+    ida y de vuelta, y el día que te olvidás corrés una migración contra la
+    base equivocada.
+
+    Está en .gitignore y en .vercelignore: no se versiona ni se sube al
+    desplegar. Si tenés una sola cuenta, ignoralo y usá ~/.supabase_pat.
+    """
     if os.environ.get("SUPABASE_PAT"):
         return os.environ["SUPABASE_PAT"].strip()
+    local = pathlib.Path(__file__).resolve().parent.parent / ".pat"
+    if local.exists():
+        return local.read_text().strip()
     f = pathlib.Path.home() / ".supabase_pat"
     if f.exists():
         return f.read_text().strip()
-    sys.exit("Falta el PAT. Exportá SUPABASE_PAT o dejalo en ~/.supabase_pat")
+    sys.exit("Falta el PAT. Exportá SUPABASE_PAT, dejalo en .pat (raíz del "
+             "repo) o en ~/.supabase_pat")
 
 
 def request(url, metodo="GET", cabeceras=None, cuerpo=None):
