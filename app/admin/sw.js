@@ -30,13 +30,13 @@
 /* Subir esto cuando cambie la lista de abajo. Cambiar el nombre es lo
    que borra el cache anterior: sin eso, un shell viejo puede sobrevivir
    a un despliegue y nadie entiende por qué el portero ve otra cosa. */
-const CACHE = "puerta-v3";
+const CACHE = "puerta-v4";
 
 const SHELL = [
   "./",
   "./index.html",
-  "./admin.css?v=32",
-  "./admin.js?v=32",
+  "./admin.css?v=33",
+  "./admin.js?v=33",
   "./puerta.js?v=32",
   "./csv.js?v=30",
   "../config.js",

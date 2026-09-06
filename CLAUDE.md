@@ -92,6 +92,11 @@ rompiéndole el acceso a todos— el día que alguien se va.
   `fecha_txt`. Usá los crudos; el texto no trae año.
 - **Los pagos de 4.000 Bs o más** al organizador quedan en aprobación manual del
   lado del liquidador. No es un error.
+- **El pago al organizador puede salir solo.** `pago_automatico` por
+  organizador (arranca apagado), un cron cada 15 min llama a `liquidar` con la
+  cabecera `x-auto`, y el mismo `enviar()` atiende al botón del panel y al
+  reloj. Si tocás esa función, acordate de que del otro lado hay plata real:
+  el 4xx marca rechazado y libera saldo, el 5xx deja el pago reservando.
 - **La puerta guarda el padrón del evento en el teléfono** para poder trabajar
   sin señal, y los ingresos hechos a ciegas quedan en una cola hasta que haya
   conexión. Dos porteros sin señal pueden dejar pasar el mismo código: eso se

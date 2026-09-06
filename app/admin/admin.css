@@ -984,6 +984,28 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 .puerta-conteo-pie b{color:var(--txt-2);font-weight:500}
 body[data-filtro="1"] .puerta-conteo{border-color:rgba(246,180,74,.35)}
 
+/* ─── el giro automático ───
+   Dentro de la tarjeta de pago, separado por una línea arriba: es una
+   decisión distinta a "pagar ahora" y no puede leerse como otro botón
+   más de la misma fila. Cuando está puesto se tiñe de verde — es el
+   único estado del panel que sigue haciendo cosas cuando nadie mira, y
+   tiene que verse de un vistazo. */
+.liq-auto{
+  margin-top:16px;padding-top:15px;border-top:1px solid var(--linea);
+}
+.liq-auto-cab{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.liq-auto-cab b{font-size:14.5px}
+.liq-auto[data-on="1"] .liq-auto-cab b{color:var(--ok)}
+.liq-auto .ayuda{margin:6px 0 0}
+.liq-auto-min{
+  display:flex;align-items:center;gap:8px;margin-top:11px;
+  font-family:var(--dato);font-size:12.5px;color:var(--txt-2);
+}
+.liq-auto-min input{
+  width:5.5em;padding:7px 9px;text-align:right;
+  font-family:var(--dato);font-variant-numeric:tabular-nums;
+}
+
 /* ─── la barra de sin señal ───
    Aparece SOLO cuando hay algo que decir: sin conexión, con ingresos
    por subir, o con conflictos después de subirlos. Una barra permanente

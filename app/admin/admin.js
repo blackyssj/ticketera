@@ -1390,6 +1390,30 @@ function pintarCierre() {
   const bcc = $("#btnCuentaNo");  if (bcc) bcc.onclick = () => { LIQ.editandoCuenta = false; pintarCierre(); };
   const fc  = $("#formCuenta");   if (fc)  fc.onsubmit = (e) => { e.preventDefault(); guardarCuenta(); };
   const bpo = $("#btnPagarOrg");  if (bpo) bpo.onclick = () => pedirPagoOrganizador();
+
+  const bau = $("#btnAuto");
+  if (bau) bau.onclick = () => {
+    const prender = !(LIQ.disp && LIQ.disp.automatico);
+    const min = Number($("#autoMin").value) || Number(LIQ.disp.minimo);
+    /* Prenderlo se confirma; apagarlo no. Prender es empezar a mover plata
+       sola, apagar es dejar de hacerlo: el que se equivoca apagando pierde
+       comodidad, el que se equivoca prendiendo pierde el control de cuándo
+       sale un giro. */
+    if (prender && !confirm(
+        `A partir de ahora la plata se le va a mandar sola al organizador, ` +
+        `cada quince minutos, apenas pase los ${bs(min)}.\n\n` +
+        `Se manda a: ${LIQ.disp.cuenta ? LIQ.disp.cuenta.titular + " · " +
+          LIQ.disp.cuenta.banco + " · " + LIQ.disp.cuenta.cuenta : "—"}\n\n¿Prendemos?`))
+      return;
+    guardarPagoAuto(prender, min);
+  };
+
+  const bam = $("#btnAutoMin");
+  if (bam) bam.onclick = () => {
+    const min = Number($("#autoMin").value);
+    if (!(min >= 0.01)) { avisar("Poné un monto."); return; }
+    guardarPagoAuto(!!(LIQ.disp && LIQ.disp.automatico), min);
+  };
 }
 
 /* ══ pagarle al organizador ══════════════════════════════════════
@@ -1443,7 +1467,8 @@ function bloqueOrganizador() {
         <div class="acciones">
           <button class="btn primario" id="btnPagarOrg"${disponible < 0.01 ? " disabled" : ""}>
             ${disponible < 0.01 ? "Nada para pagar" : `Pagar ${bs(disponible)}`}</button>
-        </div>`
+        </div>
+        ${bloqueAutomatico(d)}`
       : LIQ.editandoCuenta ? formCuenta(c)
       : `<h3>Falta la cuenta bancaria</h3>
          <p class="ayuda">Sin ella no se le puede depositar. El nombre del titular
@@ -1466,6 +1491,54 @@ function topeRealManda(d) {
   return d.techo_real != null && Number(d.techo_real) < Number(d.tope);
 }
 
+/* ── el giro automático ──────────────────────────────────────────
+   La promesa comercial entera de TICKETAZO frente a la competencia es
+   ésta: el organizador no espera a fin de mes ni llama a nadie. Pero es
+   plata saliendo sola de una cuenta, así que la pantalla tiene que decir
+   exactamente qué va a pasar y quién puede prenderlo.
+
+   Sólo admin. Un staff carga eventos y vende; que pueda arrancar un giro
+   automático a una cuenta bancaria no es de ese trabajo, y la base lo
+   rechaza igual — esto es para que el botón no aparezca y prometa algo
+   que después no se puede hacer. */
+function bloqueAutomatico(d) {
+  if (!S.yo || S.yo.rol !== "admin") return "";
+  const on = !!d.automatico, min = Number(d.minimo || 0);
+  return `
+    <div class="liq-auto" data-on="${on ? 1 : 0}">
+      <div class="liq-auto-cab">
+        <b>Pago automático</b>
+        <button type="button" class="btn ${on ? "plano" : "primario"} chico" id="btnAuto">
+          ${on ? "Apagar" : "Prender"}</button>
+      </div>
+      <p class="ayuda">${on
+        ? `Puesto. Cada quince minutos, lo disponible se manda solo apenas
+           pasa los ${bs(min)}. No hay que apretar nada.`
+        : `Apagado. La plata sale sólo cuando alguien aprieta «Pagar».`}</p>
+      <label class="liq-auto-min">
+        <span>Mandar a partir de</span>
+        <input id="autoMin" inputmode="decimal" value="${min}" size="6">
+        <span>Bs</span>
+        <button type="button" class="btn plano chico" id="btnAutoMin">Guardar</button>
+      </label>
+      <p class="ayuda">El piso evita una transferencia bancaria por cada
+        entrada suelta: debajo de ese monto la plata se junta.</p>
+    </div>`;
+}
+
+async function guardarPagoAuto(activo, minimo) {
+  const { data, error } = await sb.rpc("guardar_pago_automatico",
+    { p_activo: activo, p_minimo: minimo });
+  if (error) { avisar(sinCodigo(error.message)); return; }
+  avisar(data.motivo);
+  /* Se recarga el disponible entero y no sólo el interruptor: el mínimo
+     nuevo cambia qué va a mandar el reloj, y mostrar el número viejo al
+     lado del switch nuevo es cómo alguien cree que guardó y no guardó. */
+  const { data: disp } = await sb.rpc("disponible_organizador", { p_evento: LIQ.evento });
+  if (disp) LIQ.disp = disp;
+  pintarCierre();
+}
+
 function filaPagoOrg(p) {
   const [txt, color] = ESTADO_PAGO[p.estado] || [p.estado, "amarilla"];
   return `
@@ -1474,8 +1547,11 @@ function filaPagoOrg(p) {
         <em>${esc(p.banco)} · ${esc(p.cuenta)}${p.referencia ? " · ref " + esc(p.referencia) : ""}</em></span>
       <span class="cifra destacada">${bs(p.monto)}</span>
       <span class="pastilla ${color}">${esc(txt)}</span>
-      <span class="fila-dato tenue">${fmtFH(p.pedido_at)}${
-        p.pedido_por ? " · " + esc(p.pedido_por) : ""}${
+      <span class="fila-dato tenue">${fmtFH(p.pedido_at)} · ${
+        /* pedido_por vacío es un pago que no pidió nadie: lo mandó el
+           reloj. Decirlo importa — el organizador que ve plata entrar sin
+           haberla pedido tiene que poder entender por qué. */
+        p.pedido_por ? esc(p.pedido_por) : "automático"}${
         p.motivo ? " · " + esc(p.motivo) : ""}</span>
     </li>`;
 }
