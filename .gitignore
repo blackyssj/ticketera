@@ -23,6 +23,16 @@ node_modules/
 .DS_Store
 *.log
 
+# Python deja esto al correr cualquier script de scripts/ — o sea, al hacer
+# cualquier despliegue. Sin la regla le aparece como archivo nuevo a todo el
+# que trabaje acá, y es basura de la máquina, no código.
+__pycache__/
+*.pyc
+
+# Configuración local de los editores de JetBrains. Es de la máquina de cada
+# uno: rutas, ventanas abiertas, preferencias. No le sirve a nadie más.
+.idea/
+
 # Worktrees de los agentes y el ledger del plan en curso: andamio, no codigo.
 .claude/
 .superpowers/
