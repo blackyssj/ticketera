@@ -8,7 +8,19 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="admin.css?v=31">
+<link rel="stylesheet" href="admin.css?v=32">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d0d0f">
+<!-- El service worker es lo que hace que esta pantalla ABRA sin internet.
+     Sin el, en una feria sin senal el portero no ve ni el HTML. Se registra
+     aca y no en admin.js para que empiece a guardar el shell aunque el
+     usuario todavia no haya entrado. Si el navegador no lo soporta, la
+     puerta funciona como siempre: online. -->
+<script>
+  if ("serviceWorker" in navigator)
+    addEventListener("load", () =>
+      navigator.serviceWorker.register("sw.js").catch(() => {}));
+</script>
 </head>
 <body>
 
@@ -51,7 +63,7 @@
 <!-- El CSV que se le manda al contador: separador, encoding y la
      neutralizacion de formulas viven ahi, no repartidos por las pantallas. -->
 <script src="csv.js?v=30"></script>
-<script src="admin.js?v=31"></script>
-<script src="puerta.js?v=30"></script>
+<script src="admin.js?v=32"></script>
+<script src="puerta.js?v=32"></script>
 </body>
 </html>

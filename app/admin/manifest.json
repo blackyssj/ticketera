@@ -1,0 +1,11 @@
+{
+  "name": "TICKETAZO — puerta",
+  "short_name": "Puerta",
+  "description": "Escaneo de entradas en la puerta, con o sin señal.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d0d0f",
+  "theme_color": "#0d0d0f"
+}

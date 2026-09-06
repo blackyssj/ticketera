@@ -984,6 +984,39 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 .puerta-conteo-pie b{color:var(--txt-2);font-weight:500}
 body[data-filtro="1"] .puerta-conteo{border-color:rgba(246,180,74,.35)}
 
+/* ─── la barra de sin señal ───
+   Aparece SOLO cuando hay algo que decir: sin conexión, con ingresos
+   por subir, o con conflictos después de subirlos. Una barra permanente
+   que dijera "conectado" toda la noche es una barra que a la media hora
+   nadie mira, y entonces tampoco se mira la noche que dice lo otro.
+
+   Va arriba del conteo a propósito: cuando está sin señal, el número de
+   adentro es una estimación y esto es el encabezado que lo explica. */
+.puerta-estado{
+  display:none;font-family:var(--dato);font-size:12.5px;line-height:1.55;
+  margin-bottom:10px;padding:11px 14px;border-radius:var(--r);
+  background:var(--sup);border:1px solid var(--linea-2);color:var(--txt-2);
+}
+.puerta-estado[data-on="1"]{display:block}
+.puerta-estado b{color:var(--txt);font-weight:600}
+/* Ámbar y no rojo: sin señal la puerta SIGUE funcionando. El rojo dice
+   "se rompió" y acá lo que pasa es que se está trabajando de otra forma. */
+.puerta-estado[data-mal="1"]{
+  border-color:rgba(246,180,74,.4);background:var(--aviso-bg);color:var(--aviso);
+}
+.puerta-estado[data-mal="1"] b{color:var(--aviso)}
+.puerta-link{
+  font:inherit;color:inherit;text-decoration:underline;
+  background:none;border:0;padding:0;cursor:pointer;
+}
+
+/* La marca del cartel. Chica y arriba del nombre: el que decide de lejos
+   lee PASA y sigue; el que quiera saber si ya está confirmado, la ve. */
+.puerta-sinsenal{
+  font-family:var(--dato);font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;opacity:.8;
+}
+
 /* ─── el interruptor del filtro ───
    Del tamaño de un botón que se aprieta con guantes, no de un checkbox. */
 .puerta-filtro{

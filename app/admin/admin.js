@@ -68,7 +68,34 @@ $("#formEntrar").addEventListener("submit", async e => {
   }
 });
 
+/* Al salir se borra la lista de la puerta. Son los nombres y los códigos
+   de todos los que compraron: mientras el portero está trabajando tiene
+   que tenerlos, y cuando cierra la sesión —o le devuelve el teléfono al
+   dueño— no.
+
+   Lo que NO se borra sin preguntar son los ingresos que todavía no se
+   subieron: eso es gente que ya está adentro y de la que no queda
+   registro en ningún otro lado. */
+function limpiarPuerta() {
+  const llaves = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith("puerta:")) llaves.push(k);
+  }
+  let pendientes = 0;
+  llaves.filter(k => k.startsWith("puerta:cola:")).forEach(k => {
+    try { pendientes += (JSON.parse(localStorage.getItem(k)) || []).length; } catch {}
+  });
+  if (pendientes && !confirm(
+      `Hay ${pendientes} ingreso${pendientes === 1 ? "" : "s"} de la puerta sin subir. ` +
+      `Si salís ahora se pierden.\n\nConectate y esperá a que se suban, o aceptá para salir igual.`))
+    return false;
+  llaves.forEach(k => { try { localStorage.removeItem(k); } catch {} });
+  return true;
+}
+
 $("#btnSalir").addEventListener("click", async () => {
+  if (!limpiarPuerta()) return;
   await sb.auth.signOut();
   location.reload();
 });
