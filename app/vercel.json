@@ -73,6 +73,17 @@
     },
     {
       "source": "/:organizador/:evento",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|slackbot|linkedinbot|discordbot|skypeuripreview|redditbot|embedly|iframely|pinterest|vkshare).*"
+        }
+      ],
+      "destination": "https://mjotxzcddhqqpuhkcetl.supabase.co/functions/v1/og?org=:organizador&ev=:evento"
+    },
+    {
+      "source": "/:organizador/:evento",
       "destination": "/evento.html"
     }
   ],

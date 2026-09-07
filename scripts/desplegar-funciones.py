@@ -14,7 +14,7 @@ from urllib.parse import quote
 from _api import REF, pat, request
 
 BASE = pathlib.Path(__file__).resolve().parent.parent / "supabase" / "functions"
-TODAS = ["eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
+TODAS = ["og", "eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
          "barrer-pagos",
          "orden", "enviar-entradas", "equipo", "cuenta", "contacto", "liquidar",
          "pago-callback"]
@@ -34,7 +34,7 @@ TODAS = ["eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
 # anon key para crear la cuenta (todavía no hay sesión que exigir). La
 # función verifica el JWT a mano contra /auth/v1/user en la acción que sí
 # lo necesita (vincular).
-VERIFY_JWT = {"enviar-entradas": True, "equipo": True, "liquidar": True,
+VERIFY_JWT = {"og": False, "enviar-entradas": True, "equipo": True, "liquidar": True,
                "pago-callback": False}
 
 def main() -> int:
