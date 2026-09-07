@@ -215,6 +215,18 @@ async function recuperar(email) {
   });
   if (!r.ok) {
     if (r.status === 429) throw fallo("Demasiados intentos. Esperá un rato antes de volver a pedirlo.", 429);
+    /* Un 5xx acá es del SMTP, no del comprador: la credencial mal cargada,
+       el proveedor caído, el límite del plan. GoTrue lo cuenta en inglés y
+       en su vocabulario ("Error sending recovery email"), que en una página
+       en voseo se lee como una falla nuestra sin explicar nada.
+
+       Se dice en castellano y, sobre todo, se dice que NO es culpa suya y
+       qué hacer: abajo está el WhatsApp. El texto de GoTrue igual queda en
+       la consola para el que venga a arreglarlo. */
+    if (r.status >= 500) {
+      console.error("recover falló:", r.status, motivoAuth(r.cuerpo) || "(sin motivo)");
+      throw fallo("No pudimos mandar el correo — es un problema nuestro, no tuyo. Escribinos por WhatsApp y te ayudamos.", r.status);
+    }
     throw fallo(motivoAuth(r.cuerpo) || "No pudimos mandar el correo. Probá de nuevo.", r.status);
   }
   return true;
