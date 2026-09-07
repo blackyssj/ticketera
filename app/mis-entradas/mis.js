@@ -579,9 +579,15 @@ document.addEventListener("click", e => {
    Si abrió así, la sesión que hubiera guardada no importa: quien llega con
    ese link viene a cambiar la contraseña, y mostrarle sus compras lo dejaría
    sin entender qué pasó con el link que apretó. */
-if (Cuenta) tokenRecuperacion = Cuenta.recuperacionEnCurso();
-verFormulario(tokenRecuperacion ? "clave" : "cuenta");
+/* El link del correo puede traer tres cosas: los tokens (todo bien), un
+   error (venció o ya se usó), o nada (alguien entró a la página de una). */
+const delLink = Cuenta ? Cuenta.recuperacionEnCurso() : null;
+tokenRecuperacion = delLink && delLink.access_token ? delLink : null;
+const errorDelLink = delLink && delLink.error ? delLink.error : "";
+
+verFormulario(tokenRecuperacion ? "clave" : (errorDelLink ? "olvide" : "cuenta"));
 pintar();
+
 if (tokenRecuperacion) {
   /* pintar() esconde la caja de entrar cuando encuentra una sesión
      guardada. Acá manda el link: puede ser el teléfono de alguien que
@@ -589,5 +595,13 @@ if (tokenRecuperacion) {
   $("#entrar").hidden = false;
   verFormulario("clave");
   $("#cClave").focus();
+} else if (errorDelLink) {
+  /* Cae directo en "pedir el link" con el motivo escrito: es lo único que
+     puede hacer, y volver a explicárselo desde cero sería tratarlo de
+     recién llegado cuando en realidad ya venía por la mitad del camino. */
+  $("#entrar").hidden = false;
+  verFormulario("olvide");
+  errorEn("#olvideError", errorDelLink);
+  $("#oMail").focus();
 }
 })();

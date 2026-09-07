@@ -242,6 +242,25 @@ async function recuperar(email) {
    ya se había usado bien. */
 function recuperacionEnCurso() {
   const h = new URLSearchParams(String(location.hash || "").replace(/^#/, ""));
+
+  /* GoTrue también usa el fragmento para AVISAR QUE FALLÓ, y ahí no hay
+     ningún token. Sin mirar esto, un link vencido dejaba la página como si
+     nadie hubiera hecho nada: el formulario de siempre, sin una palabra
+     sobre el link que la persona acababa de apretar.
+
+     El caso que más se ve es `otp_expired`, y casi nunca es por tiempo: el
+     token es de un solo uso y los escáneres de correo —Gmail entre ellos—
+     visitan los links para revisarlos, gastándolo antes que el humano. Por
+     eso el texto no dice "esperaste demasiado", que sería mentirle a
+     alguien que apretó al toque. */
+  const err = h.get("error_code") || h.get("error");
+  if (err) {
+    history.replaceState(null, "", location.pathname + location.search);
+    return { error: err === "otp_expired" || err === "access_denied"
+      ? "Ese link ya no sirve: los links de recuperación se usan una sola vez y a veces el correo los abre solo para revisarlos. Pedí uno nuevo y apretalo apenas te llegue."
+      : "No pudimos validar ese link. Pedí uno nuevo." };
+  }
+
   if (h.get("type") !== "recovery" || !h.get("access_token")) return null;
   /* Los DOS tokens. El access_token cambia la contraseña; el refresh_token
      es el que deja la sesión viva después. Sin él la sesión se muere en una
