@@ -114,16 +114,18 @@
 }
 .forma-cambio button:hover,.forma-cambio button:focus-visible{color:var(--fluor)}
 
-/* El WhatsApp de soporte: la única recuperación de contraseña que existe. */
-.wa{
-  display:inline-flex;align-items:center;gap:9px;
-  min-height:44px;margin-top:14px;
-  font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;
-  color:var(--hueso-64);text-decoration:underline;text-underline-offset:3px;
-  transition:color .18s ease;
+/* "¿Olvidaste tu contraseña?": más apagado que "Crear cuenta" y sin el
+   renglón de pregunta adelante. Las dos son salidas del formulario, pero
+   crear una cuenta es lo que queremos que pase y recuperar la clave es lo
+   que pasa cuando algo ya salió mal: no compiten por el mismo peso. */
+.forma-olvide{margin-top:-8px}
+.forma-olvide button{
+  min-height:44px;padding:0 6px;margin-left:-6px;
+  background:transparent;border:0;cursor:pointer;
+  font:inherit;font-size:13.5px;color:var(--hueso-40);
+  text-decoration:underline;text-underline-offset:3px;
 }
-.wa:hover,.wa:focus-visible{color:var(--hueso)}
-.wa svg{width:18px;height:18px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}
+.forma-olvide button:hover,.forma-olvide button:focus-visible{color:var(--fluor)}
 
 /* ── el estado de la cuenta ──
    "Buscando…" o "no se pudo": un renglón mono arriba de la lista. Con

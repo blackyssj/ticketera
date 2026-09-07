@@ -25,7 +25,7 @@
      troquelada. Esta página no inventa una paleta propia, así que no
      necesita más que sumarle lo puntual en mis.css. -->
 <link rel="stylesheet" href="/portada.css?v=32">
-<link rel="stylesheet" href="/mis-entradas/mis.css?v=2">
+<link rel="stylesheet" href="/mis-entradas/mis.css?v=3">
 </head>
 <body>
 
@@ -65,16 +65,21 @@
     </div>
   </section>
 
-  <!-- ══ entrar / crear cuenta ══
-       Un solo formulario con dos modos (data-modo="entrar" | "crear"): son
-       los mismos dos campos y cambiar de pantalla para agregar uno sería
-       mandar a la gente a otro lado por un renglón de más. Sin verificación
-       por correo porque no hay SMTP; la nota lo dice antes de que alguien
-       espere un mail. -->
+  <!-- ══ entrar / crear cuenta / recuperar ══
+       Tres formularios que ocupan la MISMA caja y se ve uno a la vez. El de
+       entrar tiene dos modos (data-modo="entrar" | "crear"): son los mismos
+       dos campos y cambiar de pantalla para agregar uno sería mandar a la
+       gente a otro lado por un renglón de más.
+
+       Los otros dos son la recuperación: pedir el link y elegir la clave
+       nueva. Van acá y no en una URL aparte por lo mismo — es un solo
+       trámite, y el que se olvidó la clave ya está en esta pantalla. El
+       tercero aparece solo cuando la página abre desde el link del correo
+       (mis.js lee el token del fragmento). -->
   <section class="entrar" id="entrar" hidden>
     <div class="carril">
       <div class="entrar-caja">
-        <h2 class="entrar-titulo">Entrá para ver tus entradas desde cualquier teléfono</h2>
+        <h2 class="entrar-titulo" id="entrarTitulo">Entrá para ver tus entradas desde cualquier teléfono</h2>
         <p class="entrar-bajada" id="entrarBajada">Las compras que guardes en tu cuenta te siguen
           aunque cambies de aparato.</p>
         <form class="forma" id="formCuenta" data-modo="entrar" novalidate>
@@ -91,21 +96,56 @@
             <input type="password" id="fClave" name="password" autocomplete="current-password" required>
           </label>
           <p class="forma-error" id="formError" role="alert" hidden></p>
-          <p class="forma-nota" id="notaCrear" hidden>Al menos 8 caracteres. Sin verificación por correo:
-            si la olvidás, escribinos por WhatsApp.</p>
+          <p class="forma-nota" id="notaCrear" hidden>Al menos 8 caracteres.</p>
           <button type="submit" class="btn btn-fluor" id="btnEnviar">Entrar</button>
+          <!-- Adentro del formulario y pegado al botón: es acá, después de
+               que la clave no anduvo, donde alguien se da cuenta de que no se
+               la acuerda. En modo "crear" no tiene sentido y mis.js lo
+               esconde. -->
+          <p class="forma-olvide" id="filaOlvide">
+            <button type="button" id="btnOlvide">¿Olvidaste tu contraseña?</button>
+          </p>
           <p class="forma-cambio">
             <span id="cambioTxt">¿Primera vez?</span>
             <button type="button" id="btnModo">Crear cuenta</button>
           </p>
         </form>
-        <!-- La única recuperación que existe hoy. Va acá, junto al
-             formulario, porque es donde alguien se da cuenta de que no se
-             acuerda la clave. -->
-        <a class="wa" href="https://wa.me/59178183001?text=Hola,%20necesito%20ayuda%20con%20mi%20cuenta%20de%20TICKETAZO" target="_blank" rel="noopener">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Z"/><path d="M8.5 8.4c.2-.4.5-.4.8-.4h.6c.2 0 .4 0 .6.5l.8 1.9c.1.2.1.4 0 .6l-.5.7c-.1.2-.2.3 0 .6a6.5 6.5 0 0 0 3.2 2.8c.3.1.4.1.6-.1l.8-.9c.2-.2.4-.2.6-.1l1.9.9c.3.1.5.2.5.4 0 .3 0 1.1-.5 1.6-.5.5-1.4.9-2 .9-1 0-2.5-.4-4.5-1.9a11 11 0 0 1-3.2-3.9c-.5-1-.5-1.9 0-2.6.2-.4.5-.7.6-.9Z"/></svg>
-          ¿Olvidaste la contraseña? Escribinos por WhatsApp
-        </a>
+
+        <!-- ── pedir el link ──
+             Sólo el correo. El aviso de después NO dice "te lo mandamos":
+             GoTrue contesta igual exista o no la cuenta —a propósito, para
+             que esto no sirva de buscador de direcciones registradas— así
+             que afirmarlo sería decir algo que no sabemos. -->
+        <form class="forma" id="formOlvide" novalidate hidden>
+          <p class="entrar-bajada">Poné tu correo y te mandamos un link para elegir
+            una contraseña nueva.</p>
+          <label class="campo">
+            <span>Correo</span>
+            <input type="email" id="oMail" name="email" autocomplete="email" inputmode="email" required>
+          </label>
+          <p class="forma-error" id="olvideError" role="alert" hidden></p>
+          <p class="forma-nota" id="olvideListo" hidden>Si ese correo tiene una cuenta, en un
+            minuto te llega el link. Revisá también el correo no deseado.</p>
+          <button type="submit" class="btn btn-fluor" id="btnOlvideEnviar">Mandame el link</button>
+          <p class="forma-cambio">
+            <button type="button" id="btnVolverEntrar">Volver</button>
+          </p>
+        </form>
+
+        <!-- ── la clave nueva ──
+             Se muestra sola cuando la página abre desde el link del correo.
+             Un solo campo: repetir la contraseña no atrapa errores acá,
+             porque si se equivoca vuelve a pedir el link y listo. -->
+        <form class="forma" id="formClave" novalidate hidden>
+          <p class="entrar-bajada">Elegí tu contraseña nueva.</p>
+          <label class="campo">
+            <span>Contraseña nueva</span>
+            <input type="password" id="cClave" name="password" autocomplete="new-password" required>
+          </label>
+          <p class="forma-error" id="claveError" role="alert" hidden></p>
+          <p class="forma-nota">Al menos 8 caracteres.</p>
+          <button type="submit" class="btn btn-fluor" id="btnClaveGuardar">Guardar y entrar</button>
+        </form>
       </div>
     </div>
   </section>
@@ -166,7 +206,7 @@
      de eso porque no hablaba con el servidor; ahora habla, pero sólo con
      sesión. -->
 <script src="/config.js"></script>
-<script src="/cuenta.js?v=1"></script>
-<script src="/mis-entradas/mis.js?v=2"></script>
+<script src="/cuenta.js?v=2"></script>
+<script src="/mis-entradas/mis.js?v=3"></script>
 </body>
 </html>
