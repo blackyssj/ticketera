@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Entradas — TICKETAZO</title>
-<meta name="theme-color" content="#0B0A0A">
+<meta name="theme-color" content="#180E3A">
 <!-- La base y el storage viven en el mismo host: un apretón de manos para
      la función `evento` y para el afiche. -->
 <link rel="preconnect" href="https://mjotxzcddhqqpuhkcetl.supabase.co" crossorigin>
@@ -46,13 +46,21 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=31">
+<link rel="stylesheet" href="/styles.css?v=34">
 </head>
 <body>
 
+<!-- El logo es un link a la cartelera, y es la única forma de volver desde
+     acá: el que llega por un link de WhatsApp entra directo al evento y
+     hasta ahora no tenía cómo enterarse de que hay más. Va antes que el
+     nombre del evento porque el orden dice de quién es la casa.
+
+     Reemplaza a la chapita de botella que estaba en su lugar: era una tapa
+     de cerveza, de cuando la ticketera vestía un solo evento. -->
 <header class="barra">
   <div class="carril barra-in">
-    <span class="chapita" aria-hidden="true"><i></i><b></b></span>
+    <a class="logo chico" href="/" aria-label="TICKETAZO, ver todos los eventos">TICKET<span>AZO</span></a>
+    <span class="barra-sep" aria-hidden="true"></span>
     <span class="marca-txt" id="marca">—</span>
     <span class="barra-fecha" id="barraFecha"></span>
   </div>
@@ -84,11 +92,13 @@
       Compartir evento
     </button>
   </div>
-  <!-- El borde entre el afiche y el cuerpo. Dos versiones y se ve una sola:
-       la espuma es de TICKETAZO —y de Amstel, que vende cerveza—, y el papel
-       picado es para el evento que trae su propia marca. Las dos se pintan con
-       `currentColor`, así siguen el color del panel de abajo en vez de tener
-       el crema escrito a mano como antes. -->
+  <!-- El borde entre el afiche y el cuerpo. Hay dos dibujos y se ve uno solo:
+       la ola, que es la que va. El papel picado —el troquel de una entrada—
+       lo apaga el CSS: se dibujó para la variante de panel oscuro, que se
+       probó y no quedó. Queda en el archivo porque el motivo sirve y
+       encenderlo es una línea.
+       Los dos se pintan con `currentColor`, así siguen el color del panel de
+       abajo en vez de tener el crema escrito a mano como antes. -->
   <svg class="borde-cuerpo" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
     <g class="borde-espuma">
       <path fill="currentColor" d="M0,52 C60,30 110,66 170,56 C230,46 262,22 322,32 C382,42 404,70 470,62 C536,54 566,26 630,34 C694,42 726,68 790,60 C854,52 884,24 950,32 C1016,40 1046,70 1110,62 C1174,54 1206,28 1268,36 C1330,44 1372,66 1440,50 L1440,90 L0,90 Z"></path>
@@ -343,6 +353,6 @@
 <!-- La sesión del comprador. Antes de app.js: crearOrden le pide el token
      y la pantalla "listo" le pide crear/entrar/vincular. -->
 <script src="/cuenta.js?v=1"></script>
-<script src="/app.js?v=33"></script>
+<script src="/app.js?v=35"></script>
 </body>
 </html>

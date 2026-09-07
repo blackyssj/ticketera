@@ -1,30 +1,64 @@
 /* ══════════════════════════════════════════════════════════════
    Ticketera — landing pública
-   Paleta: noche / rojo / dorado cerveza / espuma.
+   Paleta: la de TICKETAZO — violeta y fluor, la misma de
+   /presentacion y /organizadores.
+
+   Antes era noche / rojo / dorado cerveza / espuma. Los nombres lo
+   delatan: cerveza y espuma eran de Amstel, el primer cliente, y
+   quedaron de cuando la ticketera vestía un solo evento. El favicon y
+   el theme-color de estas mismas páginas ya venían en violeta y
+   amarillo, así que la pestaña decía una marca y el cuerpo otra.
+
+   Los nombres de las variables siguen diciendo `--rojo` y `--dorado`
+   por historia: renombrarlos toca 808 líneas y no cambia un pixel. Lo
+   que importa es qué papel cumple cada uno, y está escrito al lado.
    ══════════════════════════════════════════════════════════════ */
 
 :root{
-  --noche:#0B0A0A;
-  --noche-2:#141110;
-  --noche-3:#1E1917;
-  --rojo:#DC0A2D;
-  --rojo-claro:#F01236;
-  --rojo-hondo:#8A0619;
-  --dorado:#E9B44C;
-  --dorado-hondo:#A9741B;
-  --espuma:#F6F1E4;
+  /* Los tres fondos, del más hondo al más claro. Antes negros, ahora la
+     rampa de violetas de comercial.css: misma marca, mismos valores. */
+  --noche:#180E3A;
+  --noche-2:#231550;
+  --noche-3:#3A2478;
+
+  /* EL COLOR DE ACCIÓN — lo que hay que apretar. Se llama `--rojo` por
+     historia; hoy es el fluor de la marca. El texto que va encima es
+     oscuro, no blanco: amarillo con blanco no se lee. */
+  --rojo:#FFE24B;
+  --rojo-claro:#FFF08C;
+  --rojo-hondo:#C9A200;
+
+  /* EL COLOR DE ALERTA — campo inválido, "quedan pocas", cierre urgente.
+     Va aparte del de acción desde que la acción es amarilla: un error en
+     amarillo se lee como aviso, y un campo mal cargado en una compra no
+     es un aviso. Este rojo es el único que queda en la página, y ahora
+     significa una sola cosa. */
+  --alerta:#FF5A6E;
+
+  /* El acento de detalle: foco, links de compartir, remates. Era el
+     dorado cerveza; ahora es el mismo fluor, apenas hondo para que no
+     compita con los botones. */
+  --dorado:#FFE24B;
+  --dorado-hondo:#C9A200;
+
+  /* El crema del panel de compra, y también el color del texto sobre el
+     fondo violeta. Dos trabajos con un token — por eso no se puede
+     cambiar para dar vuelta el panel sin dejar el título del afiche del
+     color del fondo. */
+  --espuma:#F3EFE2;
+
   /* La superficie de tarjetas, campos y cajas dentro del cuerpo. Era
      `#fff` escrito a mano en seis reglas: con un cuerpo oscuro quedaban
      seis rectangulos blancos con texto crema encima, ilegibles. */
   --tarjeta:#fff;
-  --tinta:#171310;
+  --tinta:#180E3A;
 
-  --humo:rgba(246,241,228,.58);
-  --humo-2:rgba(246,241,228,.34);
-  --linea:rgba(246,241,228,.14);
-  --tinta-60:rgba(23,19,16,.60);
-  --tinta-40:rgba(23,19,16,.40);
-  --tinta-16:rgba(23,19,16,.16);
+  --humo:rgba(243,239,226,.58);
+  --humo-2:rgba(243,239,226,.34);
+  --linea:rgba(243,239,226,.14);
+  --tinta-60:rgba(24,14,58,.60);
+  --tinta-40:rgba(24,14,58,.40);
+  --tinta-16:rgba(24,14,58,.16);
 
   --display:"Big Shoulders Display","Haettenschweiler","Arial Narrow",system-ui,sans-serif;
   --texto:"Inter Tight","Inter",system-ui,-apple-system,sans-serif;
@@ -57,9 +91,32 @@ input{font:inherit}
 .marca-txt b{color:var(--rojo);font-weight:800}
 .barra-fecha{margin-left:auto;font-family:var(--dato);font-size:12px;color:var(--humo);white-space:nowrap}
 
+/* El logo de TICKETAZO en la barra del evento, y el único link para volver
+   a la cartelera. Mismos valores que en portada.css y comercial.css: el
+   "-azo" en fluor es toda la identidad que hace falta.
+
+   El relleno vertical no se ve — existe para que el link mida 44px de alto
+   y se pueda tocar con el pulgar. */
+.logo{
+  font-family:var(--display);font-weight:900;font-stretch:118%;
+  font-size:19px;letter-spacing:-.012em;text-transform:uppercase;
+  line-height:1;display:inline-block;padding:12px 0;
+  color:var(--espuma);text-decoration:none;flex:0 0 auto;
+}
+.logo span{color:var(--dorado)}
+.logo:hover span{color:var(--rojo-claro)}
+
+/* La divisoria entre la marca del sitio y el nombre del evento. Un filo y
+   no un punto: el punto se lee como parte de alguno de los dos nombres. */
+.barra-sep{
+  width:1px;height:20px;background:var(--linea);flex:0 0 auto;
+  display:none;
+}
+@media (min-width:520px){ .barra-sep{display:block} }
+
 .chapita{width:26px;height:26px;position:relative;flex:0 0 auto}
 .chapita i{position:absolute;inset:0;border-radius:50%;background:repeating-conic-gradient(var(--rojo) 0deg 11deg, transparent 11deg 17.14deg)}
-.chapita b{position:absolute;inset:13%;border-radius:50%;background:radial-gradient(circle at 34% 28%, #FF3450, var(--rojo) 52%, var(--rojo-hondo));box-shadow:inset 0 -2px 4px rgba(0,0,0,.45)}
+.chapita b{position:absolute;inset:13%;border-radius:50%;background:radial-gradient(circle at 34% 28%, #FFF3A8, var(--rojo) 52%, var(--rojo-hondo));box-shadow:inset 0 -2px 4px rgba(0,0,0,.45)}
 
 /* ─── hero ─── */
 /* overflow:hidden porque ::before se extiende un 10% por cada lado y eso
@@ -73,15 +130,15 @@ input{font:inherit}
 .hero::before{
   content:"";position:absolute;inset:-20% -10% 30%;z-index:-1;
   background:
-    radial-gradient(46% 52% at 22% 34%, rgba(220,10,45,.34), transparent 68%),
-    radial-gradient(40% 46% at 82% 16%, rgba(233,180,76,.16), transparent 70%);
+    radial-gradient(46% 52% at 22% 34%, rgba(255,226,75,.20), transparent 68%),
+    radial-gradient(40% 46% at 82% 16%, rgba(126,74,224,.30), transparent 70%);
   filter:blur(8px);
 }
 .eyebrow{font-family:var(--dato);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--dorado);display:flex;align-items:center;gap:10px;margin-bottom:16px}
 .eyebrow::after{content:"";height:1px;flex:1;background:linear-gradient(90deg,var(--dorado-hondo),transparent)}
 .titulo{font-size:clamp(50px,13vw,158px);letter-spacing:-.012em;margin:0;transition:font-size .3s ease}
 .titulo .l1{display:block;color:var(--espuma)}
-.titulo .l2{display:block;color:var(--rojo);text-shadow:0 0 34px rgba(220,10,45,.55)}
+.titulo .l2{display:block;color:var(--rojo);text-shadow:0 0 34px rgba(255,226,75,.45)}
 .bajada{max-width:48ch;margin-top:20px;color:var(--humo);font-size:clamp(15px,1.6vw,18px)}
 .datos{display:flex;flex-wrap:wrap;gap:10px 26px;margin-top:24px;font-family:var(--dato);font-size:13px;color:var(--humo)}
 .datos span b{color:var(--espuma);font-weight:500}
@@ -140,51 +197,22 @@ input{font:inherit}
 .tipo.esqueleto{display:flex;flex-direction:column;align-items:flex-start;gap:10px;min-height:104px;justify-content:center}
 .tipo.esqueleto .hueso:last-child{margin-top:4px}
 
-/* ═══ el evento que trae su propia marca ═══════════════════════
-   La página nació con la paleta de TICKETAZO y con la de Amstel adentro:
-   el cuerpo es un panel color espuma de cerveza, y el borde que lo separa
-   del afiche es literalmente espuma con burbujas. Para un cliente cuyo
-   arte es vino y escarlata, eso no es "otro color": es la marca de otro.
+/* ═══ por qué acá no hay un modo oscuro para el panel ═════════
+   Hubo uno: cuando el evento traía marca propia, el cuerpo se daba vuelta
+   —panel oscuro, tarjetas levantadas, y el borde pasaba de espuma a papel
+   picado— redefiniendo las variables sobre `.cuerpo`.
 
-   Cambiar las reglas de a una era reescribir setenta y tres usos de
-   `--tinta` y veinticuatro de `--espuma`, cada uno una oportunidad de
-   romper algo. En vez de eso se redefinen las VARIABLES sobre `.cuerpo`,
-   que es el único lugar donde significan "panel claro" y "tinta encima".
-   Las propiedades personalizadas bajan por el árbol, así que todo lo que
-   vive adentro del panel se da vuelta solo y el afiche, que está afuera,
-   no se entera. Cero reglas tocadas.
+   Se sacó junto con la marca por evento (ver MARCA_POR_EVENTO en app.js).
+   El panel va SIEMPRE en crema: es lo que se decidió mirándolo, y dejar el
+   mecanismo escondido detrás de una condición que nunca se cumple es peor
+   que no tenerlo — el que lo encuentre no va a saber si está vivo.
 
-   Ojo con por qué `--espuma` no se puede cambiar en `:root`: ahí también
-   significa "el texto sobre el fondo oscuro". Es el mismo token con dos
-   trabajos, y cambiarlo arriba deja el título del afiche del color del
-   fondo. Por eso el cambio va acotado al panel y no a la raíz.
-
-   Los grises translúcidos —bordes, ayudas, deshabilitados— se derivan del
-   texto nuevo. Sin eso quedan líneas negras al 16% sobre un panel oscuro,
-   o sea invisibles, y la grilla de entradas pierde todas sus divisiones. */
-:root[data-marca] .cuerpo{
-  --espuma:var(--papel);
-  --tinta:var(--papel-txt);
-  --tinta-16:color-mix(in srgb, var(--papel-txt) 16%, transparent);
-  --tinta-40:color-mix(in srgb, var(--papel-txt) 40%, transparent);
-  --tinta-60:color-mix(in srgb, var(--papel-txt) 60%, transparent);
-  /* Las tarjetas se levantan del panel en vez de hundirse: sobre un fondo
-     oscuro, lo que esta mas cerca es lo mas claro. Es la misma jerarquia
-     que en el modo claro, dada vuelta. */
-  --tarjeta:color-mix(in srgb, var(--papel) 86%, #fff);
-}
-/* El borde deja de ser espuma y pasa a ser papel picado, que es el motivo
-   del marco del arte. Un solo gesto y del lado del cliente: la alternativa
-   —inventarle ornamentos— es cómo una página termina disfrazada. */
-:root[data-marca] .borde-cuerpo{color:var(--papel)}
-:root[data-marca] .borde-espuma{display:none}
-:root[data-marca] .borde-picado{display:block}
-/* La franja de acento arriba de todo, del ancho de la página: es lo que
-   tiene el arte en el borde y lo que hace que la pestaña se reconozca. */
-:root[data-marca] body::before{
-  content:"";position:fixed;inset:0 0 auto;height:3px;z-index:100;
-  background:var(--rojo);
-}
+   Si algún día se quiere probar el panel oscuro, está entero en el git de
+   este archivo, y la idea sigue siendo válida: redefinir las variables
+   sobre `.cuerpo` y no tocar ninguna de las setenta y tres reglas que las
+   usan. Ojo con `--espuma`, que no se puede cambiar en `:root`: ahí
+   significa "el texto sobre el fondo oscuro", y moverla arriba deja el
+   título del afiche del color del fondo. */
 
 /* ─── cuerpo claro ─── */
 .cuerpo{background:var(--espuma);color:var(--tinta);padding:0 0 clamp(60px,9vw,110px);min-height:60vh}
@@ -244,7 +272,7 @@ input{font:inherit}
 .panel-nota{font-family:var(--dato);font-size:12px;color:var(--tinta-40)}
 
 .fase{display:inline-flex;align-items:center;gap:8px;background:var(--tinta);color:var(--espuma);font-family:var(--dato);font-size:11.5px;letter-spacing:.05em;padding:5px 11px;border-radius:999px;text-transform:uppercase}
-.fase i{width:6px;height:6px;border-radius:50%;background:var(--dorado);box-shadow:0 0 0 3px rgba(233,180,76,.25);flex:0 0 auto}
+.fase i{width:6px;height:6px;border-radius:50%;background:var(--dorado);box-shadow:0 0 0 3px rgba(255,226,75,.25);flex:0 0 auto}
 
 /* Cuánto le queda a la fase. Al lado de la pastilla y no adentro: la fase es
    una etiqueta que está siempre, esto aparece sólo cuando hay una fecha de
@@ -252,7 +280,7 @@ input{font:inherit}
    menos de 24 horas: si todo grita, el día que hay que apurarse no se
    distingue del resto. */
 .cierre{font-family:var(--dato);font-size:11.5px;color:var(--tinta-60);letter-spacing:.02em}
-.cierre[data-urgente="1"]{color:var(--rojo);font-weight:500}
+.cierre[data-urgente="1"]{color:var(--alerta);font-weight:500}
 
 /* ─── tipos de entrada ─── */
 .tipos{display:grid;gap:12px}
@@ -268,7 +296,7 @@ input{font:inherit}
 .tipo-precio{font-family:var(--dato);font-size:20px;font-weight:500;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
 .tipo-precio s{display:block;color:var(--tinta-40);font-size:12.5px;font-weight:400}
 .tipo-cupo{grid-column:1;grid-row:3;font-family:var(--dato);font-size:11px;color:var(--tinta-40);margin-top:4px}
-.tipo-cupo.poco{color:var(--rojo)}
+.tipo-cupo.poco{color:var(--alerta)}
 .tipo-cupo.agotado{color:var(--tinta-40)}
 
 .stepper{display:flex;align-items:center;border:1.5px solid var(--tinta);border-radius:3px;overflow:hidden;flex:0 0 auto}
@@ -319,8 +347,8 @@ input{font:inherit}
   background:var(--tarjeta);color:var(--tinta);
 }
 .campo input:focus{border-color:var(--tinta);outline:none}
-.campo input[aria-invalid="true"]{border-color:var(--rojo)}
-.error{font-family:var(--dato);font-size:11px;color:var(--rojo);font-style:normal;min-height:1em}
+.campo input[aria-invalid="true"]{border-color:var(--alerta)}
+.error{font-family:var(--dato);font-size:11px;color:var(--alerta);font-style:normal;min-height:1em}
 .letra-chica{margin-top:16px;font-family:var(--dato);font-size:11px;color:var(--tinta-40);line-height:1.5}
 
 /* "Evento para mayores de 18". Hermana de .panel-nota, pero en su propio
@@ -338,7 +366,7 @@ input{font:inherit}
   width:22px;height:22px;margin:0;flex:0 0 auto;accent-color:var(--tinta);
   padding:0;border-radius:3px;
 }
-.tc-fila input[aria-invalid="true"]{outline:2px solid var(--rojo);outline-offset:2px}
+.tc-fila input[aria-invalid="true"]{outline:2px solid var(--alerta);outline-offset:2px}
 .campo.tc .tc-texto{font:inherit;font-size:14px;letter-spacing:0;text-transform:none;color:var(--tinta);line-height:1.45}
 .tc-texto a{color:var(--tinta);text-underline-offset:3px;padding:14px 0}
 
@@ -418,7 +446,7 @@ input{font:inherit}
   letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
 /* La acción que importa cuando importa: parada en la puerta, con la fila
    atrás, no hay tiempo de buscar nada. */
-.pase-puerta{flex:1 0 100%;min-height:48px;background:var(--rojo);color:#fff;text-align:center}
+.pase-puerta{flex:1 0 100%;min-height:48px;background:var(--rojo);color:var(--tinta);text-align:center}
 .pase-puerta:hover{background:var(--rojo-claro)}
 .pase[data-usada="1"] .pase-arte{opacity:.62}
 .pase[data-usada="1"] .pase-puerta{background:var(--noche-3);color:var(--humo)}
@@ -462,7 +490,7 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;text-decorat
 /* ─── botones ─── */
 .btn{padding:13px 20px;border-radius:3px;font-family:var(--display);font-size:19px;text-transform:uppercase;letter-spacing:.04em;transition:background .16s ease,transform .1s ease,color .16s ease}
 .btn.ancho{width:100%}
-.btn.primario{background:var(--rojo);color:#fff}
+.btn.primario{background:var(--rojo);color:var(--tinta)}
 .btn.primario:hover:not(:disabled){background:var(--rojo-claro)}
 .btn.primario:active:not(:disabled){transform:translateY(1px)}
 .btn.primario:disabled{background:var(--noche-3);color:var(--humo-2);cursor:not-allowed}

@@ -334,84 +334,45 @@ function cotizar() {
 
 /* ══ pintado ══════════════════════════════════════════════════════ */
 
-/* ── la marca del organizador ────────────────────────────────────
-   La hoja de estilos ya está escrita con variables, así que dos colores
-   alcanzan para vestir la página entera: la barra, los botones, los
-   chips y el foco salen todos de `--noche` y `--rojo`. El resto de la
-   rampa se deriva acá con `color-mix` en vez de pedirle seis colores al
-   cliente — nadie tiene seis colores, todos tienen dos.
+/* ── por qué el evento no se viste con su propia marca ───────────
+   Hubo una versión que sí: el evento traía `color_fondo` y `color_acento`
+   y la página entera se pintaba con ellos, derivando la rampa con
+   `color-mix` sobre las variables de styles.css.
 
-   Lo que NO se hace es aceptar CSS del organizador. Sería darle
-   ejecución de estilos sobre la página que cobra, y basta un
-   `position:fixed` encima del precio para que alguien compre una cosa
-   creyendo que compra otra. Por eso el valor se vuelve a validar acá
-   contra el mismo hexadecimal que exige la base: el que llega de la red
-   no es de confianza aunque lo hayamos escrito nosotros del otro lado.
+   Se sacó por una decisión de producto. El que entra desde la cartelera
+   veía la portada violeta y amarilla y la página del evento de otro
+   color, y las dos no se leían como el mismo sitio: parecían dos
+   empresas, una que muestra la cartelera y otra que cobra. Todas las
+   páginas del comprador van con la marca de TICKETAZO.
 
-   Sin colores cargados no se toca nada y la página sale con la paleta de
-   TICKETAZO, que es lo que hacía siempre. */
-const HEX = /^#[0-9a-f]{6}$/i;
+   Las columnas siguen en la base y la función `evento` las sigue
+   mandando: no hay nada que migrar, y volver atrás es reescribir esta
+   función, que está entera en el git de este archivo.
 
-function pintarMarca(e) {
-  const raiz = document.documentElement;
+   El logo del organizador SÍ se usa. Es cómo se llama el evento, no una
+   paleta que compita con la del sitio. */
 
-  if (HEX.test(e.color_fondo || "")) {
-    const f = e.color_fondo;
-    raiz.style.setProperty("--noche", f);
-    /* Los dos grises de arriba del fondo: tarjetas y superficies. Se
-       aclaran hacia el blanco y no hacia un gris fijo, así un fondo vino
-       da superficies vino y no manchas grises flotando encima. */
-    raiz.style.setProperty("--noche-2", `color-mix(in srgb, ${f} 90%, #fff)`);
-    raiz.style.setProperty("--noche-3", `color-mix(in srgb, ${f} 80%, #fff)`);
+/* El logo reemplaza a la marca tipográfica, no se suma: las dos juntas
+   son el nombre escrito dos veces. Si el archivo no carga se vuelve al
+   texto — un ícono de imagen rota donde va la marca es peor que la
+   tipografía.
 
-    /* El panel donde se compra. Antes era color espuma de cerveza SIEMPRE,
-       y con un fondo vino quedaba media página de la marca del cliente y
-       media de Amstel. Ahora es el mismo fondo apenas levantado: se
-       distingue del afiche sin salirse de la paleta. El texto de adentro
-       pasa a ser el claro, y styles.css da vuelta el panel entero a partir
-       de estos dos (ver el bloque data-marca). */
-    raiz.style.setProperty("--papel", `color-mix(in srgb, ${f} 93%, #fff)`);
-    raiz.style.setProperty("--papel-txt", "#F6F1E4");
-    /* La bandera que enciende todo eso. Va al final, cuando los colores ya
-       están puestos: al revés, el navegador pinta un cuadro con el panel
-       oscuro y los colores todavía viejos. */
-    raiz.dataset.marca = "1";
-
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = f;
-  }
-
-  if (HEX.test(e.color_acento || "")) {
-    const a = e.color_acento;
-    raiz.style.setProperty("--rojo", a);
-    raiz.style.setProperty("--rojo-claro", `color-mix(in srgb, ${a} 82%, #fff)`);
-    raiz.style.setProperty("--rojo-hondo", `color-mix(in srgb, ${a} 62%, #000)`);
-    /* El dorado es cerveza. Es el último rastro de Amstel que quedaba en la
-       página —el link de compartir, el foco, un par de detalles— y sobre un
-       fondo vino se lee como un color que se coló de otro lado. Pasa a ser
-       el acento del cliente, apenas más apagado para que no compita con los
-       botones, que son lo que hay que apretar. */
-    raiz.style.setProperty("--dorado", `color-mix(in srgb, ${a} 78%, #fff)`);
-    raiz.style.setProperty("--dorado-hondo", `color-mix(in srgb, ${a} 70%, #000)`);
-  }
-
-  /* El logo reemplaza a la marca tipográfica, no se suma: las dos juntas
-     son el nombre escrito dos veces. Si el archivo no carga se vuelve al
-     texto — un ícono de imagen rota donde va la marca es peor que la
-     tipografía. */
-  if (e.logo_url) {
-    const cab = $("#marca");
-    const img = new Image();
-    img.className = "marca-logo";
-    img.alt = `${e.marca_1} ${e.marca_2 || ""}`.trim();
-    img.onload = () => {
-      cab.innerHTML = "";
-      cab.appendChild(img);
-      const chapa = document.querySelector(".chapita");
-      if (chapa) chapa.hidden = true;
-    };
-    img.src = e.logo_url;
-  }
+   Vive aparte de los colores porque sobrevive a que la marca por evento
+   esté apagada: el logo es cómo se llama el evento, no una paleta que
+   compita con la del sitio. */
+function ponerLogo(e) {
+  if (!e.logo_url) return;
+  const cab = $("#marca");
+  const img = new Image();
+  img.className = "marca-logo";
+  img.alt = `${e.marca_1} ${e.marca_2 || ""}`.trim();
+  img.onload = () => {
+    cab.innerHTML = "";
+    cab.appendChild(img);
+    const chapa = document.querySelector(".chapita");
+    if (chapa) chapa.hidden = true;
+  };
+  img.src = e.logo_url;
 }
 
 function pintarHero() {
@@ -420,7 +381,7 @@ function pintarHero() {
   /* Después de escribir la marca tipográfica, no antes: el logo la
      reemplaza cuando termina de cargar, y al revés esta línea le pisaría
      el logo al que ya lo tenía en caché. */
-  pintarMarca(e);
+  ponerLogo(e);
   $("#barraFecha").textContent = e.fecha_txt;
   $("#heroLugar").textContent = e.lugar;
   $("#heroL1").textContent = e.marca_1;
