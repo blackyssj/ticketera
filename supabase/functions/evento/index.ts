@@ -141,6 +141,13 @@ Deno.serve(async (req) => {
                 ["Pago", "Con QR"]],
         tope_entradas_orden: e.tope_entradas_orden,
         arte_url: e.arte_url ?? null,
+        /* La marca del organizador (0062). Van los tres o no va ninguno:
+           la base los valida como hexadecimal y acá se pasan tal cual —
+           el front decide si pinta. Con null, la página sale con la
+           paleta de TICKETAZO, que es lo que hacía siempre. */
+        color_fondo: e.color_fondo ?? null,
+        color_acento: e.color_acento ?? null,
+        logo_url: e.logo_url ?? null,
       },
       // `hasta` en crudo para que el front diga "cierra en 3 días" sólo
       // cuando hay un cierre de verdad; `hasta_txt` sigue para el chip.

@@ -334,9 +334,72 @@ function cotizar() {
 
 /* ══ pintado ══════════════════════════════════════════════════════ */
 
+/* ── la marca del organizador ────────────────────────────────────
+   La hoja de estilos ya está escrita con variables, así que dos colores
+   alcanzan para vestir la página entera: la barra, los botones, los
+   chips y el foco salen todos de `--noche` y `--rojo`. El resto de la
+   rampa se deriva acá con `color-mix` en vez de pedirle seis colores al
+   cliente — nadie tiene seis colores, todos tienen dos.
+
+   Lo que NO se hace es aceptar CSS del organizador. Sería darle
+   ejecución de estilos sobre la página que cobra, y basta un
+   `position:fixed` encima del precio para que alguien compre una cosa
+   creyendo que compra otra. Por eso el valor se vuelve a validar acá
+   contra el mismo hexadecimal que exige la base: el que llega de la red
+   no es de confianza aunque lo hayamos escrito nosotros del otro lado.
+
+   Sin colores cargados no se toca nada y la página sale con la paleta de
+   TICKETAZO, que es lo que hacía siempre. */
+const HEX = /^#[0-9a-f]{6}$/i;
+
+function pintarMarca(e) {
+  const raiz = document.documentElement;
+
+  if (HEX.test(e.color_fondo || "")) {
+    const f = e.color_fondo;
+    raiz.style.setProperty("--noche", f);
+    /* Los dos grises de arriba del fondo: tarjetas y superficies. Se
+       aclaran hacia el blanco y no hacia un gris fijo, así un fondo vino
+       da superficies vino y no manchas grises flotando encima. */
+    raiz.style.setProperty("--noche-2", `color-mix(in srgb, ${f} 90%, #fff)`);
+    raiz.style.setProperty("--noche-3", `color-mix(in srgb, ${f} 80%, #fff)`);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = f;
+  }
+
+  if (HEX.test(e.color_acento || "")) {
+    const a = e.color_acento;
+    raiz.style.setProperty("--rojo", a);
+    raiz.style.setProperty("--rojo-claro", `color-mix(in srgb, ${a} 82%, #fff)`);
+    raiz.style.setProperty("--rojo-hondo", `color-mix(in srgb, ${a} 62%, #000)`);
+  }
+
+  /* El logo reemplaza a la marca tipográfica, no se suma: las dos juntas
+     son el nombre escrito dos veces. Si el archivo no carga se vuelve al
+     texto — un ícono de imagen rota donde va la marca es peor que la
+     tipografía. */
+  if (e.logo_url) {
+    const cab = $("#marca");
+    const img = new Image();
+    img.className = "marca-logo";
+    img.alt = `${e.marca_1} ${e.marca_2 || ""}`.trim();
+    img.onload = () => {
+      cab.innerHTML = "";
+      cab.appendChild(img);
+      const chapa = document.querySelector(".chapita");
+      if (chapa) chapa.hidden = true;
+    };
+    img.src = e.logo_url;
+  }
+}
+
 function pintarHero() {
   const e = D.evento;
   $("#marca").innerHTML = `<b>${esc(e.marca_1)}</b> ${esc(e.marca_2)}`;
+  /* Después de escribir la marca tipográfica, no antes: el logo la
+     reemplaza cuando termina de cargar, y al revés esta línea le pisaría
+     el logo al que ya lo tenía en caché. */
+  pintarMarca(e);
   $("#barraFecha").textContent = e.fecha_txt;
   $("#heroLugar").textContent = e.lugar;
   $("#heroL1").textContent = e.marca_1;
