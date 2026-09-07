@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
     const html = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#180E3A;margin:0;padding:0">
  <tr><td align="center" style="padding:32px 16px">
   <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="width:520px;max-width:100%">
-   <tr><td style="padding:0 0 26px;font-family:Helvetica,Arial,sans-serif;font-size:22px;font-weight:bold;letter-spacing:-0.3px;color:#F3EFE2">TICKET<span style="color:#FFE24B">AZO</span></td></tr>
+   <tr><td style="padding:0 0 26px"><img src="${SITIO}/logo-correo.png" alt="TICKETAZO" width="180" style="display:block;border:0;outline:none;text-decoration:none;width:180px;height:auto;color:#F3EFE2;font-family:Helvetica,Arial,sans-serif;font-size:22px;font-weight:bold"></td></tr>
    <tr><td style="background:#231550;border-radius:10px;padding:32px 28px">
     <p style="margin:0 0 6px;font-family:Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#FFE24B">${esc(e.lugar)}</p>
     <h1 style="margin:0 0 4px;font-family:Helvetica,Arial,sans-serif;font-size:26px;line-height:1.15;text-transform:uppercase;color:#F3EFE2">${esc(e.nombre)}</h1>

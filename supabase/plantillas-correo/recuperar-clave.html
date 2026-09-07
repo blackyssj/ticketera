@@ -33,11 +33,25 @@
       <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0"
              style="width:520px;max-width:100%">
 
-        <!-- La marca. El "-azo" en fluor es toda la identidad que hace falta. -->
+        <!-- La marca, en imagen, para que llegue con la Archivo de verdad:
+             los correos no cargan tipograf&iacute;as web y en texto sale en Arial.
+
+             El `alt` NO es un adorno de accesibilidad ac&aacute;: muchos clientes
+             bloquean las im&aacute;genes hasta que la persona aprieta "mostrar
+             im&aacute;genes", y en ese rato lo &uacute;nico que se ve es este texto. Por eso
+             dice TICKETAZO y no "logo".
+
+             Ancho al doble del que se muestra (560 para 180) por las
+             pantallas retina, y el fondo del PNG es el mismo violeta del
+             panel: as&iacute; el antialias de las letras se funde en vez de dejar
+             un halo gris alrededor. -->
         <tr>
-          <td style="padding:0 0 26px;font-family:Helvetica,Arial,sans-serif;
-                     font-size:22px;font-weight:bold;letter-spacing:-0.3px;color:#F3EFE2">
-            TICKET<span style="color:#FFE24B">AZO</span>
+          <td style="padding:0 0 26px">
+            <img src="https://ticketazo.com.bo/logo-correo.png"
+                 alt="TICKETAZO" width="180"
+                 style="display:block;border:0;outline:none;text-decoration:none;
+                        width:180px;height:auto;color:#F3EFE2;
+                        font-family:Helvetica,Arial,sans-serif;font-size:22px;font-weight:bold">
           </td>
         </tr>
 
