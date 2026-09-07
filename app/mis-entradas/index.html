@@ -25,16 +25,25 @@
      troquelada. Esta página no inventa una paleta propia, así que no
      necesita más que sumarle lo puntual en mis.css. -->
 <link rel="stylesheet" href="/portada.css?v=32">
-<link rel="stylesheet" href="/mis-entradas/mis.css?v=4">
+<link rel="stylesheet" href="/mis-entradas/mis.css?v=5">
 </head>
 <body>
 
 <a class="saltar" href="#lista">Ir a mis entradas</a>
 
+<!-- Salir va en la barra y no abajo con el correo: es una acción, y las
+     acciones de la sesión se buscan arriba a la derecha, que es donde
+     están en todo lo demás que la gente usa. Abajo estaba al lado del
+     correo, que es información, y las dos cosas juntas se leen como una
+     sola. Nace oculto: mis.js lo muestra sólo con sesión abierta, porque
+     un "Salir" sin sesión no tiene de dónde sacar a nadie. -->
 <header class="barra">
   <div class="carril barra-in">
     <a class="logo" href="/" aria-label="TICKETAZO, inicio">TICKET<span>AZO</span></a>
-    <span class="barra-lugar">Mis entradas</span>
+    <div class="barra-der">
+      <span class="barra-lugar">Mis entradas</span>
+      <button type="button" class="barra-salir" id="btnSalir" hidden>Salir</button>
+    </div>
   </div>
 </header>
 
@@ -52,7 +61,6 @@
         <span class="cuenta-rotulo">Tu cuenta</span>
         <span class="cuenta-sep" aria-hidden="true">·</span>
         <span class="cuenta-mail" id="cuentaMail"></span>
-        <button type="button" class="cuenta-salir" id="btnSalir">Salir</button>
       </div>
 
       <!-- El aviso honesto que pide el spec: una sola línea, sin drama, pero

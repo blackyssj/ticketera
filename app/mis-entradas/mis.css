@@ -37,14 +37,22 @@
 .cuenta-rotulo{flex:0 0 auto;text-transform:uppercase;letter-spacing:.12em;font-size:10.5px;color:var(--fluor)}
 .cuenta-sep{flex:0 0 auto;color:var(--hueso-40)}
 .cuenta-mail{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--hueso)}
-.cuenta-salir{
-  flex:0 0 auto;min-height:44px;padding:0 12px;margin-right:-12px;
+/* Salir, en la barra de arriba. Mismo registro que `.barra-lugar` —mono,
+   chico, versalita— porque son vecinos y uno de los dos no puede gritar.
+   Subrayado y en hueso: es lo único apretable de la barra además del logo,
+   y sin la línea se lee como un rótulo más.
+
+   El relleno vertical le da los 44px del pulgar sin engordar la barra, y
+   el margen negativo devuelve a la derecha lo que ese relleno agrega, para
+   que el texto quede alineado con el borde del carril y no flotando. */
+.barra-salir{
+  flex:0 0 auto;min-height:44px;padding:0 10px;margin-right:-10px;
   background:transparent;border:0;cursor:pointer;
-  font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
   color:var(--hueso-64);text-decoration:underline;text-underline-offset:3px;
   transition:color .18s ease;
 }
-.cuenta-salir:hover,.cuenta-salir:focus-visible{color:var(--hueso)}
+.barra-salir:hover,.barra-salir:focus-visible{color:var(--fluor)}
 
 /* ── entrar / crear cuenta ──
    Una caja sola, centrada, con el mismo borde punteado del cartel de vacío

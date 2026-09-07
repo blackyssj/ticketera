@@ -252,10 +252,14 @@ function pintarLista(compras, conSesion, cargando) {
 function pintarCabecera(s) {
   $("#cuentaCab").hidden = !s;
   $("#entrar").hidden = !!s;
+  /* Salir vive en la barra de arriba y aparece con la sesión. Sin ella no
+     se dibuja: un botón que dice "Salir" cuando nadie entró es una acción
+     que no se puede hacer, y ocupa el lugar donde después va la de verdad. */
+  $("#btnSalir").hidden = !s;
   if (s) {
     $("#cuentaMail").textContent = s.user.email || "tu cuenta";
     $("#bajada").textContent =
-      "Tus compras: las de tu cuenta, que te siguen a cualquier teléfono, y las de este aparato.";
+      "Tus compras:";
     $("#aviso").textContent =
       "Lo que está en tu cuenta lo ves desde cualquier teléfono. Lo que está sólo en " +
       "este teléfono se pierde si borrás los datos del sitio: tocá «Guardar en mi cuenta».";
