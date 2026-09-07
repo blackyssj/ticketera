@@ -129,8 +129,12 @@ function arrancarApp() {
      nada, que parece un sistema roto. */
   if (S.plataforma) {
     mias = mias.slice().sort((a, b) => (b.plataforma ? 1 : 0) - (a.plataforma ? 1 : 0));
-    if (!S.pantalla) S.pantalla = "plataforma";
+    /* `S.pantalla` nace en "eventos", así que preguntar por vacío nunca da
+       true: hay que pisarlo. Se pisa una sola vez, al entrar — después la
+       pestaña la elige quien está usando el panel. */
+    if (!S.arranco) S.pantalla = "plataforma";
   }
+  S.arranco = true;
   $("#tabs").innerHTML = mias.map(p =>
     `<button data-p="${p.id}"${p.id === S.pantalla ? ' aria-current="page"' : ""}>${esc(p.txt)}</button>`
   ).join("");
