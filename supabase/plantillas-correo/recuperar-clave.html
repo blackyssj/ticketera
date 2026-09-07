@@ -1,0 +1,102 @@
+<!-- ══════════════════════════════════════════════════════════════════
+     Recuperar la contraseña — plantilla del correo de Supabase Auth.
+
+     ESTO NO SE DESPLIEGA SOLO. Va pegado a mano en el panel:
+     Authentication → Emails → Templates → Reset Password.
+     Vive acá porque si sólo viviera en el panel no existiría para el
+     repositorio, y un día alguien lo pisa y no hay con qué comparar.
+     Cuando se cambie allá, se cambia acá. Es la misma regla que las
+     migraciones, aplicada a lo poco que el panel no deja versionar.
+
+     ── por qué está escrito así de anticuado ──
+     Tablas y estilos en línea, no flexbox ni una hoja aparte. Outlook
+     renderiza con el motor de Word y descarta casi todo el CSS moderno;
+     un correo que se ve perfecto en Gmail puede llegar apilado y sin
+     colores a la mitad de la gente. Esto es feo de escribir y se ve igual
+     en todos lados, que es lo único que importa acá.
+
+     Sin tipografías web: no cargan en la mayoría de los clientes y la
+     espera termina mostrando otra cosa. Se usa la del sistema.
+
+     Los colores son los de TICKETAZO —violeta y fluor— y NO rgba: los
+     clientes viejos lo ignoran y dejan el texto en negro sobre violeta.
+     Todo va en hexadecimal sólido.
+
+     La variable {{ .ConfirmationURL }} la reemplaza Supabase. Si se toca,
+     que siga estando: sin ella el correo no sirve para nada.
+     ══════════════════════════════════════════════════════════════════ -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+       style="background:#180E3A;margin:0;padding:0">
+  <tr>
+    <td align="center" style="padding:32px 16px">
+
+      <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0"
+             style="width:520px;max-width:100%">
+
+        <!-- La marca. El "-azo" en fluor es toda la identidad que hace falta. -->
+        <tr>
+          <td style="padding:0 0 26px;font-family:Helvetica,Arial,sans-serif;
+                     font-size:22px;font-weight:bold;letter-spacing:-0.3px;color:#F3EFE2">
+            TICKET<span style="color:#FFE24B">AZO</span>
+          </td>
+        </tr>
+
+        <!-- El panel. Un tono más claro que el fondo, como el talón de la
+             entrada en la portada. -->
+        <tr>
+          <td style="background:#231550;border-radius:10px;padding:32px 28px">
+
+            <p style="margin:0 0 6px;font-family:Helvetica,Arial,sans-serif;
+                      font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#FFE24B">
+              Tu cuenta
+            </p>
+
+            <h1 style="margin:0 0 14px;font-family:Helvetica,Arial,sans-serif;
+                       font-size:26px;line-height:1.15;color:#F3EFE2">
+              Elegí una contraseña nueva
+            </h1>
+
+            <p style="margin:0 0 26px;font-family:Helvetica,Arial,sans-serif;
+                      font-size:15px;line-height:1.55;color:#A79EC0">
+              Pediste recuperar tu cuenta de TICKETAZO. Apretá el botón y elegí
+              una contraseña nueva. El link sirve una sola vez.
+            </p>
+
+            <!-- El botón como celda de tabla y no como <a> suelto: en Outlook
+                 un <a> con fondo pierde el color y queda un link celeste. -->
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td align="center" bgcolor="#FFE24B" style="border-radius:8px">
+                  <a href="{{ .ConfirmationURL }}"
+                     style="display:inline-block;padding:14px 26px;
+                            font-family:Helvetica,Arial,sans-serif;font-size:15px;font-weight:bold;
+                            color:#180E3A;text-decoration:none">
+                    Elegir contraseña nueva
+                  </a>
+                </td>
+              </tr>
+            </table>
+
+            <p style="margin:24px 0 0;font-family:Helvetica,Arial,sans-serif;
+                      font-size:13px;line-height:1.5;color:#A79EC0">
+              Si no pediste esto, ignorá el correo: tu contraseña sigue siendo la
+              de siempre y nadie entró a tu cuenta.
+            </p>
+
+          </td>
+        </tr>
+
+        <!-- El pie. Sin links de baja ni promesas de soporte que no podemos
+             cumplir a esta hora: esto es un correo de trámite. -->
+        <tr>
+          <td style="padding:22px 4px 0;font-family:Helvetica,Arial,sans-serif;
+                     font-size:12px;line-height:1.5;color:#6E6392">
+            TICKETAZO · Entradas y control de puerta · Santa Cruz de la Sierra
+          </td>
+        </tr>
+
+      </table>
+
+    </td>
+  </tr>
+</table>

@@ -4,7 +4,13 @@
    que el navegador suba nueve PNG. El link además sigue sirviendo cuando el
    comprador borra el correo o cambia de teléfono.
    Si no hay RESEND_API_KEY no falla: registra y sigue. Que no se pueda mandar
-   un correo no puede tumbar una venta ya cobrada. */
+   un correo no puede tumbar una venta ya cobrada.
+
+   El diseño va en tablas y estilos en línea, con la paleta de TICKETAZO. Es
+   el hermano del correo de recuperar contraseña, que vive en
+   supabase/plantillas-correo/ porque ese lo manda Supabase y se carga a
+   mano en el panel. Si se cambia el aspecto de uno, se cambia el del otro:
+   un comprador recibe los dos y tienen que parecer del mismo lado. */
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -58,25 +64,48 @@ Deno.serve(async (req) => {
       return json({ ok: true, enviado: false, motivo: "El envío de correos no está configurado.", link });
     }
 
-    const filas = (ent ?? []).map((x) =>
-      `<tr><td style="padding:6px 12px 6px 0">${esc(x.tipo_entrada?.nombre
-        ?? ((x.mesas?.categoria === "lounge" ? "Lounge " : "Mesa ") + (x.mesas?.etiqueta ?? "")))}</td>
-        <td style="padding:6px 0;font-family:ui-monospace,monospace">#${esc(x.code)}</td></tr>`).join("");
+    /* ── el correo, con la marca de TICKETAZO ──
+       Violeta y fluor, los mismos valores que portada.css y que la
+       plantilla de recuperar contraseña (supabase/plantillas-correo/).
+       Antes iba en negro, rojo y dorado cerveza: la paleta de Amstel, que
+       quedó de cuando la ticketera vestía un solo evento. Un comprador
+       recibe estos dos correos y tienen que parecer del mismo lado.
 
-    const html = `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:0 auto;color:#171310">
-  <p style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#A9741B;margin:0 0 6px">${esc(e.lugar)}</p>
-  <h1 style="font-size:30px;margin:0 0 4px;text-transform:uppercase">${esc(e.nombre)}</h1>
-  <p style="color:#6b6259;margin:0 0 22px">${esc(e.fecha)} · ${esc(String(e.hora_inicio).slice(0,5))}</p>
-  <p>Hola ${esc(o.comprador_nombre)}, tu compra está confirmada.
-     ${n === 1 ? "Tenés 1 entrada" : `Tenés ${n} entradas`}.</p>
-  <p style="margin:22px 0">
-    <a href="${link}" style="background:#DC0A2D;color:#fff;text-decoration:none;padding:14px 22px;border-radius:3px;display:inline-block;font-weight:600">Ver mis entradas</a>
-  </p>
-  <p style="font-size:13px;color:#6b6259">Abrí ese link en la puerta: ahí están los QR.
-     Guardalo, sirve siempre.</p>
-  <table style="font-size:13px;color:#6b6259;border-collapse:collapse;margin-top:18px">${filas}</table>
-  <p style="font-size:12px;color:#9a9188;margin-top:24px">Cada QR vale para un solo ingreso.</p>
-</div>`;
+       Tablas y estilos en línea, no divs con flex: Outlook renderiza con
+       el motor de Word y descarta casi todo el CSS moderno. Feo de
+       escribir, igual en todos lados.
+
+       Hexadecimales sólidos y ninguna rgba: los clientes viejos la ignoran
+       y dejarían el texto en negro sobre violeta, o sea invisible. */
+    const filas = (ent ?? []).map((x) =>
+      `<tr>
+        <td style="padding:7px 12px 7px 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;color:#A79EC0">${esc(x.tipo_entrada?.nombre
+          ?? ((x.mesas?.categoria === "lounge" ? "Lounge " : "Mesa ") + (x.mesas?.etiqueta ?? "")))}</td>
+        <td style="padding:7px 0;font-family:Courier,monospace;font-size:13px;color:#F3EFE2">#${esc(x.code)}</td>
+      </tr>`).join("");
+
+    const html = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#180E3A;margin:0;padding:0">
+ <tr><td align="center" style="padding:32px 16px">
+  <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="width:520px;max-width:100%">
+   <tr><td style="padding:0 0 26px;font-family:Helvetica,Arial,sans-serif;font-size:22px;font-weight:bold;letter-spacing:-0.3px;color:#F3EFE2">TICKET<span style="color:#FFE24B">AZO</span></td></tr>
+   <tr><td style="background:#231550;border-radius:10px;padding:32px 28px">
+    <p style="margin:0 0 6px;font-family:Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#FFE24B">${esc(e.lugar)}</p>
+    <h1 style="margin:0 0 4px;font-family:Helvetica,Arial,sans-serif;font-size:26px;line-height:1.15;text-transform:uppercase;color:#F3EFE2">${esc(e.nombre)}</h1>
+    <p style="margin:0 0 22px;font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#A79EC0">${esc(e.fecha)} · ${esc(String(e.hora_inicio).slice(0,5))}</p>
+    <p style="margin:0 0 24px;font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#F3EFE2">Hola ${esc(o.comprador_nombre)}, tu compra está confirmada. ${n === 1 ? "Tenés 1 entrada" : `Tenés ${n} entradas`}.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+     <td align="center" bgcolor="#FFE24B" style="border-radius:8px">
+      <a href="${link}" style="display:inline-block;padding:14px 26px;font-family:Helvetica,Arial,sans-serif;font-size:15px;font-weight:bold;color:#180E3A;text-decoration:none">Ver mis entradas</a>
+     </td>
+    </tr></table>
+    <p style="margin:22px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:#A79EC0">Abrí ese link en la puerta: ahí están los QR. Guardalo, sirve siempre.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;border-collapse:collapse">${filas}</table>
+    <p style="margin:22px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#6E6392">Cada QR vale para un solo ingreso.</p>
+   </td></tr>
+   <tr><td style="padding:22px 4px 0;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#6E6392">TICKETAZO · Entradas y control de puerta · Santa Cruz de la Sierra</td></tr>
+  </table>
+ </td></tr>
+</table>`;
 
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
