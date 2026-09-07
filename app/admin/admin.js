@@ -51,6 +51,11 @@ async function cargarPerfil() {
      esa constante ya no existe. Si la consulta falla no se corta la sesión —
      el panel entero no puede caerse porque no se pudo armar un link. */
   await miOrganizadorSlug().catch(() => null);
+  /* Si somos TICKETAZO. Un `false` por error de red esconde la pestaña,
+     que es el lado seguro: la alternativa es mostrarla y que cada
+     consulta rebote con "Sin permiso". */
+  const { data: esPlat } = await sb.rpc("es_plataforma");
+  S.plataforma = esPlat === true;
   return true;
 }
 
@@ -106,13 +111,18 @@ const PANTALLAS = [
   { id: "misventas", txt: "Mis ventas", roles: ["rrpp"] },
   { id: "puerta",    txt: "Puerta",     roles: ["portero", "admin"] },
   { id: "equipo",    txt: "Equipo",     roles: ["admin"] },
+  /* La pestaña de TICKETAZO. No se elige por rol —el rol es del cliente,
+     no nuestro— sino por `plataforma_operador`, que es una tabla sin
+     policies: nadie se da de alta solo. Ver 0069. */
+  { id: "plataforma", txt: "Plataforma", roles: ["admin", "staff"], plataforma: true },
 ];
 
 function arrancarApp() {
   $("#pantallaEntrar").hidden = true;
   $("#app").hidden = false;
   $("#yo").textContent = `${S.yo.nombre} · ${S.yo.rol}`;
-  const mias = PANTALLAS.filter(p => p.roles.includes(S.yo.rol));
+  const mias = PANTALLAS.filter(p =>
+    p.roles.includes(S.yo.rol) && (!p.plataforma || S.plataforma));
   $("#tabs").innerHTML = mias.map(p =>
     `<button data-p="${p.id}"${p.id === S.pantalla ? ' aria-current="page"' : ""}>${esc(p.txt)}</button>`
   ).join("");
@@ -133,6 +143,7 @@ function mostrar(p) {
   if (p === "misventas") return pantallaMisVentas();
   if (p === "puerta") return window.PUERTA.pantalla();   // vive en puerta.js
   if (p === "equipo") return pantallaEquipo();
+  if (p === "plataforma") return pantallaPlataforma();
   $("#main").innerHTML = "";
 }
 
@@ -4007,5 +4018,94 @@ async function cambiarActivo(id) {
 /* `bitacora` se expone para la puerta: el portero necesita poder revisar
    sus propios escaneos sin salir de su pestaña, y la pantalla es la misma
    —lo que ve cada uno lo decide bitacora_puerta() adentro, no esto. */
+/* ══ Plataforma: el negocio entero ════════════════════════════════
+   Todo el resto del panel está cortado por organizador. Esta pantalla es
+   la única que mira a todos, y existe por una pregunta que ninguna otra
+   puede contestar: ¿la plata que quedó en la pasarela es la que tiene que
+   estar?
+
+   La igualdad es una sola:
+
+       lo cobrado − lo girado = lo que debe haber en la wallet
+
+   Si el número de acá y el que muestra BeePay no coinciden, o cobramos
+   algo que no registramos o giramos de más. Las dos son urgentes y
+   ninguna se ve desde la pantalla de un cliente. Por eso el número se
+   muestra grande y solo, no escondido en una fila de una tabla. */
+async function pantallaPlataforma() {
+  $("#main").innerHTML = `<p class="cargando">Cargando el tablero…</p>`;
+  const [rp, rg] = await Promise.all([
+    sb.rpc("panel_plataforma"),
+    sb.rpc("pagos_plataforma", { p_limite: 25 }),
+  ]);
+  if (rp.error) { $("#main").innerHTML = `<p class="error">${esc(rp.error.message)}</p>`; return; }
+
+  const d = rp.data || {}, t = d.total || {}, cl = d.clientes || [];
+  const pagos = rg.error ? [] : (rg.data || []);
+
+  $("#main").innerHTML = `
+    <div class="cab-seccion"><h2>Plataforma</h2>
+      <span class="conteo">${cl.length} ${cl.length === 1 ? "cliente" : "clientes"}</span></div>
+
+    <section class="tarjeta plat-cuadre">
+      <div>
+        <h3>${bs(t.en_pasarela)}</h3>
+        <p class="ayuda">Es lo que tiene que haber en la wallet del comercio:
+          ${bs(t.cobrado)} cobrados menos ${bs(t.girado)} girados. Si BeePay dice
+          otra cosa, hay algo cobrado sin registrar o girado de más.</p>
+      </div>
+      <dl class="plat-cifras">
+        <div><dt>Cobrado a compradores</dt><dd>${bs(t.cobrado)}</dd></div>
+        <div><dt>Nuestra comisión</dt><dd class="ok">${bs(t.nuestro)}</dd></div>
+        <div><dt>De los clientes</dt><dd>${bs(t.del_cliente)}</dd></div>
+        <div class="tenue"><dt>Ya girado</dt><dd>−${bs(t.girado)}</dd></div>
+        <div><dt>Falta girarles</dt><dd>${bs(t.por_girar)}</dd></div>
+        ${Number(t.en_camino) ? `<div class="tenue"><dt>En camino</dt><dd>${bs(t.en_camino)}</dd></div>` : ""}
+      </dl>
+    </section>
+
+    <h3 class="titulo-bloque">Por cliente</h3>
+    <div class="tabla-scroll">
+      <table class="tabla">
+        <thead><tr><th>Cliente</th><th>Tarifa</th><th class="num">Entradas</th>
+          <th class="num">Cobrado</th><th class="num">Nuestro</th>
+          <th class="num">Girado</th><th class="num">Falta</th><th>Giro</th></tr></thead>
+        <tbody>${cl.map(c => {
+          const falta = Number(c.del_cliente) - Number(c.girado);
+          return `<tr>
+            <td><b>${esc(c.organizador)}</b>${Number(c.simuladas)
+              ? `<em class="ayuda"> ${bs(c.simuladas)} en pruebas</em>` : ""}</td>
+            <td class="dato">${Math.round(Number(c.fee_pct) * 100)}%
+              <em class="ayuda">${c.modo === "adentro" ? "descontada" : "sumada"}</em></td>
+            <td class="num">${Number(c.entradas)}</td>
+            <td class="num">${bs(c.cobrado)}</td>
+            <td class="num ok">${bs(c.nuestro)}</td>
+            <td class="num">${bs(c.girado)}</td>
+            <td class="num${falta > 0 ? " plat-falta" : ""}">${bs(falta)}</td>
+            <td>${c.automatico
+              ? `<span class="pastilla verde">auto ${bs(c.minimo)}</span>`
+              : `<span class="pastilla amarilla">a mano</span>`}${
+              Number(c.rechazados) ? ` <span class="pastilla roja">${c.rechazados} rech.</span>` : ""}</td>
+          </tr>`; }).join("")}</tbody>
+      </table>
+    </div>
+
+    <h3 class="titulo-bloque sep">Últimos giros</h3>
+    ${pagos.length ? `<ul class="lista">${pagos.map(p => {
+      const [txt, color] = ESTADO_PAGO[p.estado] || [p.estado, "amarilla"];
+      return `<li class="fila quieta liq-linea">
+        <span class="fila-nombre">${esc(p.cliente)}
+          <em>${esc(p.titular)} · ${esc(p.banco)}${p.referencia ? " · ref " + esc(p.referencia) : ""}</em></span>
+        <span class="cifra destacada">${bs(p.monto)}</span>
+        <span class="pastilla ${color}">${esc(txt)}</span>
+        <span class="fila-dato tenue">${fmtFH(p.cuando)} · ${p.automatico ? "automático" : "a mano"}${
+          p.motivo ? " · " + esc(p.motivo) : ""}</span>
+      </li>`; }).join("")}</ul>`
+    : `<p class="vacio">Todavía no se giró nada a ningún cliente.</p>`}
+
+    <p class="ayuda sep">Al ${fmtFH(d.al)}. Las órdenes de prueba de la pasarela
+      no suman a ningún total.</p>`;
+}
+
 window.ADMIN = { S, sb, mostrar, avisar, esc, bitacora: pantallaBitacora };
 })();
