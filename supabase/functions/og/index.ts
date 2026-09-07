@@ -46,6 +46,39 @@ function html(cuerpo: string, s = 200) {
   });
 }
 
+/* Las medidas desde la cabecera del archivo. Tres formatos y nada mas:
+   son los tres que el panel acepta subir (png, jpg, webp). Cualquier otra
+   cosa devuelve null y las etiquetas de medida no salen — la tarjeta se
+   arma igual, apenas con menos ayuda. */
+function medidas(b: Uint8Array): { w: number; h: number } | null {
+  const u16 = (i: number) => (b[i] << 8) | b[i + 1];
+  try {
+    // PNG: ancho y alto en el IHDR, siempre en la misma posicion.
+    if (b[0] === 0x89 && b[1] === 0x50) {
+      const u32 = (i: number) => (b[i] << 24 | b[i+1] << 16 | b[i+2] << 8 | b[i+3]) >>> 0;
+      return { w: u32(16), h: u32(20) };
+    }
+    // JPEG: hay que recorrer los segmentos hasta el SOF.
+    if (b[0] === 0xFF && b[1] === 0xD8) {
+      let i = 2;
+      while (i + 9 < b.length) {
+        if (b[i] !== 0xFF) { i++; continue; }
+        const m = b[i + 1];
+        if (m >= 0xC0 && m <= 0xC3) return { h: u16(i + 5), w: u16(i + 7) };
+        if (m === 0xD8 || m === 0xD9 || (m >= 0xD0 && m <= 0xD7)) { i += 2; continue; }
+        i += 2 + u16(i + 2);
+      }
+      return null;
+    }
+    // WebP en su variante simple (VP8X trae las medidas en otro lado y no
+    // vale la pena: sin medidas la tarjeta igual sale).
+    if (b[8] === 0x57 && b[9] === 0x45 && b[12] === 0x56 && b[15] === 0x20) {
+      return { w: ((b[26] | b[27] << 8) & 0x3FFF), h: ((b[28] | b[29] << 8) & 0x3FFF) };
+    }
+  } catch { /* un archivo raro no puede tumbar la vista previa */ }
+  return null;
+}
+
 Deno.serve(async (req) => {
   const u = new URL(req.url);
   const org = (u.searchParams.get("org") ?? "").trim().toLowerCase();
@@ -97,6 +130,21 @@ Deno.serve(async (req) => {
        aun así es mejor que una tarjeta sin imagen. */
     const img = e.flyer_url || e.arte_url || "";
 
+    /* Las medidas de la imagen. WhatsApp y Facebook deciden entre la
+       tarjeta grande y el thumbnail chico con esto: sin las medidas
+       tienen que bajar la imagen para averiguarlas, y si tardan o el
+       pedido falla se quedan con la version chica. Se leen del nombre del
+       archivo? No: se piden con un HEAD... tampoco, eso es otro viaje.
+       Se sacan de los primeros bytes del JPEG/PNG/WebP, que es lo unico
+       que hace falta y no cuesta una descarga entera. */
+    let med: { w: number; h: number } | null = null;
+    if (img) {
+      try {
+        const r2 = await fetch(img, { headers: { Range: "bytes=0-2047" } });
+        med = medidas(new Uint8Array(await r2.arrayBuffer()));
+      } catch { med = null; }
+    }
+
     return html(`<!doctype html><html lang="es-BO"><head>
 <meta charset="utf-8">
 <title>${esc(titulo)}</title>
@@ -107,7 +155,10 @@ Deno.serve(async (req) => {
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:url" content="${esc(url)}">
 ${img ? `<meta property="og:image" content="${esc(img)}">
-<meta property="og:image:alt" content="Afiche de ${esc(e.nombre)}">` : ""}
+<meta property="og:image:secure_url" content="${esc(img)}">
+<meta property="og:image:alt" content="Afiche de ${esc(e.nombre)}">
+${med ? `<meta property="og:image:width" content="${med.w}">
+<meta property="og:image:height" content="${med.h}">` : ""}` : ""}
 <meta name="twitter:card" content="${img ? "summary_large_image" : "summary"}">
 <meta name="twitter:title" content="${esc(titulo)}">
 <meta name="twitter:description" content="${esc(desc)}">
