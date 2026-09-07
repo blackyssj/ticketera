@@ -265,10 +265,15 @@ async function pintarCuenta(ordenId, emailCompra, nombreCompra) {
   };
   if (!s) {
     /* Quien PAGA de verdad vuelve de la pasarela a esta página, no a la
-       pantalla "listo" de la compra: si el formulario de cuenta viviera sólo
-       allá, lo vería únicamente quien consigue una entrada gratis. Por eso
-       acá está el mismo formulario, con el correo de la compra ya puesto. */
-    formularioCuenta(caja, ordenId, emailCompra, nombreCompra, guardada);
+       pantalla "listo" de la compra: si la cuenta se ofreciera sólo allá, la
+       vería únicamente quien consigue una entrada gratis. Por eso acá está
+       la misma oferta, con el correo de la compra ya puesto.
+
+       Pero ABAJO queda una invitación de un renglón, no el formulario: el
+       que abre este link viene a ver su QR, y dos campos con su nota y su
+       cambio de modo eran media página pidiéndole otra cosa. El formulario
+       se abre si lo pide. */
+    invitacionCuenta(caja, ordenId, emailCompra, nombreCompra, guardada);
     return;
   }
   try {
@@ -303,10 +308,45 @@ async function pintarCuenta(ordenId, emailCompra, nombreCompra) {
 const SOPORTE_WA = "59178183001";
 const correoValido = v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
 
-function formularioCuenta(caja, ordenId, emailCompra, nombreCompra, alGuardar) {
-  const Cuenta = window.Cuenta;
+/* ── la invitación ──
+   Lo que se ve abajo de la entrada cuando no hay sesión: un renglón y un
+   botón. El formulario entero se abre en el diálogo, y lo que pase adentro
+   —creada, entrada, o creada pero sin vincular— se escribe ACÁ y cierra el
+   diálogo: el resultado tiene que quedar en la página, no en una ventana
+   que la persona va a cerrar. */
+function invitacionCuenta(caja, ordenId, emailCompra, nombreCompra, alGuardar) {
   caja.innerHTML = `
-    <p class="link-recuperar-titulo">Vé tus entradas desde cualquier teléfono</p>
+    <p class="cuenta-invita">Guardá esta compra en una cuenta y vas a poder verla
+      desde cualquier teléfono, aunque borres los datos de este.</p>
+    <button type="button" class="btn plano chico" id="btnCrearCuenta">Crear mi cuenta</button>`;
+
+  const dlg = $("#dlgCuenta"), cuerpo = $("#dlgCuerpo");
+  if (!dlg || !cuerpo) return;   // sin diálogo no se ofrece nada: mejor que un botón muerto
+
+  const cerrar = () => { if (dlg.open) dlg.close(); };
+  $("#dlgX").onclick = cerrar;
+  /* Un clic afuera de la caja cierra. El <dialog> ocupa toda la pantalla y
+     el fondo ES el propio dialog, así que el clic en el fondo llega con
+     target === dlg; adentro de la caja, no. */
+  dlg.onclick = e => { if (e.target === dlg) cerrar(); };
+
+  $("#btnCrearCuenta").onclick = () => {
+    formularioCuenta(cuerpo, ordenId, emailCompra, nombreCompra,
+      (email, encabezado) => { cerrar(); alGuardar(email, encabezado); },
+      html => { cerrar(); caja.innerHTML = html; });
+    dlg.showModal();
+    $("#cMail").focus();
+  };
+}
+
+/* `alGuardar` y `terminar` escriben los dos en la página de atrás, no en el
+   diálogo: por eso vienen de afuera. `terminar` es para los finales a medias
+   —la cuenta se creó pero la compra no se vinculó— que no son un éxito ni un
+   error de formulario. */
+function formularioCuenta(caja, ordenId, emailCompra, nombreCompra, alGuardar, terminar) {
+  const Cuenta = window.Cuenta;
+  if (!terminar) terminar = html => { caja.innerHTML = html; };
+  caja.innerHTML = `
     <p class="cuenta-txt" id="cuentaTxt"></p>
     <form class="cuenta-form" id="cuentaForm" data-modo="crear" novalidate>
       <label class="campo"><span>Correo</span>
@@ -315,8 +355,8 @@ function formularioCuenta(caja, ordenId, emailCompra, nombreCompra, alGuardar) {
         <input type="password" id="cClave" autocomplete="new-password"></label>
       <em class="error" id="cError" role="alert"></em>
       <button type="submit" class="btn primario" id="cBtn">Crear mi cuenta</button>
-      <p class="letra-chica" id="cNota">Al menos 8 caracteres. Sin verificación por correo: si la
-        olvidás, <a href="https://wa.me/${SOPORTE_WA}?text=${encodeURIComponent("Hola, necesito ayuda con mi cuenta de TICKETAZO")}" target="_blank" rel="noopener">escribinos por WhatsApp</a>.</p>
+      <p class="letra-chica" id="cNota">Al menos 8 caracteres. Si algún día la olvidás,
+        te mandamos un link por correo para elegir otra.</p>
       <p class="cuenta-cambio"><span id="cCambioTxt"></span> <button type="button" id="cCambio"></button></p>
     </form>`;
   const form = $("#cuentaForm");
@@ -356,16 +396,16 @@ function formularioCuenta(caja, ordenId, emailCompra, nombreCompra, alGuardar) {
       if (crear) {
         const r = await Cuenta.crear({ email, password: clave, nombre: nombreCompra || undefined, orden_id: ordenId });
         if (r.vinculada) alGuardar(email, "Listo: tus entradas quedaron en tu cuenta");
-        else caja.innerHTML = `<p class="mias cuenta-ok">Tu cuenta quedó creada (<b>${esc(email)}</b>), pero esta ` +
-          `compra no se pudo guardar en ella. Podés hacerlo desde <a href="/mis-entradas">Mis entradas</a>.</p>`;
+        else terminar(`<p class="mias cuenta-ok">Tu cuenta quedó creada (<b>${esc(email)}</b>), pero esta ` +
+          `compra no se pudo guardar en ella. Podés hacerlo desde <a href="/mis-entradas">Mis entradas</a>.</p>`);
       } else {
         await Cuenta.entrar(email, clave);
         try {
           await Cuenta.vincular(ordenId);
           alGuardar(email, "Listo: tus entradas quedaron en tu cuenta");
         } catch (e2) {
-          caja.innerHTML = `<p class="mias cuenta-ok">Entraste, pero no pudimos guardar esta compra: ${esc(e2.message)} ` +
-            `Podés hacerlo desde <a href="/mis-entradas">Mis entradas</a>.</p>`;
+          terminar(`<p class="mias cuenta-ok">Entraste, pero no pudimos guardar esta compra: ${esc(e2.message)} ` +
+            `Podés hacerlo desde <a href="/mis-entradas">Mis entradas</a>.</p>`);
         }
       }
     } catch (e2) {

@@ -854,3 +854,38 @@ body.con-puerta{overflow:hidden}
 .cuenta-form .letra-chica a{color:var(--tinta-60);text-underline-offset:3px;padding:14px 0}
 .cuenta-cambio{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0;font-family:var(--dato);font-size:12px;color:var(--tinta-60)}
 .cuenta-cambio button{min-height:44px;padding:0 6px;margin-left:-6px;font:inherit;color:var(--tinta);text-decoration:underline;text-underline-offset:3px}
+
+/* ── la invitación a la cuenta ──
+   Lo que queda abajo de la entrada: una línea y un botón. El formulario se
+   fue al diálogo porque el que abre este link viene a ver su QR, y dos
+   campos con su nota eran media página pidiéndole otra cosa. */
+.cuenta-invita{margin:0 0 10px;font-size:14px;line-height:1.5;color:var(--tinta-60)}
+
+/* ── el diálogo ──
+   Sobre el cuerpo claro, así que la caja va en papel como el resto de esta
+   página y no en violeta: adentro viven .campo y .btn.primario, que están
+   escritos para fondo claro. Un diálogo oscuro obligaría a dar vuelta los
+   dos, o a que el formulario se viera de otro sitio. */
+.dlg{
+  border:0;padding:0;background:transparent;
+  max-width:min(440px, calc(100vw - 32px));width:100%;
+  color:var(--tinta);
+}
+.dlg::backdrop{background:rgba(11,10,10,.62)}
+.dlg-caja{
+  position:relative;background:var(--tarjeta);
+  border:1.5px solid var(--tinta-16);border-radius:6px;
+  padding:24px 20px 20px;
+}
+/* La X arriba a la derecha, con 44px de toque aunque el aspa sea chica. El
+   margen negativo se los devuelve al padding para que no empuje al título. */
+.dlg-x{
+  position:absolute;top:6px;right:6px;
+  width:44px;height:44px;line-height:44px;text-align:center;
+  font-size:15px;color:var(--tinta-40);background:transparent;border:0;cursor:pointer;
+}
+.dlg-x:hover,.dlg-x:focus-visible{color:var(--tinta)}
+.dlg-titulo{
+  margin:0 34px 0 0;font-family:var(--display);font-size:22px;
+  text-transform:uppercase;line-height:1.05;color:var(--tinta);
+}
