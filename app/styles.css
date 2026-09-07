@@ -89,7 +89,15 @@ input{font:inherit}
 .marca-logo{height:30px;width:auto;max-width:190px;object-fit:contain;display:block}
 .marca-txt{font-family:var(--display);font-size:20px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .marca-txt b{color:var(--rojo);font-weight:800}
-.barra-fecha{margin-left:auto;font-family:var(--dato);font-size:12px;color:var(--humo);white-space:nowrap}
+/* La fecha se esconde en pantallas angostas. Con el logo y el nombre del
+   evento al lado, en 375px no entran los tres y el que se corta es el
+   nombre —"DISTRITO FER…"—, que es el que menos se puede adivinar.
+
+   Y no se pierde nada: en /orden la misma fecha está dos centímetros más
+   abajo, en "Puertas", y en la página del evento está en los datos del
+   afiche. Era el dato repetido de los tres. */
+.barra-fecha{margin-left:auto;font-family:var(--dato);font-size:12px;color:var(--humo);white-space:nowrap;display:none}
+@media (min-width:560px){ .barra-fecha{display:block} }
 
 /* El logo de TICKETAZO en la barra del evento, y el único link para volver
    a la cartelera. Mismos valores que en portada.css y comercial.css: el
@@ -734,6 +742,18 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;text-decorat
    puerta. Tres cosas en este orden: que no quede duda de que el cobro
    salió, que el QR se escanee rápido, y que se pueda guardar.
    ══════════════════════════════════════════════════════════════════ */
+
+/* El ancho. Esta página se escribió para el teléfono, donde el carril ES el
+   ancho de la pantalla y no hacía falta decir nada. En una notebook heredaba
+   los 1220px del carril y quedaba deshecha: el título y el texto cruzando
+   toda la pantalla, y la entrada —que mide 380px— sola en el medio con dos
+   huecos enormes a los costados.
+
+   680px es lo que mide la cosa más grande que tiene que entrar: dos entradas
+   una al lado de la otra (240 + 240 más el aire de la grilla). De paso deja
+   las líneas en unos 75 caracteres, que es donde el ojo todavía encuentra el
+   renglón siguiente sin tener que buscarlo. */
+.entrega{max-width:680px;margin-inline:auto}
 
 /* La cabecera sale del flex de .panel-cab: acá el orden es de arriba abajo
    —estado, qué es esto, de quién es— y no tres cosas en una línea. */
