@@ -29,6 +29,27 @@
 (() => {
 "use strict";
 
+/* ── el link de recuperar la contraseña, si aterrizó acá ──────────
+   Lo primero de todo, antes de pedir la cartelera: si el fragmento trae un
+   link de recuperación, esta página no es la que corresponde y se reenvía
+   a /mis-entradas con el fragmento intacto.
+
+   Por qué puede aterrizar acá: GoTrue manda al Site URL —que es la raíz—
+   siempre que el `redirect_to` no coincida con la lista de permitidas, y
+   también cuando el link falla. Eso depende de una configuración del panel
+   que se puede tocar sin querer, y de la que esta pantalla no se entera.
+   Reenviar es una línea y hace que el correo funcione aunque esa lista
+   quede mal: la alternativa es que el comprador vea la cartelera con su
+   token en la barra y no entienda por qué no pasó nada.
+
+   Se usa replace y no href para no dejar la raíz en el historial: el botón
+   de volver tiene que sacarlo del trámite, no devolverlo al principio. */
+(function reenviarRecuperacion() {
+  const h = String(location.hash || "");
+  if (!/(^|[#&])type=recovery(&|$)/.test(h) && !/error_code=otp_expired/.test(h)) return;
+  location.replace("/mis-entradas" + h);
+})();
+
 const CFG = window.CONFIG || {};
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
