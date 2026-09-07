@@ -9,13 +9,21 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../styles.css?v=31">
+<link rel="stylesheet" href="../styles.css?v=35">
 </head>
 <body>
 
+<!-- El mismo header que la página del evento, y por los mismos motivos: la
+     marca de TICKETAZO primero y con link a la cartelera. Acá importa más
+     todavía — el que abre este link llega desde un correo, semanas después
+     de comprar, y puede no acordarse de dónde compró.
+
+     Reemplaza a la chapita, que era una tapa de botella de cerveza: lo
+     último que quedaba de Amstel en las páginas del comprador. -->
 <header class="barra">
   <div class="carril barra-in">
-    <span class="chapita" aria-hidden="true"><i></i><b></b></span>
+    <a class="logo chico" href="/" aria-label="TICKETAZO, ver todos los eventos">TICKET<span>AZO</span></a>
+    <span class="barra-sep" aria-hidden="true"></span>
     <span class="marca-txt" id="marca">—</span>
     <span class="barra-fecha" id="barraFecha"></span>
   </div>
@@ -86,12 +94,30 @@
   <p class="puerta-tip">Subí el brillo de la pantalla.</p>
 </div>
 
+<!-- ══ crear cuenta / entrar ════════════════════════════════════════
+     El formulario vivía suelto abajo de la entrada, con sus dos campos, la
+     nota y el cambio a "entrar". Era la mitad de la página para algo que el
+     comprador no vino a hacer: vino a ver su QR. Ahora abajo queda una
+     invitación de un renglón con un botón, y esto se abre si lo aprieta.
+
+     <dialog> nativo y no un div con `hidden` como el modo puerta: acá
+     adentro hay un formulario, y el diálogo del navegador ya trae el foco
+     atrapado, el Escape y el fondo inerte. Escribir eso a mano es la clase
+     de código que se rompe en un teclado que no probamos. -->
+<dialog class="dlg" id="dlgCuenta" aria-labelledby="dlgTitulo">
+  <div class="dlg-caja">
+    <button type="button" class="dlg-x" id="dlgX" aria-label="Cerrar">✕</button>
+    <h2 class="dlg-titulo" id="dlgTitulo">Vé tus entradas desde cualquier teléfono</h2>
+    <div id="dlgCuerpo"></div>
+  </div>
+</dialog>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script src="../config.js"></script>
 <script src="../cuenta.js?v=4"></script>
 <script src="../ticket.js?v=25"></script>
-<script src="orden.js?v=28"></script>
+<script src="orden.js?v=29"></script>
 </body>
 </html>
