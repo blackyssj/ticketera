@@ -117,7 +117,11 @@ Deno.serve(async (req) => {
       pasarela: PASARELA,
       correo_configurado: CORREO_CONFIGURADO,
       organizador: { nombre: o.nombre, fee_pct: Number(o.fee_pct),
-                     fee_fijo: Number(o.fee_fijo_transaccion), fee_piso: Number(o.fee_piso) },
+                     fee_fijo: Number(o.fee_fijo_transaccion), fee_piso: Number(o.fee_piso),
+                     /* 'adentro' = el cargo sale del precio publicado. La página
+                        lo necesita para NO anunciar un cargo que el comprador no
+                        va a pagar, y para que el total sea el precio de la lista. */
+                     comision_modo: o.comision_modo ?? "sobre" },
       evento: {
         id: e.id,
         marca_1: partes[0],
