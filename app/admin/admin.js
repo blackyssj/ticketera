@@ -589,7 +589,7 @@ async function pantallaEntradas(eventoId) {
       </table>
     </div>
     <section id="zonaFase"></section>
-    <p class="ayuda nota-fee">El precio es lo que te queda a vos. Encima va el
+    <p class="ayuda nota-fee">El precio es lo que te queda. Encima va el
        ${Math.round(cfgFee.fee_pct * 100)}% de servicio de TICKETAZO, que paga el
        comprador${Number(cfgFee.fee_fijo_transaccion) > 0
          ? ` más ${bs(cfgFee.fee_fijo_transaccion)} por compra` : ""}${
