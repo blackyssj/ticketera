@@ -83,7 +83,13 @@ input{font:inherit}
 .datos span b{color:var(--espuma);font-weight:500}
 .hero .carril{padding-bottom:48px}
 .hero.compacto .carril{padding-bottom:26px}
-.espuma-borde{display:block;width:100%;height:clamp(40px,6vw,74px);margin-bottom:-1px}
+/* El borde entre el afiche y el cuerpo. `color` es el del panel de abajo,
+   y los dibujos lo heredan con currentColor: antes tenían el crema escrito
+   a mano y en un evento con marca propia quedaba una franja de otro color
+   flotando entre dos secciones que sí habían cambiado. */
+.borde-cuerpo{display:block;width:100%;height:clamp(40px,6vw,74px);margin-bottom:-1px;color:var(--espuma)}
+.borde-picado{display:none}
+.picado-rombos{fill:var(--rojo)}
 
 /* El afiche al costado del texto. Una grilla de dos columnas: todo lo del
    hero va a la izquierda y el afiche ocupa la derecha a lo largo de las
@@ -129,6 +135,48 @@ input{font:inherit}
 .datos .hueso{height:1em}
 .tipo.esqueleto{display:flex;flex-direction:column;align-items:flex-start;gap:10px;min-height:104px;justify-content:center}
 .tipo.esqueleto .hueso:last-child{margin-top:4px}
+
+/* ═══ el evento que trae su propia marca ═══════════════════════
+   La página nació con la paleta de TICKETAZO y con la de Amstel adentro:
+   el cuerpo es un panel color espuma de cerveza, y el borde que lo separa
+   del afiche es literalmente espuma con burbujas. Para un cliente cuyo
+   arte es vino y escarlata, eso no es "otro color": es la marca de otro.
+
+   Cambiar las reglas de a una era reescribir setenta y tres usos de
+   `--tinta` y veinticuatro de `--espuma`, cada uno una oportunidad de
+   romper algo. En vez de eso se redefinen las VARIABLES sobre `.cuerpo`,
+   que es el único lugar donde significan "panel claro" y "tinta encima".
+   Las propiedades personalizadas bajan por el árbol, así que todo lo que
+   vive adentro del panel se da vuelta solo y el afiche, que está afuera,
+   no se entera. Cero reglas tocadas.
+
+   Ojo con por qué `--espuma` no se puede cambiar en `:root`: ahí también
+   significa "el texto sobre el fondo oscuro". Es el mismo token con dos
+   trabajos, y cambiarlo arriba deja el título del afiche del color del
+   fondo. Por eso el cambio va acotado al panel y no a la raíz.
+
+   Los grises translúcidos —bordes, ayudas, deshabilitados— se derivan del
+   texto nuevo. Sin eso quedan líneas negras al 16% sobre un panel oscuro,
+   o sea invisibles, y la grilla de entradas pierde todas sus divisiones. */
+:root[data-marca] .cuerpo{
+  --espuma:var(--papel);
+  --tinta:var(--papel-txt);
+  --tinta-16:color-mix(in srgb, var(--papel-txt) 16%, transparent);
+  --tinta-40:color-mix(in srgb, var(--papel-txt) 40%, transparent);
+  --tinta-60:color-mix(in srgb, var(--papel-txt) 60%, transparent);
+}
+/* El borde deja de ser espuma y pasa a ser papel picado, que es el motivo
+   del marco del arte. Un solo gesto y del lado del cliente: la alternativa
+   —inventarle ornamentos— es cómo una página termina disfrazada. */
+:root[data-marca] .borde-cuerpo{color:var(--papel)}
+:root[data-marca] .borde-espuma{display:none}
+:root[data-marca] .borde-picado{display:block}
+/* La franja de acento arriba de todo, del ancho de la página: es lo que
+   tiene el arte en el borde y lo que hace que la pestaña se reconozca. */
+:root[data-marca] body::before{
+  content:"";position:fixed;inset:0 0 auto;height:3px;z-index:100;
+  background:var(--rojo);
+}
 
 /* ─── cuerpo claro ─── */
 .cuerpo{background:var(--espuma);color:var(--tinta);padding:0 0 clamp(60px,9vw,110px);min-height:60vh}
@@ -550,7 +598,7 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;text-decorat
   .datos{margin-top:12px;gap:6px 18px;font-size:12px}
   /* Más bajo que en escritorio, pero no tanto como para que las burbujas se
      aplasten: la espuma es de la marca, no relleno. */
-  .espuma-borde{height:28px}
+  .borde-cuerpo{height:28px}
   .pasos{padding:10px 0}
   .panel-cab{margin-bottom:10px}
   .tipo{padding:12px 16px;gap:8px}

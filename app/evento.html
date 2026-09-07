@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=29">
+<link rel="stylesheet" href="/styles.css?v=30">
 </head>
 <body>
 
@@ -84,11 +84,22 @@
       Compartir evento
     </button>
   </div>
-  <svg class="espuma-borde" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
-    <path fill="#F6F1E4" d="M0,52 C60,30 110,66 170,56 C230,46 262,22 322,32 C382,42 404,70 470,62 C536,54 566,26 630,34 C694,42 726,68 790,60 C854,52 884,24 950,32 C1016,40 1046,70 1110,62 C1174,54 1206,28 1268,36 C1330,44 1372,66 1440,50 L1440,90 L0,90 Z"></path>
-    <circle fill="#F6F1E4" cx="128" cy="40" r="9"></circle><circle fill="#F6F1E4" cx="352" cy="18" r="7"></circle>
-    <circle fill="#F6F1E4" cx="596" cy="24" r="10"></circle><circle fill="#F6F1E4" cx="828" cy="16" r="6"></circle>
-    <circle fill="#F6F1E4" cx="1042" cy="22" r="8"></circle><circle fill="#F6F1E4" cx="1300" cy="20" r="7"></circle>
+  <!-- El borde entre el afiche y el cuerpo. Dos versiones y se ve una sola:
+       la espuma es de TICKETAZO —y de Amstel, que vende cerveza—, y el papel
+       picado es para el evento que trae su propia marca. Las dos se pintan con
+       `currentColor`, así siguen el color del panel de abajo en vez de tener
+       el crema escrito a mano como antes. -->
+  <svg class="borde-cuerpo" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
+    <g class="borde-espuma">
+      <path fill="currentColor" d="M0,52 C60,30 110,66 170,56 C230,46 262,22 322,32 C382,42 404,70 470,62 C536,54 566,26 630,34 C694,42 726,68 790,60 C854,52 884,24 950,32 C1016,40 1046,70 1110,62 C1174,54 1206,28 1268,36 C1330,44 1372,66 1440,50 L1440,90 L0,90 Z"></path>
+      <circle fill="currentColor" cx="128" cy="40" r="9"></circle><circle fill="currentColor" cx="352" cy="18" r="7"></circle>
+      <circle fill="currentColor" cx="596" cy="24" r="10"></circle><circle fill="currentColor" cx="828" cy="16" r="6"></circle>
+      <circle fill="currentColor" cx="1042" cy="22" r="8"></circle><circle fill="currentColor" cx="1300" cy="20" r="7"></circle>
+    </g>
+    <g class="borde-picado">
+      <path fill="currentColor" d="M0,90 L0,90 L24,56 L48,90 L48,90 L72,56 L96,90 L96,90 L120,56 L144,90 L144,90 L168,56 L192,90 L192,90 L216,56 L240,90 L240,90 L264,56 L288,90 L288,90 L312,56 L336,90 L336,90 L360,56 L384,90 L384,90 L408,56 L432,90 L432,90 L456,56 L480,90 L480,90 L504,56 L528,90 L528,90 L552,56 L576,90 L576,90 L600,56 L624,90 L624,90 L648,56 L672,90 L672,90 L696,56 L720,90 L720,90 L744,56 L768,90 L768,90 L792,56 L816,90 L816,90 L840,56 L864,90 L864,90 L888,56 L912,90 L912,90 L936,56 L960,90 L960,90 L984,56 L1008,90 L1008,90 L1032,56 L1056,90 L1056,90 L1080,56 L1104,90 L1104,90 L1128,56 L1152,90 L1152,90 L1176,56 L1200,90 L1200,90 L1224,56 L1248,90 L1248,90 L1272,56 L1296,90 L1296,90 L1320,56 L1344,90 L1344,90 L1368,56 L1392,90 L1392,90 L1416,56 L1440,90 L1440,90 L0,90 Z"></path>
+      <path class="picado-rombos" d="M24,35 l5,5 l-5,5 l-5,-5 Z M120,35 l5,5 l-5,5 l-5,-5 Z M216,35 l5,5 l-5,5 l-5,-5 Z M312,35 l5,5 l-5,5 l-5,-5 Z M408,35 l5,5 l-5,5 l-5,-5 Z M504,35 l5,5 l-5,5 l-5,-5 Z M600,35 l5,5 l-5,5 l-5,-5 Z M696,35 l5,5 l-5,5 l-5,-5 Z M792,35 l5,5 l-5,5 l-5,-5 Z M888,35 l5,5 l-5,5 l-5,-5 Z M984,35 l5,5 l-5,5 l-5,-5 Z M1080,35 l5,5 l-5,5 l-5,-5 Z M1176,35 l5,5 l-5,5 l-5,-5 Z M1272,35 l5,5 l-5,5 l-5,-5 Z M1368,35 l5,5 l-5,5 l-5,-5 Z"></path>
+    </g>
   </svg>
 </section>
 
@@ -332,6 +343,6 @@
 <!-- La sesión del comprador. Antes de app.js: crearOrden le pide el token
      y la pantalla "listo" le pide crear/entrar/vincular. -->
 <script src="/cuenta.js?v=1"></script>
-<script src="/app.js?v=30"></script>
+<script src="/app.js?v=31"></script>
 </body>
 </html>

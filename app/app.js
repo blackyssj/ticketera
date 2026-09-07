@@ -363,6 +363,20 @@ function pintarMarca(e) {
        da superficies vino y no manchas grises flotando encima. */
     raiz.style.setProperty("--noche-2", `color-mix(in srgb, ${f} 90%, #fff)`);
     raiz.style.setProperty("--noche-3", `color-mix(in srgb, ${f} 80%, #fff)`);
+
+    /* El panel donde se compra. Antes era color espuma de cerveza SIEMPRE,
+       y con un fondo vino quedaba media página de la marca del cliente y
+       media de Amstel. Ahora es el mismo fondo apenas levantado: se
+       distingue del afiche sin salirse de la paleta. El texto de adentro
+       pasa a ser el claro, y styles.css da vuelta el panel entero a partir
+       de estos dos (ver el bloque data-marca). */
+    raiz.style.setProperty("--papel", `color-mix(in srgb, ${f} 88%, #fff)`);
+    raiz.style.setProperty("--papel-txt", "#F6F1E4");
+    /* La bandera que enciende todo eso. Va al final, cuando los colores ya
+       están puestos: al revés, el navegador pinta un cuadro con el panel
+       oscuro y los colores todavía viejos. */
+    raiz.dataset.marca = "1";
+
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.content = f;
   }
