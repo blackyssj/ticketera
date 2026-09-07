@@ -127,6 +127,20 @@
 }
 .forma-olvide button:hover,.forma-olvide button:focus-visible{color:var(--fluor)}
 
+/* El WhatsApp de soporte, adentro del formulario de recuperación. Es la
+   salida de cuando el correo no llega: apagado, porque si compitiera con
+   "Mandame el link" la gente escribiría por WhatsApp antes de esperar el
+   mail, y volveríamos a resetear claves a mano. */
+.wa{
+  display:inline-flex;align-items:center;gap:9px;
+  min-height:44px;margin-top:2px;
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;
+  color:var(--hueso-40);text-decoration:underline;text-underline-offset:3px;
+  transition:color .18s ease;
+}
+.wa:hover,.wa:focus-visible{color:var(--hueso)}
+.wa svg{width:18px;height:18px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}
+
 /* ── el estado de la cuenta ──
    "Buscando…" o "no se pudo": un renglón mono arriba de la lista. Con
    error, un botón de reintentar al lado; la lista local sigue abajo igual. */
