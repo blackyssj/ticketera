@@ -327,10 +327,15 @@ const puedeEditar = () => !!S.yo && (S.yo.rol === "admin" || S.yo.rol === "staff
    La RLS de `organizadores` ya deja ver una sola fila: la propia. */
 async function miOrganizadorSlug() {
   if (S.orgSlug) return S.orgSlug;
-  const { data, error } = await sb.from("organizadores")
-    .select("slug").eq("id", S.yo.organizador_id).maybeSingle();
+  /* Una sola llamada trae el slug y la configuración del organizador. La
+     pantalla del relacionador necesita saber si su organizador le muestra
+     los números para poder decir "acá no se muestran" en vez de "todavía
+     no vendiste nada", que sería mentira y lo dejaría creyendo que su link
+     no funciona. */
+  const { data, error } = await sb.rpc("mi_organizador_config");
   if (error || !data) throw new Error("No pude averiguar tu organizador, así que no sé dónde guardar la imagen.");
   S.orgSlug = data.slug;
+  S.org = data;
   return data.slug;
 }
 
@@ -1884,6 +1889,7 @@ async function pantallaMisVentas() {
       ${zonaLinks(re.data || [], re.error)}
     </section>
 
+    ${S.org && S.org.rrpp_ve_ventas === false ? "" : `
     <h3 class="titulo-bloque">Lo que vendiste</h3>
     ${ventas.length ? `
       <ul class="lista">${ventas.map(v => `
@@ -1904,9 +1910,14 @@ async function pantallaMisVentas() {
         <span class="monto">${bs(total)}</span>
       </div>`
     : `<p class="vacio">Todavía no vendiste nada. En cuanto alguien compre
-         entrando por tu link y pague, acá aparecen las entradas y tu comisión.</p>`}
+         entrando por tu link y pague, acá aparecen las entradas y tu comisión.</p>`}`}
 
-    ${evs.length ? `
+    ${S.org && S.org.rrpp_ve_ventas === false ? `
+      <p class="nota">Tu organizador no muestra las ventas por relacionador.
+        Tu link funciona igual y todo lo que se compre entrando por ahí queda
+        a tu nombre — el detalle lo lleva él.</p>` : ""}
+
+    ${(S.org && S.org.rrpp_ve_ventas === false) ? "" : `${evs.length ? `
       <div class="cab-bloque sep">
         <h3 class="titulo-bloque">Tu evento</h3>
         ${evs.length > 1
@@ -1915,7 +1926,7 @@ async function pantallaMisVentas() {
              </select>`
           : `<span class="conteo">${esc(evs[0].nombre)} · ${fmtF(evs[0].fecha)}</span>`}
       </div>
-      <section id="zonaCompradores"></section>` : ""}`;
+      <section id="zonaCompradores"></section>` : ""}`}`;
 
   cablearCopiar();
 
@@ -1927,7 +1938,7 @@ async function pantallaMisVentas() {
      Este bloque se llamaba «Tu salón» y traía también el plano de mesas.
      El plano se fue en la limpieza de mesas: acá solo se venden entradas
      y las reservas de mesa las maneja el local por fuera del sistema. */
-  if (evs.length) {
+  if (evs.length && !(S.org && S.org.rrpp_ve_ventas === false)) {
     const sel = $("#selEventoSalon");
     const cual = id => evs.find(e => e.id === id) || evs[0];
     if (sel) sel.onchange = () => montarSalon(sel.value,
