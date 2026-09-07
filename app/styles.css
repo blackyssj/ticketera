@@ -13,6 +13,10 @@
   --dorado:#E9B44C;
   --dorado-hondo:#A9741B;
   --espuma:#F6F1E4;
+  /* La superficie de tarjetas, campos y cajas dentro del cuerpo. Era
+     `#fff` escrito a mano en seis reglas: con un cuerpo oscuro quedaban
+     seis rectangulos blancos con texto crema encima, ilegibles. */
+  --tarjeta:#fff;
   --tinta:#171310;
 
   --humo:rgba(246,241,228,.58);
@@ -164,6 +168,10 @@ input{font:inherit}
   --tinta-16:color-mix(in srgb, var(--papel-txt) 16%, transparent);
   --tinta-40:color-mix(in srgb, var(--papel-txt) 40%, transparent);
   --tinta-60:color-mix(in srgb, var(--papel-txt) 60%, transparent);
+  /* Las tarjetas se levantan del panel en vez de hundirse: sobre un fondo
+     oscuro, lo que esta mas cerca es lo mas claro. Es la misma jerarquia
+     que en el modo claro, dada vuelta. */
+  --tarjeta:color-mix(in srgb, var(--papel) 86%, #fff);
 }
 /* El borde deja de ser espuma y pasa a ser papel picado, que es el motivo
    del marco del arte. Un solo gesto y del lado del cliente: la alternativa
@@ -250,7 +258,7 @@ input{font:inherit}
 .tipos{display:grid;gap:12px}
 .tipo{
   display:grid;grid-template-columns:1fr auto;gap:6px 18px;align-items:center;
-  border:1.5px solid var(--tinta-16);border-radius:4px;background:#fff;
+  border:1.5px solid var(--tinta-16);border-radius:4px;background:var(--tarjeta);
   padding:16px 18px;transition:border-color .16s ease,box-shadow .16s ease;
 }
 .tipo[data-activo="1"]{border-color:var(--rojo);box-shadow:0 0 0 1px var(--rojo)}
@@ -308,7 +316,7 @@ input{font:inherit}
 .campo span{font-family:var(--dato);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--tinta-60)}
 .campo input{
   padding:12px 13px;border:1.5px solid var(--tinta-16);border-radius:3px;
-  background:#fff;color:var(--tinta);
+  background:var(--tarjeta);color:var(--tinta);
 }
 .campo input:focus{border-color:var(--tinta);outline:none}
 .campo input[aria-invalid="true"]{border-color:var(--rojo)}
@@ -423,7 +431,7 @@ body.sin-rail .lienzo-col{padding-bottom:0}
    escondido en la letra chica. */
 .link-recuperar{
   display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px;
-  padding:14px 16px;background:#fff;border:1.5px solid var(--tinta-16);border-radius:4px;
+  padding:14px 16px;background:var(--tarjeta);border:1.5px solid var(--tinta-16);border-radius:4px;
 }
 .link-recuperar-titulo{margin:0 0 4px;font-family:var(--dato);font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--tinta-60)}
 .link-recuperar code{font-family:var(--dato);font-size:12.5px;color:var(--tinta);word-break:break-all}
@@ -632,7 +640,7 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;text-decorat
    nadie entiende dónde entra el fee ni por qué hay que verificar después. */
 .pasarela{
   width:min(360px,100%);border:1.5px solid var(--tinta-16);border-radius:6px;
-  background:#fff;padding:20px;text-align:center;
+  background:var(--tarjeta);padding:20px;text-align:center;
 }
 .pasarela-cab{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:14px}
 .pasarela-marca{font-family:var(--display);font-size:22px;text-transform:uppercase;letter-spacing:.04em}
@@ -719,7 +727,7 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;text-decorat
    teléfono el lugar largo baja solo abajo de la hora. */
 .cuando{
   display:flex;flex-wrap:wrap;gap:12px 44px;margin:0 0 16px;padding:14px 16px;
-  background:#fff;border:1.5px solid var(--tinta-16);border-radius:4px;
+  background:var(--tarjeta);border:1.5px solid var(--tinta-16);border-radius:4px;
 }
 .cuando > div{display:flex;flex-direction:column;gap:3px;min-width:150px;max-width:100%}
 .cuando dt{font-family:var(--dato);font-size:10.5px;letter-spacing:.12em;
@@ -785,7 +793,7 @@ body.con-puerta{overflow:hidden}
    mismo blanco, mismo borde. Es la misma promesa —esto no se pierde— dicha
    de la forma que sí viaja entre aparatos. Los campos reusan .campo y el
    botón .btn.primario; acá sólo el armado y los 44px de toque de los links. */
-.cuenta-listo{margin-top:14px;padding:16px;background:#fff;border:1.5px solid var(--tinta-16);border-radius:4px}
+.cuenta-listo{margin-top:14px;padding:16px;background:var(--tarjeta);border:1.5px solid var(--tinta-16);border-radius:4px}
 .cuenta-orden{margin-top:14px}
 .cuenta-txt,.cuenta-ok{margin:6px 0 0;font-size:14px;line-height:1.5;color:var(--tinta-60)}
 .cuenta-ok b{font-weight:500;color:var(--tinta);word-break:break-all}

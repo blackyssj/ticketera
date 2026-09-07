@@ -370,7 +370,7 @@ function pintarMarca(e) {
        distingue del afiche sin salirse de la paleta. El texto de adentro
        pasa a ser el claro, y styles.css da vuelta el panel entero a partir
        de estos dos (ver el bloque data-marca). */
-    raiz.style.setProperty("--papel", `color-mix(in srgb, ${f} 88%, #fff)`);
+    raiz.style.setProperty("--papel", `color-mix(in srgb, ${f} 93%, #fff)`);
     raiz.style.setProperty("--papel-txt", "#F6F1E4");
     /* La bandera que enciende todo eso. Va al final, cuando los colores ya
        están puestos: al revés, el navegador pinta un cuadro con el panel
@@ -386,6 +386,13 @@ function pintarMarca(e) {
     raiz.style.setProperty("--rojo", a);
     raiz.style.setProperty("--rojo-claro", `color-mix(in srgb, ${a} 82%, #fff)`);
     raiz.style.setProperty("--rojo-hondo", `color-mix(in srgb, ${a} 62%, #000)`);
+    /* El dorado es cerveza. Es el último rastro de Amstel que quedaba en la
+       página —el link de compartir, el foco, un par de detalles— y sobre un
+       fondo vino se lee como un color que se coló de otro lado. Pasa a ser
+       el acento del cliente, apenas más apagado para que no compita con los
+       botones, que son lo que hay que apretar. */
+    raiz.style.setProperty("--dorado", `color-mix(in srgb, ${a} 78%, #fff)`);
+    raiz.style.setProperty("--dorado-hondo", `color-mix(in srgb, ${a} 70%, #000)`);
   }
 
   /* El logo reemplaza a la marca tipográfica, no se suma: las dos juntas
