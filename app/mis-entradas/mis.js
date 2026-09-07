@@ -252,10 +252,14 @@ function pintarLista(compras, conSesion, cargando) {
 function pintarCabecera(s) {
   $("#cuentaCab").hidden = !s;
   $("#entrar").hidden = !!s;
-  /* Salir vive en la barra de arriba y aparece con la sesión. Sin ella no
-     se dibuja: un botón que dice "Salir" cuando nadie entró es una acción
-     que no se puede hacer, y ocupa el lugar donde después va la de verdad. */
-  $("#btnSalir").hidden = !s;
+  /* El botón de la barra tiene dos trabajos según haya sesión o no. Se
+     deja de esconder acá y no en el HTML: hasta que no se sabe si hay
+     sesión, mostrarlo sería adivinar cuál de los dos textos poner. */
+  const bs = $("#btnSesion");
+  bs.hidden = false;
+  bs.textContent = s ? "Salir" : "Entrar";
+  bs.dataset.accion = s ? "salir" : "entrar";
+  bs.setAttribute("aria-label", s ? "Salir de tu cuenta" : "Entrar a tu cuenta");
   if (s) {
     $("#cuentaMail").textContent = s.user.email || "tu cuenta";
     $("#bajada").textContent =
@@ -563,12 +567,33 @@ form.addEventListener("submit", async e => {
   }
 });
 
-$("#btnSalir").addEventListener("click", async () => {
+/* Los dos trabajos del botón de la barra. Cuál corre lo dice `data-accion`,
+   que pone pintarCabecera() junto con el texto: así el estado vive en un
+   solo lugar y no se puede dar el caso de que diga "Salir" y cierre nada,
+   o al revés. */
+$("#btnSesion").addEventListener("click", async () => {
   if (!Cuenta) return;
-  await Cuenta.salir();
-  ponerModo("entrar");
-  avisar("Saliste de tu cuenta.");
-  pintar();
+
+  if ($("#btnSesion").dataset.accion === "salir") {
+    await Cuenta.salir();
+    ponerModo("entrar");
+    avisar("Saliste de tu cuenta.");
+    pintar();
+    return;
+  }
+
+  /* Sin sesión, el formulario ya está en la página: no hay a dónde
+     navegar, hay que llevar el ojo hasta él. Se baja y se enfoca el
+     correo, que es el primer campo — bajar sin enfocar deja a alguien
+     mirando un formulario sin saber que ya puede escribir.
+
+     El foco después del scroll y no antes: enfocar mueve la página por su
+     cuenta y las dos cosas juntas pelean. `preventScroll` porque el
+     desplazamiento suave ya está en camino. */
+  const caja = $("#entrar");
+  if (caja.hidden) return;
+  caja.scrollIntoView({ behavior: "smooth", block: "center" });
+  setTimeout(() => $("#fMail").focus({ preventScroll: true }), 350);
 });
 
 document.addEventListener("click", e => {

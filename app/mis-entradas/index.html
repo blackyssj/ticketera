@@ -25,24 +25,34 @@
      troquelada. Esta página no inventa una paleta propia, así que no
      necesita más que sumarle lo puntual en mis.css. -->
 <link rel="stylesheet" href="/portada.css?v=32">
-<link rel="stylesheet" href="/mis-entradas/mis.css?v=5">
+<link rel="stylesheet" href="/mis-entradas/mis.css?v=6">
 </head>
 <body>
 
 <a class="saltar" href="#lista">Ir a mis entradas</a>
 
-<!-- Salir va en la barra y no abajo con el correo: es una acción, y las
-     acciones de la sesión se buscan arriba a la derecha, que es donde
-     están en todo lo demás que la gente usa. Abajo estaba al lado del
-     correo, que es información, y las dos cosas juntas se leen como una
-     sola. Nace oculto: mis.js lo muestra sólo con sesión abierta, porque
-     un "Salir" sin sesión no tiene de dónde sacar a nadie. -->
+<!-- La sesión, arriba a la derecha: es donde se busca en todo lo demás que
+     la gente usa. Antes "Salir" estaba abajo, pegado al correo de la
+     cuenta — ese renglón dice quién está adentro (información) y el botón
+     es una acción; juntos se leían como una sola cosa.
+
+     UN botón con dos estados y no dos botones: con sesión dice "Salir" y
+     cierra; sin sesión dice "Entrar" y baja al formulario. Nunca está
+     vacío, que es lo que pasaba antes cuando nadie había entrado: un
+     hueco en la barra donde debería haber algo que hacer.
+
+     No hace falta un tercero para "crear cuenta": el formulario al que
+     lleva ya tiene el cambio a crear, y meter las dos puertas en la barra
+     obliga a elegir antes de saber cuál corresponde.
+
+     mis.js le pone el texto y la acción; el `hidden` inicial evita que
+     parpadee "Entrar" un cuadro antes de saber si hay sesión. -->
 <header class="barra">
   <div class="carril barra-in">
     <a class="logo" href="/" aria-label="TICKETAZO, inicio">TICKET<span>AZO</span></a>
     <div class="barra-der">
       <span class="barra-lugar">Mis entradas</span>
-      <button type="button" class="barra-salir" id="btnSalir" hidden>Salir</button>
+      <button type="button" class="barra-sesion" id="btnSesion" hidden>Entrar</button>
     </div>
   </div>
 </header>
@@ -225,6 +235,6 @@
      sesión. -->
 <script src="/config.js"></script>
 <script src="/cuenta.js?v=4"></script>
-<script src="/mis-entradas/mis.js?v=4"></script>
+<script src="/mis-entradas/mis.js?v=5"></script>
 </body>
 </html>
