@@ -8,8 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="admin.css?v=33">
-<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="/admin/admin.css?v=34">
+<link rel="manifest" href="/admin/manifest.json">
 <meta name="theme-color" content="#0d0d0f">
 <!-- El service worker es lo que hace que esta pantalla ABRA sin internet.
      Sin el, en una feria sin senal el portero no ve ni el HTML. Se registra
@@ -17,9 +17,12 @@
      usuario todavia no haya entrado. Si el navegador no lo soporta, la
      puerta funciona como siempre: online. -->
 <script>
+  /* Ruta ABSOLUTA. Con "sw.js" a secas, quien entra por /admin (sin
+     barra final) lo pide en /sw.js, que no existe: no se registra nada y
+     nadie se entera porque el catch se lo come. */
   if ("serviceWorker" in navigator)
     addEventListener("load", () =>
-      navigator.serviceWorker.register("sw.js").catch(() => {}));
+      navigator.serviceWorker.register("/admin/sw.js", { scope: "/admin/" }).catch(() => {}));
 </script>
 </head>
 <body>
@@ -58,12 +61,12 @@
      ve distinta a una entrada comprada es una cortesía que en la puerta se
      discute. Si el CDN no carga, la pantalla igual muestra los códigos. -->
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
-<script src="../config.js"></script>
-<script src="../ticket.js?v=16"></script>
+<script src="/config.js"></script>
+<script src="/ticket.js?v=16"></script>
 <!-- El CSV que se le manda al contador: separador, encoding y la
      neutralizacion de formulas viven ahi, no repartidos por las pantallas. -->
-<script src="csv.js?v=30"></script>
-<script src="admin.js?v=34"></script>
-<script src="puerta.js?v=32"></script>
+<script src="/admin/csv.js?v=30"></script>
+<script src="/admin/admin.js?v=35"></script>
+<script src="/admin/puerta.js?v=33"></script>
 </body>
 </html>
