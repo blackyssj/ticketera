@@ -388,6 +388,11 @@ function ponerModo(modo) {
   $("#entrarBajada").textContent = crear
     ? "Con tu correo y una contraseña alcanza. Lo que compres con la sesión abierta queda guardado solo."
     : "Las compras que guardes en tu cuenta te siguen aunque cambies de aparato.";
+  /* "¿Olvidaste tu contraseña?" no va en modo crear: todavía no tiene
+     ninguna. Ofrecer recuperar algo que no existe manda a esperar un correo
+     que no llega. */
+  const fila = document.getElementById("filaOlvide");
+  if (fila) fila.hidden = crear;
   mostrarError("");
 }
 
@@ -400,6 +405,118 @@ function mostrarError(msg) {
 $("#btnModo").addEventListener("click", () => {
   ponerModo(form.dataset.modo === "crear" ? "entrar" : "crear");
   $("#fMail").focus();
+});
+
+/* ══ recuperar la contraseña ═══════════════════════════════════════
+   Tres formularios que ocupan el mismo lugar y se ve uno a la vez:
+   entrar/crear, pedir el link, y elegir la clave nueva. Van en la misma
+   caja y no en pantallas separadas porque es un solo trámite — mandar a
+   alguien a otra URL para escribir su correo es perder a la mitad.
+
+   El tercero aparece solo: si la página abrió desde el link del correo,
+   `recuperacionEnCurso()` devuelve los tokens del fragmento y arrancamos
+   ahí. Si no, devuelve null y todo esto queda invisible. */
+const formOlvide = $("#formOlvide");
+const formClave  = $("#formClave");
+let tokenRecuperacion = null;
+
+function verFormulario(cual) {
+  const enCuenta = cual === "cuenta";
+  form.hidden       = !enCuenta;
+  $("#filaOlvide").hidden = !enCuenta || form.dataset.modo === "crear";
+  formOlvide.hidden = cual !== "olvide";
+  formClave.hidden  = cual !== "clave";
+  /* El título y la bajada son los de entrar/crear. Sobre el formulario de
+     recuperación quedaban diciendo "entrá para ver tus entradas" arriba de
+     "poné tu correo para cambiar la clave": dos instrucciones distintas
+     apiladas. Cada formulario trae su propia bajada. */
+  $("#entrarTitulo").hidden = !enCuenta;
+  $("#entrarBajada").hidden = !enCuenta;
+}
+
+const errorEn = (id, msg) => {
+  const p = $(id);
+  p.hidden = !msg;
+  p.textContent = msg || "";
+};
+
+$("#btnOlvide").addEventListener("click", () => {
+  // El correo que ya escribió se lleva: volver a pedírselo es tratar de
+  // desmemoriado a quien justamente vino porque se olvidó algo.
+  $("#oMail").value = $("#fMail").value.trim();
+  errorEn("#olvideError", "");
+  $("#olvideListo").hidden = true;
+  verFormulario("olvide");
+  $("#oMail").focus();
+});
+
+$("#btnVolverEntrar").addEventListener("click", () => {
+  verFormulario("cuenta");
+  $("#fMail").focus();
+});
+
+formOlvide.addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!Cuenta) { errorEn("#olvideError", "No se pudo cargar la cuenta. Recargá la página."); return; }
+  const email = $("#oMail").value.trim();
+  $("#oMail").setAttribute("aria-invalid", String(!EMAIL_RE.test(email)));
+  if (!EMAIL_RE.test(email)) { errorEn("#olvideError", "Escribí un correo válido."); $("#oMail").focus(); return; }
+  errorEn("#olvideError", "");
+
+  const btn = $("#btnOlvideEnviar");
+  btn.disabled = true;
+  btn.textContent = "Mandando…";
+  try {
+    await Cuenta.recuperar(email);
+    /* El botón queda deshabilitado después de un envío exitoso. No es
+       adorno: sin eso, alguien que no ve llegar el mail aprieta cuatro
+       veces, se come el límite de GoTrue y entonces sí no le llega
+       ninguno. El aviso de abajo explica qué esperar. */
+    $("#olvideListo").hidden = false;
+    btn.textContent = "Link enviado";
+  } catch (err) {
+    errorEn("#olvideError", err.message);
+    btn.disabled = false;
+    btn.textContent = "Mandame el link";
+  }
+});
+
+formClave.addEventListener("submit", async e => {
+  e.preventDefault();
+  const clave = $("#cClave").value;
+  $("#cClave").setAttribute("aria-invalid", String(clave.length < 8));
+  if (clave.length < 8) {
+    errorEn("#claveError", "La contraseña tiene que tener al menos 8 caracteres.");
+    $("#cClave").focus();
+    return;
+  }
+  errorEn("#claveError", "");
+
+  const btn = $("#btnClaveGuardar");
+  btn.disabled = true;
+  btn.textContent = "Guardando…";
+  try {
+    await Cuenta.claveNueva(tokenRecuperacion, clave);
+    $("#cClave").value = "";
+    tokenRecuperacion = null;
+    verFormulario("cuenta");
+    avisar("Tu contraseña quedó cambiada. Ya estás adentro.");
+    pintar();
+  } catch (err) {
+    errorEn("#claveError", err.message);
+    /* Un token vencido o ya usado no se arregla reintentando: se vuelve a
+       pedir el link. Si lo dejáramos en esta pantalla, la persona apretaría
+       "Guardar" para siempre contra un token muerto. */
+    if (err.status === 401 || err.status === 403) {
+      tokenRecuperacion = null;
+      btn.disabled = true;
+      setTimeout(() => { verFormulario("olvide"); btn.disabled = false;
+                         btn.textContent = "Guardar y entrar"; }, 2200);
+      return;
+    }
+    btn.disabled = false;
+    btn.textContent = "Guardar y entrar";
+  }
 });
 
 form.addEventListener("submit", async e => {
@@ -457,5 +574,20 @@ document.addEventListener("click", e => {
   if (v) vincular(v.dataset.vincular, v);
 });
 
+/* ── el arranque ──
+   Antes de pintar nada se mira si la página abrió desde el link del correo.
+   Si abrió así, la sesión que hubiera guardada no importa: quien llega con
+   ese link viene a cambiar la contraseña, y mostrarle sus compras lo dejaría
+   sin entender qué pasó con el link que apretó. */
+if (Cuenta) tokenRecuperacion = Cuenta.recuperacionEnCurso();
+verFormulario(tokenRecuperacion ? "clave" : "cuenta");
 pintar();
+if (tokenRecuperacion) {
+  /* pintar() esconde la caja de entrar cuando encuentra una sesión
+     guardada. Acá manda el link: puede ser el teléfono de alguien que
+     seguía logueado y aun así pidió cambiar la clave. */
+  $("#entrar").hidden = false;
+  verFormulario("clave");
+  $("#cClave").focus();
+}
 })();

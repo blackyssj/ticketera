@@ -5,11 +5,18 @@
    "listo"), /orden (guardar la compra) y /mis-entradas (entrar, crear,
    listar). Sin dependencias: config.js antes, y nada más.
 
-   Qué es una cuenta acá: correo + contraseña, y punto. SIN verificación por
-   correo, porque no hay SMTP configurado en el proyecto y prometer un mail
-   que no sale sería dejar a la gente esperando un link que nunca llega. Por
-   lo mismo no hay "olvidé mi contraseña": la resetea soporte por WhatsApp.
-   El día que haya correo, las dos cosas se agregan acá y en la función.
+   Qué es una cuenta acá: correo + contraseña, y punto.
+
+   SÍ hay "olvidé mi contraseña" (recuperar / recuperacionEnCurso /
+   claveNueva). Lo manda GoTrue por el SMTP del proyecto, así que depende de
+   que ese SMTP esté configurado: si no lo está, el pedido contesta 200
+   igual y el correo no sale nunca. Antes de tocar esto, comprobar que
+   manda — es la clase de cosa que falla en silencio.
+
+   Lo que TODAVÍA no hay es verificación al crear la cuenta: la función
+   `cuenta` sigue creando con email_confirm=true, o sea que da por buena una
+   casilla que nadie comprobó. Ahora que hay correo se puede agregar, y es
+   un cambio en la función, no acá.
 
    Qué hace cada cosa y por dónde va:
      crear / vincular  → Edge Function `cuenta` (necesitan service_role:
@@ -95,11 +102,14 @@ function normalizar(j, emailRespaldo) {
    Devuelve (ok, status, cuerpo) sin tirar por el status: los errores de
    GoTrue se traducen uno por uno donde se llama. Sólo tira si no hubo
    respuesta —sin red, DNS caído, CORS—, y eso es otra cosa. */
-async function auth(ruta, cuerpo, token) {
+async function auth(ruta, cuerpo, token, metodo) {
   let r;
   try {
     r = await fetch(`${SB}/auth/v1/${ruta}`, {
-      method: "POST",
+      // PUT sólo lo usa la clave nueva: GoTrue cambia la contraseña con
+      // PUT /user y no con un POST, así que el método es un parámetro y no
+      // una constante. Todo lo demás sigue siendo POST.
+      method: metodo || "POST",
       headers: { apikey: ANON, "Content-Type": "application/json",
                  ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify(cuerpo || {}),
@@ -184,6 +194,72 @@ async function entrar(email, password) {
   return sesion();
 }
 
+/* ── pedir el correo de recuperación ──
+   GoTrue manda el mail y contesta 200 SIEMPRE, exista o no ese correo.
+   Eso no es un descuido suyo ni nuestro: contestar distinto convertiría
+   este formulario en un buscador de qué direcciones tienen cuenta. Por eso
+   la pantalla dice "si ese correo tiene cuenta, te llega un mail" y no
+   "listo, te lo mandamos" — la segunda sería una afirmación que no podemos
+   sostener.
+
+   El `redirect_to` es a dónde lleva el link del correo. Tiene que estar en
+   la lista de URLs permitidas del proyecto o GoTrue lo ignora y manda al
+   Site URL, que es otra pantalla y no sabe qué hacer con el token. */
+async function recuperar(email) {
+  const r = await auth("recover", {
+    email: String(email || "").trim().toLowerCase(),
+    // Vuelve a esta misma pantalla: es donde el comprador entra, así que
+    // después de cambiar la clave ya está en su lugar y con la sesión
+    // abierta. Una pantalla aparte lo dejaría logueado en el aire.
+    redirect_to: `${location.origin}/mis-entradas`,
+  });
+  if (!r.ok) {
+    if (r.status === 429) throw fallo("Demasiados intentos. Esperá un rato antes de volver a pedirlo.", 429);
+    throw fallo(motivoAuth(r.cuerpo) || "No pudimos mandar el correo. Probá de nuevo.", r.status);
+  }
+  return true;
+}
+
+/* ── el token que viene en el link del correo ──
+   GoTrue lo deja en el fragmento (`#access_token=…&type=recovery`), no en
+   la query. El fragmento no viaja al servidor, que es justamente lo que se
+   quiere de un token: no queda en los logs de nadie.
+
+   Se limpia de la barra apenas se lee. Si se deja, un F5 reintenta con un
+   token ya gastado y la pantalla dice "el link venció" cuando en realidad
+   ya se había usado bien. */
+function recuperacionEnCurso() {
+  const h = new URLSearchParams(String(location.hash || "").replace(/^#/, ""));
+  if (h.get("type") !== "recovery" || !h.get("access_token")) return null;
+  /* Los DOS tokens. El access_token cambia la contraseña; el refresh_token
+     es el que deja la sesión viva después. Sin él la sesión se muere en una
+     hora sin poder renovarse, y el comprador que acaba de recuperar su
+     cuenta tendría que volver a entrar sin entender por qué. */
+  const par = { access_token: h.get("access_token"),
+                refresh_token: h.get("refresh_token") || "",
+                expires_in: Number(h.get("expires_in")) || 3600 };
+  history.replaceState(null, "", location.pathname + location.search);
+  return par;
+}
+
+/* ── poner la clave nueva ──
+   El token del correo alcanza para cambiar la contraseña y nada más. Si
+   sale bien, GoTrue devuelve el usuario y la sesión queda abierta con ese
+   mismo token: el comprador entra sin volver a escribir nada. */
+async function claveNueva(par, password) {
+  const r = await auth("user", { password: String(password || "") },
+                       par.access_token, "PUT");
+  if (!r.ok) {
+    if (r.status === 401 || r.status === 403)
+      throw fallo("Ese link venció o ya se usó. Pedí uno nuevo.", r.status);
+    if (r.status === 422)
+      throw fallo("Esa contraseña es muy corta. Usá al menos 8 caracteres.", 422);
+    throw fallo(motivoAuth(r.cuerpo) || "No pudimos cambiar la contraseña.", r.status);
+  }
+  guardar(normalizar({ ...par, user: r.cuerpo }, r.cuerpo?.email || ""));
+  return sesion();
+}
+
 /* ── crear ──
    La función crea el usuario, abre la sesión y —si vino orden_id— guarda
    esa compra en la cuenta nueva. Devuelve la sesión ya guardada y si la
@@ -246,5 +322,6 @@ async function misCompras() {
   return Array.isArray(j) ? j : [];
 }
 
-window.Cuenta = { sesion, token, entrar, crear, vincular, salir, misCompras };
+window.Cuenta = { sesion, token, entrar, crear, vincular, salir, misCompras,
+                  recuperar, recuperacionEnCurso, claveNueva };
 })();
