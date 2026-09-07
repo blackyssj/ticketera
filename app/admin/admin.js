@@ -121,8 +121,16 @@ function arrancarApp() {
   $("#pantallaEntrar").hidden = true;
   $("#app").hidden = false;
   $("#yo").textContent = `${S.yo.nombre} · ${S.yo.rol}`;
-  const mias = PANTALLAS.filter(p =>
+  let mias = PANTALLAS.filter(p =>
     p.roles.includes(S.yo.rol) && (!p.plataforma || S.plataforma));
+  /* Para una cuenta de TICKETAZO, Plataforma va primera y es la que abre.
+     Las otras pestañas son de un organizador vacío —el nuestro no vende
+     nada— así que aterrizar en "Eventos" es aterrizar en una lista sin
+     nada, que parece un sistema roto. */
+  if (S.plataforma) {
+    mias = mias.slice().sort((a, b) => (b.plataforma ? 1 : 0) - (a.plataforma ? 1 : 0));
+    if (!S.pantalla) S.pantalla = "plataforma";
+  }
   $("#tabs").innerHTML = mias.map(p =>
     `<button data-p="${p.id}"${p.id === S.pantalla ? ' aria-current="page"' : ""}>${esc(p.txt)}</button>`
   ).join("");
