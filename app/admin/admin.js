@@ -4042,6 +4042,11 @@ async function pantallaPlataforma() {
 
   const d = rp.data || {}, t = d.total || {}, cl = d.clientes || [];
   const pagos = rg.error ? [] : (rg.data || []);
+  const pctPas = Number(d.costo_pct || 0);
+  /* Qué parte de lo que facturamos se va en procesar. Es el número que
+     dice si la tarifa alcanza, y no se ve en ninguna otra pantalla. */
+  const mordida = Number(t.nuestro) > 0
+    ? Math.round(Number(t.costo_pasarela) / Number(t.nuestro) * 100) : 0;
 
   $("#main").innerHTML = `
     <div class="cab-seccion"><h2>Plataforma</h2>
@@ -4056,7 +4061,6 @@ async function pantallaPlataforma() {
       </div>
       <dl class="plat-cifras">
         <div><dt>Cobrado a compradores</dt><dd>${bs(t.cobrado)}</dd></div>
-        <div><dt>Nuestra comisión</dt><dd class="ok">${bs(t.nuestro)}</dd></div>
         <div><dt>De los clientes</dt><dd>${bs(t.del_cliente)}</dd></div>
         <div class="tenue"><dt>Ya girado</dt><dd>−${bs(t.girado)}</dd></div>
         <div><dt>Falta girarles</dt><dd>${bs(t.por_girar)}</dd></div>
@@ -4064,11 +4068,37 @@ async function pantallaPlataforma() {
       </dl>
     </section>
 
+    <section class="tarjeta plat-cuadre">
+      <div>
+        <h3 class="ok">${bs(t.margen)}</h3>
+        <p class="ayuda">Lo que nos queda de verdad: ${bs(t.nuestro)} que
+          facturamos menos ${bs(t.costo_pasarela)} que se lleva la pasarela.
+          ${mordida ? `El <b>${mordida}%</b> de nuestra comisión se va en procesar.` : ""}</p>
+      </div>
+      <dl class="plat-cifras">
+        <div><dt>Nuestra comisión</dt><dd>${bs(t.nuestro)}</dd></div>
+        <div class="tenue"><dt>Pasarela (${(pctPas * 100).toFixed(2)}% de lo cobrado)</dt>
+          <dd>−${bs(t.costo_pasarela)}</dd></div>
+        <div><dt>Nos queda</dt><dd class="ok">${bs(t.margen)}</dd></div>
+      </dl>
+      <label class="liq-auto-min">
+        <span>La pasarela nos cobra</span>
+        <input id="pctPasarela" inputmode="decimal" value="${(pctPas * 100).toFixed(2)}" size="5">
+        <span>% de lo cobrado</span>
+        <button type="button" class="btn plano chico" id="btnPctPasarela">Guardar</button>
+      </label>
+      <p class="ayuda">Hoy la pasarela acredita el monto entero al monedero y
+        cobra por fuera, así que este costo se calcula, no se descuenta.
+        Cuando lo empiece a retener, el número del cuadre de arriba se va a
+        mover y va a ser por esto.</p>
+    </section>
+
     <h3 class="titulo-bloque">Por cliente</h3>
     <div class="tabla-scroll">
       <table class="tabla">
         <thead><tr><th>Cliente</th><th>Tarifa</th><th class="num">Entradas</th>
-          <th class="num">Cobrado</th><th class="num">Nuestro</th>
+          <th class="num">Cobrado</th><th class="num">Comisión</th>
+          <th class="num">Pasarela</th><th class="num">Nos queda</th>
           <th class="num">Girado</th><th class="num">Falta</th><th>Giro</th></tr></thead>
         <tbody>${cl.map(c => {
           const falta = Number(c.del_cliente) - Number(c.girado);
@@ -4079,7 +4109,9 @@ async function pantallaPlataforma() {
               <em class="ayuda">${c.modo === "adentro" ? "descontada" : "sumada"}</em></td>
             <td class="num">${Number(c.entradas)}</td>
             <td class="num">${bs(c.cobrado)}</td>
-            <td class="num ok">${bs(c.nuestro)}</td>
+            <td class="num">${bs(c.nuestro)}</td>
+            <td class="num tenue">−${bs(c.costo_pasarela)}</td>
+            <td class="num ok">${bs(c.margen)}</td>
             <td class="num">${bs(c.girado)}</td>
             <td class="num${falta > 0 ? " plat-falta" : ""}">${bs(falta)}</td>
             <td>${c.automatico
@@ -4105,6 +4137,18 @@ async function pantallaPlataforma() {
 
     <p class="ayuda sep">Al ${fmtFH(d.al)}. Las órdenes de prueba de la pasarela
       no suman a ningún total.</p>`;
+
+  const bp = $("#btnPctPasarela");
+  if (bp) bp.onclick = async () => {
+    const v = Number($("#pctPasarela").value);
+    if (!(v >= 0 && v < 100)) { avisar("Poné el porcentaje, por ejemplo 1.5"); return; }
+    /* Se escribe en pantalla como porcentaje y se guarda como fracción: es
+       lo que la gente dice en voz alta contra lo que la cuenta necesita. */
+    const { data, error } = await sb.rpc("guardar_costo_pasarela", { p_pct: v / 100 });
+    if (error) { avisar(sinCodigo(error.message)); return; }
+    avisar(data.motivo || "Guardado.");
+    pantallaPlataforma();
+  };
 }
 
 window.ADMIN = { S, sb, mostrar, avisar, esc, bitacora: pantallaBitacora };
