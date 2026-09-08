@@ -226,7 +226,13 @@ function afiche(e, prioridad) {
             ${prioridad ? 'fetchpriority="high"' : ""}>`
     : "";
 
-  return `<div class="afiche">${papel}${img}${sello}</div>`;
+  /* La misma imagen, además, como variable: el renglón de la vidriera la
+     usa desenfocada de fondo para rellenar lo que el flyer entero no cubre
+     (ver .fecha .afiche::before). Va acá y no sólo en el renglón porque
+     el afiche no sabe en qué pieza vive, y una variable que nadie lee no
+     cuesta nada. */
+  const fondo = e.flyer_url ? ` style="--flyer:url(&quot;${esc(e.flyer_url)}&quot;)"` : "";
+  return `<div class="afiche"${fondo}>${papel}${img}${sello}</div>`;
 }
 
 /* El precio de la tarjeta. "desde 0 Bs" no es un precio, es una resta mal
@@ -436,7 +442,17 @@ function cartel(titulo, texto, accion) {
 function vigilarImagenes(zona) {
   zona.querySelectorAll("img").forEach(img => {
     const caer   = () => { img.remove(); };
-    const llegar = () => { img.classList.add("cargada"); };
+    const llegar = () => {
+      img.classList.add("cargada");
+      /* La proporción real del flyer, para el renglón de la vidriera: ahí
+         el afiche toma la forma de la imagen (una historia es 9:16, un
+         post 4:5) y así el flyer se ve ENTERO, con la marca de la esquina y
+         la banda de abajo. La tarjeta de la grilla y la entrada grande no
+         la leen: siguen recortando a 4:5, que es lo que las hace parejas. */
+      const caja = img.closest(".afiche");
+      if (caja && img.naturalWidth && img.naturalHeight)
+        caja.style.setProperty("--ratio", `${img.naturalWidth} / ${img.naturalHeight}`);
+    };
     img.addEventListener("error", caer, { once: true });
     img.addEventListener("load", llegar, { once: true });
     if (img.complete) (img.naturalWidth === 0 ? caer : llegar)();

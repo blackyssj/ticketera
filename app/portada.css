@@ -750,15 +750,30 @@ img{max-width:100%;display:block}
    porque ninguna fecha es "la otra".
 
    Acostada a todo ancho de ventana, no sólo en escritorio como la grande:
-   el flyer al costado, la perforación vertical, el talón al lado. El
-   afiche no fija su alto —lo fija el talón— así que el recorte sale más
-   alto que el 4:5 de la grilla, que a un flyer de historia (9:16) le
-   sienta mejor: se pierde menos arriba y abajo. En escritorio el talón se
-   achata y el mínimo de abajo le devuelve al afiche el 4:5. */
+   el flyer al costado, la perforación vertical, el talón al lado.
+
+   Y el flyer se ve ENTERO, no recortado. En la grilla el recorte a 4:5 es
+   lo que empareja veinte tarjetas; acá hay dos o tres renglones y lo que
+   el cliente quiere ver es su afiche: con el recorte, la marca de la
+   esquina de arriba y la banda de abajo eran lo primero que se perdía. El
+   afiche toma la proporción de la imagen (--ratio, la pone portada.js al
+   cargarla; 4:5 mientras viaja) y con eso fija el alto del renglón. Si el
+   talón resulta más alto que el flyer —un nombre de tres renglones al
+   lado de un post cuadrado— el afiche se estira, la imagen se queda
+   entera al centro y lo que sobra lo rellena el mismo flyer desenfocado y
+   oscurecido: la misma solución que la tarjeta de WhatsApp, y por el
+   mismo motivo. Dos bandas lisas se leen como una imagen mal cortada. */
 .fecha{flex-direction:row}
 .fecha .afiche{
-  flex:0 0 clamp(108px,32%,176px);aspect-ratio:auto;align-self:stretch;
+  flex:0 0 clamp(120px,38%,176px);
+  aspect-ratio:var(--ratio,4/5);align-self:stretch;
 }
+.fecha .afiche::before{
+  content:"";position:absolute;inset:-14px;z-index:1;pointer-events:none;
+  background:var(--flyer,none) center/cover;
+  filter:blur(14px) brightness(.45);
+}
+.fecha .afiche img{object-fit:contain;z-index:1}
 /* El papel sin flyer, a esta escala: sólo el día grande. El nombre ya va
    en el talón a diez centímetros y a cien píxeles de ancho sería una
    palabra partida en tres renglones. */
@@ -808,7 +823,6 @@ img{max-width:100%;display:block}
 .grilla.fechas{gap:14px;grid-template-columns:1fr}
 @media (min-width:720px){
   .grilla.fechas{grid-template-columns:repeat(2,1fr);gap:18px 20px}
-  .fecha .afiche{min-height:220px}
   .fecha .talon{padding:22px 24px 20px}
   .fecha .nombre{font-size:26px}
   .fecha .accion{margin-top:18px}
