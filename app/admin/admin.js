@@ -3689,7 +3689,7 @@ async function resolverRevision(ordenId, decision, motivo) {
    Nada de los `if` de rol de acá es seguridad: el que llegue por consola
    se choca con la función o con la RLS, que son las que deciden. */
 
-const EQ = { gente: [], editando: null, alta: false, clave: null, eventos: [] };
+const EQ = { gente: [], editando: null, alta: false, clave: null, eventos: [], busca: "" };
 
 const ROLES_TXT = { admin: "Administrador", staff: "Staff",
                     rrpp: "Relacionador", portero: "Portero" };
@@ -3741,6 +3741,7 @@ async function pantallaEquipo(opts) {
   $("#main").innerHTML = `<p class="cargando">Cargando el equipo…</p>`;
   EQ.editando = null;
   EQ.alta = false;
+  EQ.busca = "";
   if (!(opts && opts.mantenerClave)) EQ.clave = null;
   /* El filtro por organizador va del lado del servidor aunque la RLS ya
      lo haga: es la misma regla de siempre —PostgREST corta en 1000 filas
@@ -3766,10 +3767,81 @@ async function pantallaEquipo(opts) {
   pintarEquipo();
 }
 
+/* ── el buscador ──
+   Con 115 relacionadores, encontrar a uno era bajar con la rueda hasta
+   verlo. Filtra lo que YA está cargado: la pantalla se trae el equipo
+   entero de una, así que ir al servidor por cada tecla sería pedir de
+   nuevo lo que está en memoria.
+
+   Sin tildes de los dos lados. Media Bolivia se apellida Núñez o Áñez, y
+   un buscador donde hay que acertar el acento para encontrar a alguien es
+   un buscador que se usa una vez. Por palabras sueltas y en cualquier
+   orden: «perez juan» encuentra a Juan Pablo Pérez.
+
+   Busca también por código y por correo, que es como llega el dato cuando
+   alguien reclama: «no me llegó a tal correo» o «mi link dice ?r=esto». */
+const sinTildes = s => String(s || "").normalize("NFD")
+  .replace(/\p{M}/gu, "").toLowerCase();
+
+function equipoFiltrado() {
+  const q = sinTildes(EQ.busca).trim();
+  if (!q) return EQ.gente;
+  const partes = q.split(/\s+/);
+  return EQ.gente.filter(p => {
+    /* Al que se está editando no se lo esconde nunca. Si desapareciera
+       mientras alguien escribe, el formulario abierto se iría con él y
+       parecería que se perdió lo que estaba cargando. */
+    if (EQ.editando === p.id) return true;
+    const heno = sinTildes(
+      `${p.nombre} ${p.slug || ""} ${p.email_contacto || ""} ${ROLES_TXT[p.rol] || p.rol}`);
+    return partes.every(t => heno.includes(t));
+  });
+}
+
+function listaEquipoHTML() {
+  /* La lista siempre te incluye a vos, así que vacía —sin filtro puesto—
+     significa que la sesión dejó de resolver un perfil: no es un estado
+     normal y no se puede confundir con «no encontré a nadie». */
+  if (!EQ.gente.length) return `<p class="vacio">No aparece nadie, ni siquiera vos.
+    Salí y volvé a entrar.</p>`;
+  const v = equipoFiltrado();
+  if (!v.length) return `<p class="vacio">Nadie coincide con
+    «${esc(EQ.busca.trim())}». Probá con parte del nombre, el código o el correo.</p>`;
+  return `<ul class="lista" id="listaEquipo">${v.map(filaPersona).join("")}</ul>`;
+}
+
+function cuentaEquipoTXT() {
+  const n = equipoFiltrado().length, t = EQ.gente.length;
+  if (!t) return "";
+  return n === t ? `${t} ${t === 1 ? "persona" : "personas"}` : `${n} de ${t}`;
+}
+
+/* Redibuja SOLO la lista. La pantalla entera se rehace al editar, al dar de
+   alta y al mostrar una clave; si el buscador pasara por ahí, cada tecla
+   destruiría el input y el foco se perdería a mitad de palabra. */
+function pintarListaEquipo() {
+  const z = $("#zonaLista");
+  if (!z) return;
+  z.innerHTML = listaEquipoHTML();
+  const cuenta = $("#equipoCuenta");
+  if (cuenta) cuenta.textContent = cuentaEquipoTXT();
+  const lista = $("#listaEquipo");
+  if (lista) lista.onclick = clicEnEquipo;
+  /* Los links de copiar y el formulario de edición viven ADENTRO de la
+     lista: al reemplazarla se van sus handlers y hay que volver a atarlos. */
+  cablearCopiar();
+  if (EQ.editando) cablearEdicion();
+}
+
 function pintarEquipo() {
   $("#main").innerHTML = `
     <div class="cab-seccion">
       <h2>Equipo</h2>
+      <input type="search" class="busca-equipo" id="buscaEquipo" value="${esc(EQ.busca)}"
+             placeholder="Buscar por nombre, código o correo"
+             autocomplete="off" autocapitalize="none" spellcheck="false"
+             aria-label="Buscar en el equipo">
+      <span class="equipo-cuenta" id="equipoCuenta">${cuentaEquipoTXT()}</span>
       <button class="btn primario" id="btnAlta">Dar de alta</button>
     </div>
     <p class="ayuda equipo-intro">Cada persona entra al panel con su usuario y su
@@ -3777,13 +3849,11 @@ function pintarEquipo() {
       se pierde se resetea desde acá.</p>
     <div id="zonaClave">${bloqueClave()}</div>
     <div id="zonaAlta">${EQ.alta ? formAlta() : ""}</div>
-    ${EQ.gente.length ? `<ul class="lista" id="listaEquipo">${
-      EQ.gente.map(filaPersona).join("")}</ul>`
-      /* La lista siempre te incluye a vos, así que vacía significa que la
-         sesión dejó de resolver un perfil: no es un estado normal. */
-      : `<p class="vacio">No aparece nadie, ni siquiera vos. Salí y volvé a entrar.</p>`}`;
+    <div id="zonaLista">${listaEquipoHTML()}</div>`;
 
   $("#btnAlta").onclick = () => { EQ.alta = !EQ.alta; EQ.editando = null; pintarEquipo(); };
+  const busca = $("#buscaEquipo");
+  busca.oninput = () => { EQ.busca = busca.value; pintarListaEquipo(); };
   cablearCopiar();
   const okClave = $("#btnClaveOk");
   if (okClave) okClave.onclick = () => { EQ.clave = null; pintarEquipo(); };
