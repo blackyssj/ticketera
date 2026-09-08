@@ -95,11 +95,15 @@ Deno.serve(async (req) => {
         }
       });
 
-      const venta = desde === null ? "agotado"
-        : (hayCupo && dispTotal <= POCAS_ABS && dispTotal <= cupoTotal * POCAS_PCT) ? "ultimas"
-        : "abierta";
-
       const o = e.organizadores;
+
+      /* "Últimas entradas" no dice el número pero dice que hay pocas, y el
+         organizador que pidió esconder el cupo (muestra_cupo en false) pidió
+         esconder eso. "Agotado" sí sale: es un estado, no una cuenta, y
+         mandar a alguien a una página que no vende es peor que avisarle. */
+      const venta = desde === null ? "agotado"
+        : (o.muestra_cupo !== false && hayCupo && dispTotal <= POCAS_ABS && dispTotal <= cupoTotal * POCAS_PCT) ? "ultimas"
+        : "abierta";
       const p = partesFecha(e.fecha);
       const hora = String(e.hora_inicio).slice(0, 5);
       return {

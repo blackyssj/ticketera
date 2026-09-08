@@ -557,10 +557,15 @@ function tarjetaTipo(t, tope, usadas) {
      hay cuenta. Y cuando quedan pocas, el número es el argumento — "quedan
      6" vende, "últimas unidades" no. */
   const sinTope = t.cupo >= SIN_TOPE;
-  const cls = t.cupo === 0 ? "agotado" : (!sinTope && t.cupo <= 20) ? "poco" : "";
+  /* Salvo que el organizador no quiera el número en la calle
+     (muestra_cupo en false): ahí la tarjeta calla la cuenta y deja sólo
+     "Agotado", que no es una cifra sino el motivo por el que el + no anda.
+     El cupo sigue en `t.cupo` para el stepper; lo que no hay es renglón. */
+  const callar = D.organizador.muestra_cupo === false;
+  const cls = t.cupo === 0 ? "agotado" : (!callar && !sinTope && t.cupo <= 20) ? "poco" : "";
   const partes = [];
   if (t.cupo === 0) partes.push("Agotado");
-  else if (!sinTope) partes.push(t.cupo <= 20 ? `Quedan ${t.cupo}` : `${t.cupo} disponibles`);
+  else if (!sinTope && !callar) partes.push(t.cupo <= 20 ? `Quedan ${t.cupo}` : `${t.cupo} disponibles`);
   if (esMesa && t.manillas > 1) partes.push(`entran ${t.manillas}`);
   const txtCupo = partes.join(" · ");
 

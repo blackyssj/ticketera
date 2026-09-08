@@ -8,9 +8,12 @@ begin
   -- organizadores ES el tenant. contactos (0047) y cuenta_intentos (0049)
   -- son de la plataforma y no de un cliente: un pedido de "quiero vender
   -- con ustedes" y un intento de crear cuenta de comprador no pertenecen
-  -- a ningún organizador. Todo lo demás lleva organizador_id not null.
+  -- a ningún organizador. plataforma_operador y plataforma_config (0069,
+  -- 0070) son la mesa de TICKETAZO que mira a TODOS los clientes: atarlas
+  -- a uno sería el error. Todo lo demás lleva organizador_id not null.
   where t.schemaname = 'public'
-    and t.tablename not in ('organizadores', 'contactos', 'cuenta_intentos')
+    and t.tablename not in ('organizadores', 'contactos', 'cuenta_intentos',
+                            'plataforma_operador', 'plataforma_config')
     and not exists (select 1 from information_schema.columns c
                      where c.table_schema = 'public' and c.table_name = t.tablename
                        and c.column_name = 'organizador_id' and c.is_nullable = 'NO');

@@ -121,7 +121,11 @@ Deno.serve(async (req) => {
                      /* 'adentro' = el cargo sale del precio publicado. La página
                         lo necesita para NO anunciar un cargo que el comprador no
                         va a pagar, y para que el total sea el precio de la lista. */
-                     comision_modo: o.comision_modo ?? "sobre" },
+                     comision_modo: o.comision_modo ?? "sobre",
+                     /* false = el organizador no quiere "Quedan N" en la
+                        calle. El cupo viaja igual (el stepper lo necesita);
+                        lo que cambia es que la página no lo pinta. */
+                     muestra_cupo: o.muestra_cupo !== false },
       evento: {
         id: e.id,
         marca_1: partes[0],
