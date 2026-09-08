@@ -470,29 +470,27 @@ img{max-width:100%;display:block}
   font-size:23px;line-height:.96;letter-spacing:-.024em;text-transform:uppercase;
 }
 .donde{color:var(--hueso-64);line-height:1.35}
-/* margin-top:auto — el pie del talón se planta abajo, así una tarjeta sin
-   flyer (que no repite el nombre) queda de la misma altura que una con. */
-.pie-talon{
-  display:flex;align-items:baseline;gap:12px;
-  margin-top:auto;padding-top:14px;
-}
-/* En la grilla el pie va apilado: el lugar en su renglón y el precio en el
-   suyo. Compartiendo renglón, en una columna de 273px el lugar se cortaba
-   en "FEXPO '26 · SAN…" — catorce caracteres no distinguen la Fexpo de la
-   Casa de la Cultura ni del Club Social Norte, así que era un renglón que
-   ocupaba lugar sin decir nada. Y en Santa Cruz el lugar es la mitad de lo
-   que dice qué clase de noche es. */
-.evento .pie-talon{
-  flex-direction:column;align-items:flex-start;gap:5px;
-  font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
-}
+/* En la grilla el lugar va en su propio renglón, entero. Compartiendo
+   renglón con el precio, en una columna de 273px se cortaba en "FEXPO '26
+   · SAN…" — catorce caracteres no distinguen la Fexpo de la Casa de la
+   Cultura ni del Club Social Norte. Y en Santa Cruz el lugar es la mitad
+   de lo que dice qué clase de noche es.
+   margin-top:auto — se planta abajo del talón, así una tarjeta sin flyer
+   (que no repite el nombre) queda de la misma altura que una con. */
 .evento .donde{
-  max-width:100%;font-size:10.5px;letter-spacing:.05em;
+  display:block;max-width:100%;margin-top:auto;padding-top:12px;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-/* El `margin-left:auto` que en un renglón mandaba el precio a la derecha,
-   en una columna lo mandaría al canto: acá va alineado con todo lo demás. */
-.evento .desde{margin-left:0}
+/* La fila de la acción de la entrada grande, a escala de tarjeta: el
+   botón y el precio en un renglón; donde no entran, el precio arriba. */
+.evento .accion{margin-top:12px;gap:8px 12px}
+.evento .ver{min-height:40px;padding:0 14px;font-size:11px}
+.evento .desde{
+  margin-left:0;display:inline-flex;align-items:baseline;gap:6px;
+  font-size:10px;letter-spacing:.14em;color:var(--hueso-40);
+}
+.evento .desde b{font-size:16px;letter-spacing:-.01em;text-transform:none;color:var(--hueso)}
 /* margin-left:auto y no sólo el flex:1 del vecino: cuando el talón de la
    entrada grande no lleva organizador —porque ya está en el papel— el
    precio se quedaba pegado a la izquierda, que no es donde se lo busca. */
@@ -551,14 +549,14 @@ img{max-width:100%;display:block}
 @container (max-width:210px){
   .evento .talon{padding:12px 12px 13px}
   .evento .cuando{font-size:10.5px;letter-spacing:.01em;gap:6px}
-  /* La flecha se va: a este ancho el renglón no da para las dos cosas, y de
-     las dos la fecha es la que informa. La tarjeta entera sigue siendo el
-     link, así que no se pierde nada de lo que se puede tocar. */
-  .evento .cuando .flecha{display:none}
   .evento .nombre{margin-top:6px;font-size:16px;letter-spacing:-.02em}
-  .evento .pie-talon{padding-top:10px;gap:4px}
-  .evento .donde{font-size:9.5px}
-  .evento .desde{font-size:10px}
+  .evento .donde{padding-top:10px;font-size:9.5px}
+  /* El botón achica pero se queda: a 160px es lo que dice que la tarjeta
+     se compra. El precio se le sube arriba solo (wrap-reverse). */
+  .evento .accion{margin-top:9px;gap:6px 8px}
+  .evento .ver{min-height:36px;padding:0 10px;font-size:10px;letter-spacing:.08em}
+  .evento .desde{font-size:9.5px}
+  .evento .desde b{font-size:14px}
   /* El papel también achica: a 160px un nombre de 30px son tres renglones
      partidos, y 20px de aire a cada lado se comen un cuarto de la pieza. */
   .papel{padding:14px 12px}
@@ -702,7 +700,7 @@ img{max-width:100%;display:block}
   color:var(--fluor);
   transition:background-color .22s ease,color .22s ease;
 }
-.destacado:hover .ver,.fecha:hover .ver{background:var(--fluor);color:var(--tinta)}
+.destacado:hover .ver,.fecha:hover .ver,.evento:hover .ver{background:var(--fluor);color:var(--tinta)}
 
 /* De 860px para arriba la entrada se acuesta: flyer a la izquierda, troquel
    vertical, talón a la derecha. Es la misma pieza girada, no otra tarjeta.

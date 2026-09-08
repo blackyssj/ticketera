@@ -185,7 +185,20 @@ input{font:inherit}
 }
 .hero-compartir svg{width:15px;height:15px;flex:0 0 auto}
 .hero-compartir:hover{color:var(--espuma)}
-.hero.compacto .hero-arte,.hero.compacto .hero-compartir{display:none}
+/* El camino a las otras fechas del organizador, vestido igual que
+   compartir: un link de texto, no otro botón compitiendo con "comprar".
+   Va debajo y en su propio renglón (grid-column entero); el margen de
+   arriba compensa el negativo que compartir deja abajo. app.js lo abre
+   sólo si hay más de una fecha a la venta. */
+.hero-fechas{
+  grid-column:1 / -1;justify-self:start;display:inline-flex;align-items:center;
+  min-height:44px;margin:14px 0 -10px -8px;padding:0 8px;
+  font-family:var(--dato);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--dorado);text-decoration:none;
+  transition:color .16s ease;
+}
+.hero-fechas:hover{color:var(--espuma)}
+.hero.compacto .hero-arte,.hero.compacto .hero-compartir,.hero.compacto .hero-fechas{display:none}
 
 /* ─── esqueleto de carga ───
    Mientras la función `evento` contesta (cerca de un segundo) la página no

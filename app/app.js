@@ -428,6 +428,18 @@ function pintarHero() {
     afiche.src = arte;
     afiche.hidden = false;
   }
+  /* Las otras fechas del organizador, si las hay. `fechas` cuenta las
+     publicadas y con fase abierta —las que la vidriera de verdad muestra—
+     así el link nunca lleva a una vidriera con esta sola. Con el ?r= del
+     relacionador si vino con uno: el que pasea a la otra noche sigue
+     comprándole a la misma persona. */
+  const otras = $("#heroFechas");
+  if (otras && Number(D.organizador.fechas) > 1) {
+    otras.href = `/${encodeURIComponent(CFG.ORGANIZADOR)}` +
+                 (REL ? `?r=${encodeURIComponent(REL)}` : "");
+    otras.textContent = `Ver todas las fechas de ${D.organizador.nombre} →`;
+    otras.hidden = false;
+  }
   document.title = `${e.marca_1} ${e.marca_2} — ${VOCAB.titulo}`;
   $("#faseChip").innerHTML = `<i></i>${esc(D.fase.nombre)} · ${esc(D.fase.hasta_txt)}`;
   /* La nota se arma con las partes que el organizador realmente cobra. Con

@@ -125,7 +125,11 @@ Deno.serve(async (req) => {
                      /* false = el organizador no quiere "Quedan N" en la
                         calle. El cupo viaja igual (el stepper lo necesita);
                         lo que cambia es que la página no lo pinta. */
-                     muestra_cupo: o.muestra_cupo !== false },
+                     muestra_cupo: o.muestra_cupo !== false,
+                     /* Cuántas fechas del organizador están a la venta, esta
+                        incluida. Con más de una, la página ofrece el camino
+                        a la vidriera; con una sola no hay a dónde ir. */
+                     fechas: Number(o.fechas ?? 1) },
       evento: {
         id: e.id,
         marca_1: partes[0],

@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=36">
+<link rel="stylesheet" href="/styles.css?v=37">
 </head>
 <body>
 
@@ -91,6 +91,12 @@
       <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10V2M5 4.5 8 1.5l3 3"/><path d="M3 8v5.5h10V8"/></svg>
       Compartir evento
     </button>
+    <!-- El camino a las otras fechas del mismo organizador. Nace oculto y
+         app.js lo abre sólo cuando hay más de una a la venta, con el ?r=
+         del relacionador puesto: la venta de la otra noche sigue siendo
+         suya. Existe por los links viejos, los de un evento solo — el que
+         llega por uno de esos no tenía cómo enterarse de que hay otra. -->
+    <a class="hero-fechas" id="heroFechas" hidden></a>
   </div>
   <!-- El borde entre el afiche y el cuerpo. Hay dos dibujos y se ve uno solo:
        la ola, que es la que va. El papel picado —el troquel de una entrada—
@@ -353,6 +359,6 @@
 <!-- La sesión del comprador. Antes de app.js: crearOrden le pide el token
      y la pantalla "listo" le pide crear/entrar/vincular. -->
 <script src="/cuenta.js?v=4"></script>
-<script src="/app.js?v=37"></script>
+<script src="/app.js?v=38"></script>
 </body>
 </html>

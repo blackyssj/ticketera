@@ -249,10 +249,15 @@ function precio(e) {
 const perf = `<div class="perf" aria-hidden="true"><i class="p1"></i><i class="p2"></i></div>`;
 
 /* ── la tarjeta de la grilla ──
-   Tres renglones en el talón y ni uno más. Es la diferencia con la
-   convención local, donde la tarjeta es el flyer y un botón que dice "ver
-   más": ahí hay que abrir el evento para saber qué día es. Acá la fecha se
-   lee sin abrir nada, y sigue siendo el flyer el que ocupa la tarjeta.
+   La fecha se lee sin abrir nada, y sigue siendo el flyer el que ocupa la
+   tarjeta: es la diferencia con la convención local, donde hay que abrir
+   el evento para saber qué día es. Pero el botón de "Ver entradas" volvió,
+   abajo del talón y no encima del flyer. Se había ido —la tarjeta entera
+   es el link, y una punta de flecha alcanzaba— hasta que un cliente miró
+   su segunda fecha en el teléfono y preguntó si esa se podía comprar: la
+   de arriba tenía botón y ésta no, y para el que compra un botón es la
+   señal de "esto se vende", no de "esto se abre". La flecha del renglón
+   de la fecha se va con eso: dos señales de lo mismo son una de más.
 
    El nombre se repite en el talón sólo cuando arriba hay una imagen. Sin
    flyer ya está en el papel, cuatro veces más grande, y repetirlo sesenta
@@ -281,11 +286,11 @@ function tarjeta(e, i) {
     ${afiche(e, i < 2)}
     ${perf}
     <div class="talon">
-      <div class="cuando"><span>${cuandoTxt(e)}<i class="hora"> · ${esc(e.hora)}</i></span>
-        <i class="flecha" aria-hidden="true"></i></div>
+      <div class="cuando"><span>${cuandoTxt(e)}<i class="hora"> · ${esc(e.hora)}</i></span></div>
       ${conFlyer ? `<h3 class="nombre">${esc(e.nombre)}</h3>` : ""}
-      <div class="pie-talon">
-        <span class="donde">${esc(e.lugar)}</span>
+      <span class="donde">${esc(e.lugar)}</span>
+      <div class="accion">
+        <span class="ver" aria-hidden="true">Ver entradas<i class="flecha"></i></span>
         ${precio(e)}
       </div>
     </div>
