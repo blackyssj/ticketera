@@ -1697,3 +1697,24 @@ body[data-filtro="1"] .puerta-visor::before{
    es un error —el envío sale igual— pero es la única señal de que hay gente
    afuera, y sin ella el panel dice "108 enviados" y nadie busca a los 3. */
 .reparto .ayuda.aviso{display:block;margin-top:12px;color:var(--aviso);line-height:1.6}
+
+/* ── el buscador del equipo ──
+   Al lado del título y no arriba de la lista: con 115 personas, lo primero
+   que hace el que entra es buscar a alguien, y el campo tiene que estar
+   donde el ojo ya está.
+
+   Solo tamaño: el aspecto —fondo hundido, borde, foco rojo— lo pone la
+   regla global de `input`. Repetirlo acá sería un segundo lugar donde
+   cambiar el color el día que cambie la paleta, y ya nos pasó con Amstel.
+
+   Crece con el espacio que sobra y cede antes que el botón de dar de alta,
+   que es el que no puede desaparecer. */
+.busca-equipo{
+  flex:1 1 240px;min-width:170px;max-width:380px;
+  padding:9px 12px;font-family:var(--dato);font-size:13.5px;
+}
+/* Cuánta gente se está viendo. En voz baja: es una referencia al pasar, no
+   un dato que haya que leer. Se va en pantallas angostas, donde el espacio
+   lo necesita el campo. */
+.equipo-cuenta{font-family:var(--dato);font-size:12px;color:var(--txt-3);white-space:nowrap}
+@media (max-width:620px){ .equipo-cuenta{display:none} }
