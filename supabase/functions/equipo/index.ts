@@ -72,6 +72,10 @@ const ROLES = ["admin", "staff", "rrpp", "portero"];
    crudo de Postgres, que el organizador no puede leer. */
 const USUARIO_RE = /^[a-z0-9.-]{3,30}$/;
 const SLUG_RE    = /^[a-z0-9-]{2,30}$/;
+/* Flojo a proposito, igual que el check de 0063: validar correos "bien"
+   termina rechazando direcciones legitimas. Lo que si atrapa es el error
+   real de esta pantalla, que es escribir un nombre o un telefono ahi. */
+const CORREO_RE  = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const UUID_RE    = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /* El correo es sintético, igual que en el script y en la pantalla de
@@ -162,6 +166,11 @@ async function crear(b: any, yo: any) {
   if (slug !== null && !SLUG_RE.test(slug)) return mal(
     "El código del relacionador va en minúsculas, entre 2 y 30 caracteres, y solo admite letras, números y '-'.");
 
+  const correo = b.email_contacto == null || String(b.email_contacto).trim() === ""
+    ? null : String(b.email_contacto).trim().toLowerCase();
+  if (correo !== null && !CORREO_RE.test(correo)) return mal(
+    "Ese correo no tiene forma de correo. Dejalo vacio si no lo tenes.");
+
   const comision = normalizarComision(b.comision_entrada);
   if (comision === false) return mal(
     "La comisión es un monto en Bs por entrada: un número de 0 para arriba, o vacío.");
@@ -196,7 +205,7 @@ async function crear(b: any, yo: any) {
       headers: { Prefer: "return=representation" },
       body: JSON.stringify({
         id: uid, organizador_id: yo.organizador_id, nombre, rol,
-        slug, comision_entrada: comision,
+        slug, comision_entrada: comision, email_contacto: correo,
       }),
     });
     return json({ ok: true, usuario, clave, perfil: fila?.[0] ?? null });

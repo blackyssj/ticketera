@@ -3613,7 +3613,7 @@ async function pantallaEquipo(opts) {
      deja escrito acá qué lista se está pidiendo. */
   const [gente, evs] = await Promise.all([
     sb.from("perfiles")
-      .select("id,nombre,rol,activo,slug,comision_entrada")
+      .select("id,nombre,rol,activo,slug,comision_entrada,email_contacto")
       .eq("organizador_id", S.yo.organizador_id)
       .order("activo", { ascending: false })
       .order("nombre"),
@@ -3742,6 +3742,11 @@ function formEdicion(p, yo) {
       </select>
       ${yo ? `<em class="ayuda">A vos mismo no: así es como un organizador se
         queda sin ningún administrador.</em>` : ""}</label>
+    <label><span>Correo</span>
+      <input id="edCorreo" type="email" value="${esc(p.email_contacto || "")}"
+             placeholder="sin correo" autocapitalize="none" autocomplete="off">
+      <em class="ayuda">Para mandarle su link. <b>Cambiarlo no le cambia el acceso
+        al panel</b>: con lo que entra es su usuario, y eso no se toca desde acá.</em></label>
     <label><span>Código de relacionador</span>
       <input id="edSlug" value="${esc(p.slug || "")}" placeholder="sin código"
              pattern="[a-z0-9\\-]{2,30}" autocapitalize="none" autocomplete="off">
@@ -3774,6 +3779,7 @@ function cablearEdicion() {
     const slug = $("#edSlug").value.trim().toLowerCase();
     const com  = $("#edComision").value.trim();
     const rol  = $("#edRol").value;
+    const correo = $("#edCorreo").value.trim().toLowerCase();
 
     if (slug && !/^[a-z0-9-]{2,30}$/.test(slug)) {
       err.textContent = "El código va en minúsculas, entre 2 y 30 caracteres, y solo admite letras, números y guiones.";
@@ -3791,8 +3797,9 @@ function cablearEdicion() {
          con la base intacta. Ya nos pasó con el arte. */
       const { data: filas, error } = await sb.from("perfiles")
         .update({ slug: slug || null,
-                  comision_entrada: com === "" ? null : Number(com) })
-        .eq("id", p.id).select("id,nombre,rol,activo,slug,comision_entrada");
+                  comision_entrada: com === "" ? null : Number(com),
+                  email_contacto: correo || null })
+        .eq("id", p.id).select("id,nombre,rol,activo,slug,comision_entrada,email_contacto");
       if (error) throw new Error(errorDePerfil(error));
       if (!filas || !filas.length) throw new Error(
         "La base no dejó guardar el cambio: no se modificó nada.");
@@ -3819,7 +3826,14 @@ function cablearEdicion() {
    "perfiles_slug_uk"», que no le explica a nadie qué tiene que cambiar. */
 function errorDePerfil(error) {
   if (error.code === "23505") return "Ya hay alguien con ese código en tu equipo. Elegí otro.";
-  if (error.code === "23514") return "El código va en minúsculas, entre 2 y 30 caracteres, y solo admite letras, números y guiones.";
+  /* 23514 es "un check no pasó", y desde 0063 la fila tiene dos: el del
+     código y el del correo. Sin mirar cuál, el panel le echaba la culpa al
+     código siempre — o sea, mandaba a corregir el campo que estaba bien. */
+  if (error.code === "23514") {
+    return /email_contacto/.test(String(error.message))
+      ? "Ese correo no tiene forma de correo. Dejalo vacío si no lo tenés."
+      : "El código va en minúsculas, entre 2 y 30 caracteres, y solo admite letras, números y guiones.";
+  }
   return error.message;
 }
 
@@ -3839,6 +3853,11 @@ function formAlta() {
       <label><span>Nombre</span>
         <input id="alNombre" required maxlength="80" placeholder="Nicolás Vargas">
         <em class="ayuda">Como lo vas a reconocer en las listas de ventas.</em></label>
+      <label><span>Correo</span>
+        <input id="alCorreo" type="email" autocapitalize="none" autocomplete="off"
+               placeholder="opcional">
+        <em class="ayuda">Para mandarle su link de venta. <b>No es con lo que entra
+          al panel</b>: eso es el usuario de arriba. Vacío si solo usa WhatsApp.</em></label>
       <label><span>Rol</span>
         <select id="alRol">
           ${Object.keys(ROLES_TXT).map(r =>
@@ -3901,6 +3920,7 @@ function cablearAlta() {
     const esRrpp  = r === "rrpp";
     const sSlug   = esRrpp ? $("#alSlug").value.trim().toLowerCase() : "";
     const sCom    = esRrpp ? $("#alComision").value.trim() : "";
+    const sCorreo = $("#alCorreo").value.trim().toLowerCase();
 
     if (!/^[a-z0-9.-]{3,30}$/.test(usuario)) {
       err.textContent = "El usuario va en minúsculas, entre 3 y 30 caracteres, y solo admite letras, números, punto y guión.";
@@ -3921,6 +3941,7 @@ function cablearAlta() {
       const res = await llamarEquipo({
         accion: "crear", usuario, nombre, rol: r,
         slug: sSlug || null, comision_entrada: sCom === "" ? null : Number(sCom),
+        email_contacto: sCorreo || null,
       });
       EQ.clave = { titulo: `La clave de ${nombre}`, usuario: res.usuario, clave: res.clave };
       EQ.alta = false;
