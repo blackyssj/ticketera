@@ -33,6 +33,40 @@ function cargarImagen(url) {
   });
 }
 
+/* ── la firma de la ticketera ────────────────────────────────────
+   "powered by TICKETAZO", chica, abajo. La entrada es la pieza que más
+   viaja —se reenvía por WhatsApp, se muestra en la puerta, queda en el
+   rollo de fotos del teléfono— y es el único lugar donde la ticketera
+   puede decir su nombre sin pedirle nada a nadie ni tapar nada del
+   cliente. Chica de verdad: la letra mide el 3,6% del ancho de la
+   entrada, menos de la mitad del código que va debajo del QR. Sobre el arte del cliente va
+   en la esquina de abajo a la derecha —donde un afiche no pone nada que
+   importe— y con la misma sombra que el código, que ya demostró leerse
+   sobre cualquier fondo. En el diseño propio va centrada y limpia.
+
+   Se escribe con las dos partes que definen la marca —TICKET en crema,
+   AZO en fluor—, igual que en la barra de todas las páginas. Se dibuja
+   por segmentos midiendo cada uno, porque un canvas no sabe pintar dos
+   colores en un mismo fillText. */
+function firma(x, W, H, o) {
+  const s = Math.round(W * 0.036), chico = Math.round(s * 0.66);
+  const fDisplay = `800 ${s}px "Big Shoulders Display", "Archivo", "Inter Tight", sans-serif`;
+  const fMono    = `400 ${chico}px "DM Mono", monospace`;
+  x.save();
+  x.textAlign = "left"; x.textBaseline = "alphabetic";
+  x.font = fMono;    const wPor = x.measureText("powered by").width;
+  x.font = fDisplay; const wTicket = x.measureText("TICKET").width, wAzo = x.measureText("AZO").width;
+  const sep = s * 0.35, total = wPor + sep + wTicket + wAzo;
+  const x0 = o.centro ? (W - total) / 2 : W - W * 0.045 - total;
+  const y  = o.y != null ? o.y : H - W * 0.045;
+  if (o.sombra) { x.shadowColor = "rgba(0,0,0,.9)"; x.shadowBlur = W * 0.015; }
+  x.font = fMono;    x.fillStyle = "rgba(246,241,228,.8)"; x.fillText("powered by", x0, y);
+  x.font = fDisplay;
+  x.fillStyle = "#F6F1E4"; x.fillText("TICKET", x0 + wPor + sep, y);
+  x.fillStyle = "#FFE24B"; x.fillText("AZO", x0 + wPor + sep + wTicket, y);
+  x.restore();
+}
+
 /* Con arte subido: el QR va ENCIMA de la imagen del organizador, como en
    Bowie y BurTown. Mismas proporciones que allá — caja blanca del 52% del
    ancho desde el 29% de la altura — para que un arte hecho para Puerta sirva
@@ -66,6 +100,7 @@ async function sobreArte(t, evento, fase, arte) {
   x.fillText("#" + t.code, W / 2, by + caja + H * 0.055);
   x.font = `500 ${Math.round(W * 0.042)}px "Inter Tight", sans-serif`;
   x.fillText(t.cliente || "—", W / 2, by + caja + H * 0.055 + W * 0.075);
+  firma(x, W, H, { sombra: true });
   return c.toDataURL("image/png");
 }
 
@@ -142,6 +177,7 @@ async function dibujarTicket(t, evento, fase) {
   x.fillText((fase && fase.nombre) || "".toUpperCase(), W / 2, 1244);
   x.fillText("VÁLIDA PARA 1 INGRESO", W / 2, 1288);
 
+  firma(x, W, H, { centro: true, y: 1420 });
   return c.toDataURL("image/png");
 }
 
