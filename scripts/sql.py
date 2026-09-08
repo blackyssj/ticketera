@@ -14,7 +14,12 @@ from _api import REF, pat, request
 def main() -> int:
     if len(sys.argv) < 2:
         sys.exit("Uso: python3 scripts/sql.py archivo.sql")
-    sql = pathlib.Path(sys.argv[1]).read_text()
+    # encoding explicito: en Windows read_text() usa cp1252 y revienta con un
+    # UnicodeDecodeError en cualquier .sql que traiga un caracter de dibujo de
+    # cajas. Peor todavia cuando NO revienta: los acentos de las migraciones
+    # pasan como mojibake, y si van adentro de un string literal eso se guarda
+    # asi en la base.
+    sql = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
     codigo, cuerpo = request(
         f"https://api.supabase.com/v1/projects/{REF}/database/query", "POST",
         {"Authorization": f"Bearer {pat()}", "Content-Type": "application/json"},

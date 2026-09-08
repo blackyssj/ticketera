@@ -37,10 +37,10 @@ def pat() -> str:
         return os.environ["SUPABASE_PAT"].strip()
     local = pathlib.Path(__file__).resolve().parent.parent / ".pat"
     if local.exists():
-        return local.read_text().strip()
+        return local.read_text(encoding="utf-8").strip()
     f = pathlib.Path.home() / ".supabase_pat"
     if f.exists():
-        return f.read_text().strip()
+        return f.read_text(encoding="utf-8").strip()
     sys.exit("Falta el PAT. Exportá SUPABASE_PAT, dejalo en .pat (raíz del "
              "repo) o en ~/.supabase_pat")
 

@@ -16,8 +16,8 @@ from _api import REF, pat, request
 BASE = pathlib.Path(__file__).resolve().parent.parent / "supabase" / "functions"
 TODAS = ["og", "eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
          "barrer-pagos",
-         "orden", "enviar-entradas", "equipo", "cuenta", "contacto", "liquidar",
-         "pago-callback"]
+         "orden", "enviar-entradas", "enviar-links", "equipo", "cuenta",
+         "contacto", "liquidar", "pago-callback"]
 
 # Por defecto False: eventos, evento, crear-orden, iniciar-pago, estado-orden y
 # orden las llama el público con la anon key, sin sesión. enviar-entradas es la
@@ -34,14 +34,20 @@ TODAS = ["og", "eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden
 # anon key para crear la cuenta (todavía no hay sesión que exigir). La
 # función verifica el JWT a mano contra /auth/v1/user en la acción que sí
 # lo necesita (vincular).
-VERIFY_JWT = {"og": False, "enviar-entradas": True, "equipo": True, "liquidar": True,
-               "pago-callback": False}
+# `enviar-links` la aprieta un admin o un staff desde el panel, asi que
+# siempre hay sesion: la reja va puesta. Adentro igual se revalida contra
+# /auth/v1/user y se mira el rol EN LA BASE, porque el JWT no lo lleva.
+VERIFY_JWT = {"og": False, "enviar-entradas": True, "equipo": True,
+               "enviar-links": True, "liquidar": True, "pago-callback": False}
 
 def main() -> int:
     token = pat()
     fallos = 0
     for slug in (sys.argv[1:] or TODAS):
-        cuerpo = (BASE / slug / "index.ts").read_text()
+        # Igual que en sql.py: sin encoding, Windows lee el .ts como cp1252 y
+        # sube los acentos rotos. En enviar-entradas eso llega al correo del
+        # comprador.
+        cuerpo = (BASE / slug / "index.ts").read_text(encoding="utf-8")
         verify_jwt = VERIFY_JWT.get(slug, False)
         carga = json.dumps({"slug": slug, "name": slug, "body": cuerpo, "verify_jwt": verify_jwt})
         h = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}

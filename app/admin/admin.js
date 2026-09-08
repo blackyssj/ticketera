@@ -2024,6 +2024,7 @@ async function pantallaRelacionadores(eventoId) {
       <button class="btn plano chico" id="btnVolver">← ${esc(ev.data.nombre)}</button>
       <h2>Relacionadores</h2>
     </div>
+    <section class="tarjeta reparto" id="zonaReparto"></section>
     ${rr.error ? `<p class="error">${esc(rr.error.message)}</p>` : ""}
     ${filas.length ? `
       <ul class="lista">${filas.map(v => `
@@ -2048,6 +2049,97 @@ async function pantallaRelacionadores(eventoId) {
         por un ?r=.</p>`}`;
 
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
+  if (puedeEditar()) pintarReparto(eventoId);
+  else $("#zonaReparto").remove();
+}
+
+/* ── repartir los links ──
+   El link de cada relacionador se copiaba del panel y se pegaba en
+   WhatsApp, uno por uno. Con 108 personas y dos eventos son 216 pegadas, y
+   el que se equivoca manda el link de otro: no falla, VENDE, y le atribuye
+   la venta a la persona equivocada.
+
+   La pantalla pregunta el estado antes de dibujar el botón porque el botón
+   NO dice lo mismo siempre: la primera vez manda a todos, la segunda solo
+   a los que se agregaron después. Un botón que dijera "mandar los links" y
+   mandara 108 correos repetidos por haber agregado a uno es la clase de
+   botón que se aprieta una sola vez en la vida. */
+async function pintarReparto(eventoId, estado) {
+  const z = $("#zonaReparto");
+  if (!z) return;
+  if (!estado) {
+    z.innerHTML = `<p class="cargando">Viendo a quién le falta su link…</p>`;
+    try {
+      estado = await llamarFuncion("enviar-links", { accion: "estado", evento: eventoId });
+    } catch (ex) {
+      z.innerHTML = `<h3>Repartir los links</h3><p class="error">${esc(ex.message)}</p>`;
+      return;
+    }
+  }
+
+  const { con_link: conLink, faltan, ya_recibieron: ya, sin_correo: sinCorreo = [],
+          sin_codigo: sinCodigo = [], ultimo_envio: ultimo } = estado;
+  const pendientes = [
+    sinCorreo.length ? `${sinCorreo.length} sin correo cargado` : "",
+    sinCodigo.length ? `${sinCodigo.length} sin código` : "",
+  ].filter(Boolean);
+
+  z.innerHTML = `
+    <h3>Repartir los links</h3>
+    ${conLink === 0
+      ? `<p class="vacio">Ningún relacionador tiene código y correo cargados
+           todavía. Cargáselos en <b>Equipo</b> y volvé.</p>`
+      : faltan > 0
+        ? `<p class="ayuda">Le manda a cada uno un correo con <b>su</b> link de
+             este evento. ${ya > 0
+               ? `${ya} ya lo ${ya === 1 ? "recibió" : "recibieron"}${
+                   ultimo ? ` el ${fechaHoraBO(ultimo)}` : ""}.` : ""}</p>
+           <div class="acciones">
+             <button class="btn primario" id="btnMandar">Mandar el link ${
+               faltan === 1 ? "al que falta" : `a los ${faltan} que faltan`}</button>
+             ${ya > 0 ? `<button type="button" class="btn plano" id="btnMandarTodos"
+                >Reenviar a los ${conLink} igual</button>` : ""}
+           </div>`
+        : `<p class="ayuda">Los ${conLink} relacionadores con código y correo ya
+             recibieron su link${ultimo ? `, el último el ${fechaHoraBO(ultimo)}` : ""}.</p>
+           <div class="acciones">
+             <button type="button" class="btn plano" id="btnMandarTodos"
+               >Reenviar a los ${conLink} igual</button>
+           </div>`}
+    ${pendientes.length
+      /* Los que no pueden recibir se dicen SIEMPRE y con nombre: son
+         exactamente los que después dicen "a mí no me llegó", y sin esta
+         línea el panel informa "108 enviados" y nadie sabe que faltaban 3. */
+      ? `<p class="ayuda aviso">No entran en el envío: ${esc(pendientes.join(" y "))}.
+           ${esc([...sinCorreo, ...sinCodigo].slice(0, 6).join(", "))}${
+             sinCorreo.length + sinCodigo.length > 6 ? "…" : ""}.
+           Se arregla en <b>Equipo</b>.</p>`
+      : ""}
+    <p class="error" id="repError"></p>`;
+
+  const mandar = async (forzar, boton) => {
+    const cuantos = forzar ? conLink : faltan;
+    if (!confirm(`Se van a mandar ${cuantos} ${cuantos === 1 ? "correo" : "correos"}.` +
+        (forzar && ya > 0 ? `\n\n${ya} de ${cuantos === 1 ? "ellos" : "esos"} ya lo ` +
+          `recibieron antes y les va a llegar de nuevo.` : "") + "\n\n¿Los mando?")) return;
+    boton.disabled = true;
+    boton.textContent = "Mandando…";
+    try {
+      const r = await llamarFuncion("enviar-links",
+        { accion: "enviar", evento: eventoId, forzar });
+      avisar(r.enviados === 0 ? "No había a quién mandarle."
+        : `${r.enviados} ${r.enviados === 1 ? "correo enviado" : "correos enviados"}.` +
+          (r.fallados?.length ? ` ${r.fallados.length} no salieron.` : ""));
+      await pintarReparto(eventoId);
+    } catch (ex) {
+      $("#repError").textContent = ex.message;
+      boton.disabled = false;
+      await pintarReparto(eventoId);
+    }
+  };
+  const b1 = $("#btnMandar"), b2 = $("#btnMandarTodos");
+  if (b1) b1.onclick = () => mandar(false, b1);
+  if (b2) b2.onclick = () => mandar(true, b2);
 }
 
 /* ══ el tablero del evento ════════════════════════════════════════
@@ -3613,9 +3705,18 @@ const ROLES_TXT = { admin: "Administrador", staff: "Staff",
    venció— y viaja en el Authorization. La función no cree nada de lo que
    le mandemos: se lo pregunta a /auth/v1/user. */
 async function llamarEquipo(cuerpo) {
+  return llamarFuncion("equipo", cuerpo);
+}
+
+/* Las Edge Functions del panel contestan todas igual —{ok:false, motivo} o
+   {ok:true, ...}— y fallan todas de las mismas dos formas: la sesión que se
+   cerró y la reja del gateway, que ante un 401 o un 500 contesta HTML y no
+   JSON. Eso último es lo que hacía aparecer "Unexpected token <" en la
+   pantalla en vez de "entrá de nuevo". */
+async function llamarFuncion(nombre, cuerpo) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) throw new Error("Se cerró tu sesión. Entrá de nuevo.");
-  const r = await fetch(`${CFG.SUPABASE_URL}/functions/v1/equipo`, {
+  const r = await fetch(`${CFG.SUPABASE_URL}/functions/v1/${nombre}`, {
     method: "POST",
     headers: { "Content-Type": "application/json",
                apikey: CFG.SUPABASE_ANON_KEY,
@@ -3647,7 +3748,7 @@ async function pantallaEquipo(opts) {
      deja escrito acá qué lista se está pidiendo. */
   const [gente, evs] = await Promise.all([
     sb.from("perfiles")
-      .select("id,nombre,rol,activo,slug,comision_entrada")
+      .select("id,nombre,rol,activo,slug,comision_entrada,email_contacto")
       .eq("organizador_id", S.yo.organizador_id)
       .order("activo", { ascending: false })
       .order("nombre"),
@@ -3776,6 +3877,11 @@ function formEdicion(p, yo) {
       </select>
       ${yo ? `<em class="ayuda">A vos mismo no: así es como un organizador se
         queda sin ningún administrador.</em>` : ""}</label>
+    <label><span>Correo</span>
+      <input id="edCorreo" type="email" value="${esc(p.email_contacto || "")}"
+             placeholder="sin correo" autocapitalize="none" autocomplete="off">
+      <em class="ayuda">Para mandarle su link. <b>Cambiarlo no le cambia el acceso
+        al panel</b>: con lo que entra es su usuario, y eso no se toca desde acá.</em></label>
     <label><span>Código de relacionador</span>
       <input id="edSlug" value="${esc(p.slug || "")}" placeholder="sin código"
              pattern="[a-z0-9\\-]{2,30}" autocapitalize="none" autocomplete="off">
@@ -3808,6 +3914,7 @@ function cablearEdicion() {
     const slug = $("#edSlug").value.trim().toLowerCase();
     const com  = $("#edComision").value.trim();
     const rol  = $("#edRol").value;
+    const correo = $("#edCorreo").value.trim().toLowerCase();
 
     if (slug && !/^[a-z0-9-]{2,30}$/.test(slug)) {
       err.textContent = "El código va en minúsculas, entre 2 y 30 caracteres, y solo admite letras, números y guiones.";
@@ -3825,8 +3932,9 @@ function cablearEdicion() {
          con la base intacta. Ya nos pasó con el arte. */
       const { data: filas, error } = await sb.from("perfiles")
         .update({ slug: slug || null,
-                  comision_entrada: com === "" ? null : Number(com) })
-        .eq("id", p.id).select("id,nombre,rol,activo,slug,comision_entrada");
+                  comision_entrada: com === "" ? null : Number(com),
+                  email_contacto: correo || null })
+        .eq("id", p.id).select("id,nombre,rol,activo,slug,comision_entrada,email_contacto");
       if (error) throw new Error(errorDePerfil(error));
       if (!filas || !filas.length) throw new Error(
         "La base no dejó guardar el cambio: no se modificó nada.");
@@ -3853,7 +3961,14 @@ function cablearEdicion() {
    "perfiles_slug_uk"», que no le explica a nadie qué tiene que cambiar. */
 function errorDePerfil(error) {
   if (error.code === "23505") return "Ya hay alguien con ese código en tu equipo. Elegí otro.";
-  if (error.code === "23514") return "El código va en minúsculas, entre 2 y 30 caracteres, y solo admite letras, números y guiones.";
+  /* 23514 es "un check no pasó", y desde 0072 la fila tiene dos: el del
+     código y el del correo. Sin mirar cuál, el panel le echaba la culpa al
+     código siempre — o sea, mandaba a corregir el campo que estaba bien. */
+  if (error.code === "23514") {
+    return /email_contacto/.test(String(error.message))
+      ? "Ese correo no tiene forma de correo. Dejalo vacío si no lo tenés."
+      : "El código va en minúsculas, entre 2 y 30 caracteres, y solo admite letras, números y guiones.";
+  }
   return error.message;
 }
 
@@ -3873,6 +3988,11 @@ function formAlta() {
       <label><span>Nombre</span>
         <input id="alNombre" required maxlength="80" placeholder="Nicolás Vargas">
         <em class="ayuda">Como lo vas a reconocer en las listas de ventas.</em></label>
+      <label><span>Correo</span>
+        <input id="alCorreo" type="email" autocapitalize="none" autocomplete="off"
+               placeholder="opcional">
+        <em class="ayuda">Para mandarle su link de venta. <b>No es con lo que entra
+          al panel</b>: eso es el usuario de arriba. Vacío si solo usa WhatsApp.</em></label>
       <label><span>Rol</span>
         <select id="alRol">
           ${Object.keys(ROLES_TXT).map(r =>
@@ -3935,6 +4055,7 @@ function cablearAlta() {
     const esRrpp  = r === "rrpp";
     const sSlug   = esRrpp ? $("#alSlug").value.trim().toLowerCase() : "";
     const sCom    = esRrpp ? $("#alComision").value.trim() : "";
+    const sCorreo = $("#alCorreo").value.trim().toLowerCase();
 
     if (!/^[a-z0-9.-]{3,30}$/.test(usuario)) {
       err.textContent = "El usuario va en minúsculas, entre 3 y 30 caracteres, y solo admite letras, números, punto y guión.";
@@ -3955,6 +4076,7 @@ function cablearAlta() {
       const res = await llamarEquipo({
         accion: "crear", usuario, nombre, rol: r,
         slug: sSlug || null, comision_entrada: sCom === "" ? null : Number(sCom),
+        email_contacto: sCorreo || null,
       });
       EQ.clave = { titulo: `La clave de ${nombre}`, usuario: res.usuario, clave: res.clave };
       EQ.alta = false;

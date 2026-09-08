@@ -19,7 +19,7 @@ from _api import REF, pat, request
 
 def cargar(ruta: pathlib.Path) -> list[dict]:
     pares = []
-    for n, linea in enumerate(ruta.read_text().splitlines(), 1):
+    for n, linea in enumerate(ruta.read_text(encoding="utf-8").splitlines(), 1):
         linea = linea.strip()
         if not linea or linea.startswith("#"):
             continue

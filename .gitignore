@@ -40,3 +40,9 @@ __pycache__/
 # El PAT de este repo: la ticketera vive en la cuenta de la empresa y
 # ~/.supabase_pat puede tener el de otra. Nunca se versiona.
 .pat
+
+# El CSV con las claves que imprime crear-relacionadores.py, y la lista de
+# gente que le entra. Son credenciales de personas reales y nombres de
+# gente del equipo de un cliente: ninguna de las dos cosas se versiona.
+claves-*.csv
+relacionadores*.txt
