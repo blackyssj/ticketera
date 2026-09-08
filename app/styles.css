@@ -27,6 +27,11 @@
   --rojo:#FFE24B;
   --rojo-claro:#FFF08C;
   --rojo-hondo:#C9A200;
+  /* El texto ENCIMA del color de acción. Oscuro sobre el fluor; blanco
+     cuando la marca de un cliente pone un acento oscuro (ver pintarMarca
+     en app.js, que lo decide por la luminancia). Un token aparte porque
+     `--tinta` también es el texto del panel crema y ese no puede cambiar. */
+  --sobre-accion:var(--tinta);
 
   /* EL COLOR DE ALERTA — campo inválido, "quedan pocas", cierre urgente.
      Va aparte del de acción desde que la acción es amarilla: un error en
@@ -138,7 +143,7 @@ input{font:inherit}
 .hero::before{
   content:"";position:absolute;inset:-20% -10% 30%;z-index:-1;
   background:
-    radial-gradient(46% 52% at 22% 34%, rgba(255,226,75,.20), transparent 68%),
+    radial-gradient(46% 52% at 22% 34%, color-mix(in srgb, var(--dorado) 20%, transparent), transparent 68%),
     radial-gradient(40% 46% at 82% 16%, rgba(126,74,224,.30), transparent 70%);
   filter:blur(8px);
 }
@@ -146,7 +151,7 @@ input{font:inherit}
 .eyebrow::after{content:"";height:1px;flex:1;background:linear-gradient(90deg,var(--dorado-hondo),transparent)}
 .titulo{font-size:clamp(50px,13vw,158px);letter-spacing:-.012em;margin:0;transition:font-size .3s ease}
 .titulo .l1{display:block;color:var(--espuma)}
-.titulo .l2{display:block;color:var(--rojo);text-shadow:0 0 34px rgba(255,226,75,.45)}
+.titulo .l2{display:block;color:var(--rojo);text-shadow:0 0 34px color-mix(in srgb, var(--rojo) 45%, transparent)}
 .bajada{max-width:48ch;margin-top:20px;color:var(--humo);font-size:clamp(15px,1.6vw,18px)}
 .datos{display:flex;flex-wrap:wrap;gap:10px 26px;margin-top:24px;font-family:var(--dato);font-size:13px;color:var(--humo)}
 .datos span b{color:var(--espuma);font-weight:500}
@@ -293,7 +298,7 @@ input{font:inherit}
 .panel-nota{font-family:var(--dato);font-size:12px;color:var(--tinta-40)}
 
 .fase{display:inline-flex;align-items:center;gap:8px;background:var(--tinta);color:var(--espuma);font-family:var(--dato);font-size:11.5px;letter-spacing:.05em;padding:5px 11px;border-radius:999px;text-transform:uppercase}
-.fase i{width:6px;height:6px;border-radius:50%;background:var(--dorado);box-shadow:0 0 0 3px rgba(255,226,75,.25);flex:0 0 auto}
+.fase i{width:6px;height:6px;border-radius:50%;background:var(--dorado);box-shadow:0 0 0 3px color-mix(in srgb, var(--dorado) 25%, transparent);flex:0 0 auto}
 
 /* Cuánto le queda a la fase. Al lado de la pastilla y no adentro: la fase es
    una etiqueta que está siempre, esto aparece sólo cuando hay una fecha de
@@ -467,7 +472,7 @@ input{font:inherit}
   letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
 /* La acción que importa cuando importa: parada en la puerta, con la fila
    atrás, no hay tiempo de buscar nada. */
-.pase-puerta{flex:1 0 100%;min-height:48px;background:var(--rojo);color:var(--tinta);text-align:center}
+.pase-puerta{flex:1 0 100%;min-height:48px;background:var(--rojo);color:var(--sobre-accion);text-align:center}
 .pase-puerta:hover{background:var(--rojo-claro)}
 .pase[data-usada="1"] .pase-arte{opacity:.62}
 .pase[data-usada="1"] .pase-puerta{background:var(--noche-3);color:var(--humo)}
@@ -511,7 +516,7 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;text-decorat
 /* ─── botones ─── */
 .btn{padding:13px 20px;border-radius:3px;font-family:var(--display);font-size:19px;text-transform:uppercase;letter-spacing:.04em;transition:background .16s ease,transform .1s ease,color .16s ease}
 .btn.ancho{width:100%}
-.btn.primario{background:var(--rojo);color:var(--tinta)}
+.btn.primario{background:var(--rojo);color:var(--sobre-accion)}
 .btn.primario:hover:not(:disabled){background:var(--rojo-claro)}
 .btn.primario:active:not(:disabled){transform:translateY(1px)}
 .btn.primario:disabled{background:var(--noche-3);color:var(--humo-2);cursor:not-allowed}

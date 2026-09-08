@@ -353,23 +353,74 @@ function cotizar() {
 
 /* ══ pintado ══════════════════════════════════════════════════════ */
 
-/* ── por qué el evento no se viste con su propia marca ───────────
-   Hubo una versión que sí: el evento traía `color_fondo` y `color_acento`
-   y la página entera se pintaba con ellos, derivando la rampa con
-   `color-mix` sobre las variables de styles.css.
+/* ── la marca del organizador ────────────────────────────────────
+   La página del evento se viste con los dos colores del cliente: fondo
+   y acento. La hoja de estilos está escrita con variables, así que con
+   esos dos alcanza para la barra, el afiche, los botones y los chips; el
+   resto de la rampa se deriva acá con `color-mix` en vez de pedirle seis
+   colores al cliente — nadie tiene seis colores, todos tienen dos.
 
-   Se sacó por una decisión de producto. El que entra desde la cartelera
-   veía la portada violeta y amarilla y la página del evento de otro
-   color, y las dos no se leían como el mismo sitio: parecían dos
-   empresas, una que muestra la cartelera y otra que cobra. Todas las
-   páginas del comprador van con la marca de TICKETAZO.
+   Esto fue, se sacó y volvió. Se sacó para que todas las páginas del
+   comprador fueran de TICKETAZO; volvió porque el cliente vio sus dos
+   fechas —una en su vino y rojo en la vidriera, la otra en violeta y
+   amarillo al abrirla— y pidió que todo fuera con lo rojo. Tiene razón:
+   el que compra viene por el evento, y el evento es del cliente. La
+   cartelera general y las páginas de después de pagar siguen siendo de
+   TICKETAZO.
 
-   Las columnas siguen en la base y la función `evento` las sigue
-   mandando: no hay nada que migrar, y volver atrás es reescribir esta
-   función, que está entera en el git de este archivo.
+   El panel de compra sigue en crema SIEMPRE: se probó oscuro y no gustó.
+   Lo que cambia es todo lo que está sobre el fondo, no el papel donde se
+   elige y se paga.
 
-   El logo del organizador SÍ se usa. Es cómo se llama el evento, no una
-   paleta que compita con la del sitio. */
+   Lo que NO se hace es aceptar CSS del organizador. Sería darle
+   ejecución de estilos sobre la página que cobra, y basta un
+   `position:fixed` encima del precio para que alguien compre una cosa
+   creyendo que compra otra. Por eso el valor se vuelve a validar acá
+   contra el mismo hexadecimal que exige la base: el que llega de la red
+   no es de confianza aunque lo hayamos escrito nosotros del otro lado.
+
+   Sin colores cargados no se toca nada y la página sale con la paleta de
+   TICKETAZO, que es lo que hacía siempre. */
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/* Luminancia relativa (sRGB, WCAG): decide si el texto sobre el acento
+   va blanco o oscuro. El fluor de TICKETAZO es claro y lleva texto
+   oscuro; el rojo de un cliente es oscuro y lleva blanco. Sin esto, un
+   botón rojo con letras violeta oscuro no se lee. */
+function esClaro(hex) {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map(c => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4;
+}
+
+function pintarMarca(e) {
+  const raiz = document.documentElement;
+
+  if (HEX.test(e.color_fondo || "")) {
+    const f = e.color_fondo;
+    raiz.style.setProperty("--noche", f);
+    /* Los dos grises de arriba del fondo: tarjetas y superficies. Se
+       aclaran hacia el blanco y no hacia un gris fijo, así un fondo vino
+       da superficies vino y no manchas grises flotando encima. */
+    raiz.style.setProperty("--noche-2", `color-mix(in srgb, ${f} 90%, #fff)`);
+    raiz.style.setProperty("--noche-3", `color-mix(in srgb, ${f} 80%, #fff)`);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = f;
+  }
+
+  if (HEX.test(e.color_acento || "")) {
+    const a = e.color_acento;
+    raiz.style.setProperty("--rojo", a);
+    raiz.style.setProperty("--rojo-claro", `color-mix(in srgb, ${a} 82%, #fff)`);
+    raiz.style.setProperty("--rojo-hondo", `color-mix(in srgb, ${a} 62%, #000)`);
+    raiz.style.setProperty("--sobre-accion", esClaro(a) ? "var(--tinta)" : "#fff");
+    /* El acento de detalle —compartir, foco, el punto de la fase— pasa a
+       ser el del cliente, apenas más claro para que no compita con los
+       botones, que son lo que hay que apretar. */
+    raiz.style.setProperty("--dorado", `color-mix(in srgb, ${a} 78%, #fff)`);
+    raiz.style.setProperty("--dorado-hondo", `color-mix(in srgb, ${a} 70%, #000)`);
+  }
+}
 
 /* El logo reemplaza a la marca tipográfica, no se suma: las dos juntas
    son el nombre escrito dos veces. Si el archivo no carga se vuelve al
@@ -400,6 +451,7 @@ function pintarHero() {
   /* Después de escribir la marca tipográfica, no antes: el logo la
      reemplaza cuando termina de cargar, y al revés esta línea le pisaría
      el logo al que ya lo tenía en caché. */
+  pintarMarca(e);
   ponerLogo(e);
   $("#barraFecha").textContent = e.fecha_txt;
   $("#heroLugar").textContent = e.lugar;
