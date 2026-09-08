@@ -8,6 +8,38 @@
           "value": "public, max-age=0, must-revalidate"
         }
       ]
+    },
+    {
+      "source": "/:organizador",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|slackbot|linkedinbot|discordbot|skypeuripreview|redditbot|embedly|iframely|pinterest|vkshare).*"
+        }
+      ],
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/html; charset=utf-8"
+        }
+      ]
+    },
+    {
+      "source": "/:organizador/:evento",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|slackbot|linkedinbot|discordbot|skypeuripreview|redditbot|embedly|iframely|pinterest|vkshare).*"
+        }
+      ],
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/html; charset=utf-8"
+        }
+      ]
     }
   ],
   "redirects": [
@@ -35,6 +67,10 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/og/:organizador/:evento",
+      "destination": "https://mjotxzcddhqqpuhkcetl.supabase.co/functions/v1/og?org=:organizador&ev=:evento&img=1"
+    },
     {
       "source": "/organizadores",
       "destination": "/organizadores/index.html"

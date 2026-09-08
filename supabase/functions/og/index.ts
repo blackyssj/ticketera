@@ -16,6 +16,23 @@
    le importa a un robot. Vercel manda acá únicamente al que se declara
    rastreador; la persona sigue recibiendo el archivo estático de siempre.
 
+   ── por qué Vercel le pisa el content-type ──
+   La pasarela de funciones de Supabase reescribe TODO text/html a
+   text/plain (con nosniff y un CSP sandbox): es su defensa contra páginas
+   de phishing alojadas en supabase.co, y no se apaga. Un rastreador que
+   recibe text/plain no busca etiquetas og adentro — la tarjeta salía sin
+   imagen y sin título en los clientes estrictos. Por eso vercel.json
+   vuelve a declarar `Content-Type: text/html` sobre la respuesta
+   reescrita: Vercel sí pisa cabeceras de lo que proxea. Esta función
+   sigue mandando text/html por prolijidad, sabiendo que no llega.
+
+   ── por qué la imagen vive en /og/<org>/<evento>.jpg ──
+   La etiqueta og:image apunta a nuestro dominio y termina en .jpg, y
+   Vercel la reescribe a esta misma función con img=1. Dos razones: hay
+   clientes de mensajería que descartan una imagen cuya URL no parece un
+   archivo de imagen, y un dominio propio no arrastra el CSP sandbox de
+   supabase.co. La extensión se recorta acá al leer `ev`.
+
    ── por qué igual lleva un link visible ──
    Si un humano cae acá —porque copió el user-agent de un bot, o porque
    algún cliente de mensajería abre la vista previa en el navegador— tiene
@@ -82,7 +99,8 @@ function medidas(b: Uint8Array): { w: number; h: number } | null {
 Deno.serve(async (req) => {
   const u = new URL(req.url);
   const org = (u.searchParams.get("org") ?? "").trim().toLowerCase();
-  let   ev  = (u.searchParams.get("ev")  ?? "").trim().toLowerCase();
+  let   ev  = (u.searchParams.get("ev")  ?? "").trim().toLowerCase()
+    .replace(/\.(jpe?g|png|webp)$/, "");
   /* Sin `ev` es la vidriera del organizador —el link único que el
      relacionador reparte— y la tarjeta muestra su fecha más próxima. La URL
      de la tarjeta es la de la vidriera, no la del evento: el que toca tiene
@@ -183,7 +201,7 @@ Deno.serve(async (req) => {
 
     // La que viaja en la etiqueta pasa por acá; la página usa la directa.
     const img = directa
-      ? `${SB}/functions/v1/og?org=${encodeURIComponent(org)}&ev=${encodeURIComponent(ev)}&img=1`
+      ? `${SITIO}/og/${encodeURIComponent(org)}/${encodeURIComponent(ev)}.jpg`
       : "";
 
     /* Las medidas de la imagen. WhatsApp y Facebook deciden entre la
@@ -212,6 +230,7 @@ Deno.serve(async (req) => {
 <meta property="og:url" content="${esc(url)}">
 ${img ? `<meta property="og:image" content="${esc(img)}">
 <meta property="og:image:secure_url" content="${esc(img)}">
+<meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:alt" content="Afiche de ${esc(e.nombre)}">
 ${med ? `<meta property="og:image:width" content="${med.w}">
 <meta property="og:image:height" content="${med.h}">` : ""}` : ""}
