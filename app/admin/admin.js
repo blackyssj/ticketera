@@ -204,7 +204,8 @@ async function pantallaEventos() {
    pantallas casi iguales garantiza que una se olvide de un campo. */
 async function abrirEvento(id) {
   let e = { nombre: "", slug: "", lugar: "", fecha: "", hora_inicio: "21:00",
-            edad_min: 18, tope_entradas_orden: 10, estado: "borrador" };
+            edad_min: 18, tope_entradas_orden: 10, estado: "borrador",
+            color_fondo: null, color_acento: null };
   if (id) {
     const { data, error } = await sb.from("eventos").select("*").eq("id", id).single();
     if (error || !data) {
@@ -213,6 +214,16 @@ async function abrirEvento(id) {
       return;
     }
     e = data;
+  } else {
+    /* Un evento nuevo nace con los colores del último que los tuvo: los
+       colores son del evento (cada fecha podría tener los suyos) pero en
+       la práctica son los del cliente, y una segunda fecha que sale en
+       violeta al lado de la primera en vino es un error que ya pasó. Se
+       puede cambiar o apagar antes de guardar. */
+    const { data: ult } = await sb.from("eventos")
+      .select("color_fondo,color_acento").eq("organizador_id", S.yo.organizador_id)
+      .not("color_fondo", "is", null).order("fecha", { ascending: false }).limit(1);
+    if (ult && ult[0]) Object.assign(e, ult[0]);
   }
   $("#main").innerHTML = `
     <div class="cab-seccion">
@@ -230,6 +241,25 @@ async function abrirEvento(id) {
       <label><span>Edad mínima</span><input id="fEdad" type="number" min="0" max="99" value="${e.edad_min}"></label>
       <label><span>Máximo de entradas por compra</span>
         <input id="fTope" type="number" min="1" max="50" value="${e.tope_entradas_orden}"></label>
+      <!-- Los dos colores con los que se viste la página pública del evento:
+           el fondo y el de los botones. Dos y no seis: el resto de la paleta
+           se deriva solo. Apagados, la página sale con la marca de TICKETAZO,
+           que es lo que hacía siempre. La cartelera general y las páginas de
+           después de pagar son de TICKETAZO siempre: eso no se configura. -->
+      <fieldset class="marca-evento">
+        <legend>Colores de la página del evento</legend>
+        <label class="color"><span>Fondo</span>
+          <input id="fFondo" type="color" value="${esc(e.color_fondo || "#180E3A")}"></label>
+        <label class="color"><span>Botones y acento</span>
+          <input id="fAcento" type="color" value="${esc(e.color_acento || "#FFE24B")}"></label>
+        <label class="check">
+          <input id="fSinMarca" type="checkbox"${e.color_fondo ? "" : " checked"}>
+          <span>Sin colores propios: la página sale con la marca de TICKETAZO</span>
+        </label>
+        <em class="ayuda">Fondo oscuro y acento fuerte, los de tu marca. El texto
+          de los botones se elige solo: blanco sobre acento oscuro, oscuro
+          sobre acento claro.</em>
+      </fieldset>
       <div class="acciones">
         <button class="btn primario" id="btnGuardar">Guardar</button>
         ${id ? `<button type="button" class="btn plano" id="btnTablero">Tablero →</button>
@@ -246,6 +276,10 @@ async function abrirEvento(id) {
 
   $("#btnVolver").onclick = () => mostrar("eventos");
   $("#fSlug").oninput = ev => $("#vistaSlug").textContent = ev.target.value || "…";
+  /* Tocar un color es querer colores: la casilla se apaga sola. Al revés
+     no: marcar la casilla no borra los valores, así se puede volver. */
+  const sinMarca = $("#fSinMarca");
+  ["fFondo", "fAcento"].forEach(k => $("#" + k).oninput = () => { sinMarca.checked = false; });
   if (id) {
     $("#btnTablero").onclick = () => pantallaTablero(id);
     $("#btnEntradas").onclick = () => pantallaEntradas(id);
@@ -270,6 +304,9 @@ async function abrirEvento(id) {
       hora_inicio: $("#fHora").value || "21:00",
       edad_min: Number($("#fEdad").value),
       tope_entradas_orden: Number($("#fTope").value),
+      // null y no "" — la base exige #rrggbb o nulo, y "" no es ninguno.
+      color_fondo:  $("#fSinMarca").checked ? null : $("#fFondo").value.toUpperCase(),
+      color_acento: $("#fSinMarca").checked ? null : $("#fAcento").value.toUpperCase(),
     };
     const q = id ? sb.from("eventos").update(fila).eq("id", id)
                  : sb.from("eventos").insert(fila).select("id").single();
