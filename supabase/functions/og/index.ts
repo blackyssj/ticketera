@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
       : `&slug=eq.${encodeURIComponent(ev)}`;
     const r = await fetch(
       `${SB}/rest/v1/eventos?select=slug,nombre,lugar,fecha,hora_inicio,descripcion,` +
-      `flyer_url,arte_url,estado,organizadores!inner(slug,nombre,activo)` +
+      `og_url,flyer_url,arte_url,estado,organizadores!inner(slug,nombre,activo)` +
       `&organizadores.slug=eq.${encodeURIComponent(org)}${filtro}&limit=1`,
       { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } });
     const filas = await r.json().catch(() => []);
@@ -159,7 +159,10 @@ Deno.serve(async (req) => {
     /* El FLYER primero: es el afiche que la gente reconoce. El arte de la
        entrada es el último recurso —tiene el hueco del QR en el medio— y
        aun así es mejor que una tarjeta sin imagen. */
-    const directa = e.flyer_url || e.arte_url || "";
+    /* La imagen hecha para el link primero (0072): cuadrada, con el flyer
+       entero adentro. Sin ella, el flyer vertical —que WhatsApp recorta—
+       y en ultimo caso el arte de la entrada. */
+    const directa = e.og_url || e.flyer_url || e.arte_url || "";
 
     if (quiereImagen) {
       if (!directa) return new Response("Sin imagen", { status: 404 });
