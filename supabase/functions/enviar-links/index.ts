@@ -103,8 +103,15 @@ async function repartoDe(ev: any, yo: any) {
   return { listos, sinCorreo, sinCodigo };
 }
 
+/* UN link por persona, el de la vidriera del organizador, y no el del
+   evento: es el mismo que el panel muestra en Equipo (linkDe), y sirve
+   para todas las fechas del cliente, las de hoy y las que publique
+   después. Mandar el del evento daba a cada relacionador un link por
+   fecha, y la venta de la segunda se perdía cuando compartían el de la
+   primera. El evento sigue siendo la ocasión del envío —"te mando tu
+   link porque salió tal fecha"— y lo que se registra en envio_link. */
 function correoDe(p: any, ev: any, org: any) {
-  const link = `${SITIO}/${org.slug}/${ev.slug}?r=${encodeURIComponent(p.slug)}`;
+  const link = `${SITIO}/${org.slug}?r=${encodeURIComponent(p.slug)}`;
   /* &middot; y no el caracter suelto, como en todo el resto de la plantilla:
      el correo sale en UTF-8 y Resend lo declara, pero alcanza un cliente que
      adivine la codificacion para que ese punto se vea "Â·". La entidad se ve
@@ -118,8 +125,8 @@ function correoDe(p: any, ev: any, org: any) {
    <tr><td style="padding:0 4px 18px"><img src="${SITIO}/logo-correo.png" alt="TICKETAZO" width="180" style="display:block;border:0"></td></tr>
    <tr><td style="background:#231550;border-radius:12px;padding:28px 26px">
     <p style="margin:0 0 6px;font-family:Helvetica,Arial,sans-serif;font-size:13px;letter-spacing:1px;color:#FFE24B">TU LINK DE VENTA</p>
-    <h1 style="margin:0 0 18px;font-family:Helvetica,Arial,sans-serif;font-size:23px;line-height:1.25;color:#F3EFE2">${esc(ev.nombre)}</h1>
-    <p style="margin:0 0 22px;font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#F3EFE2">Hola ${esc(p.nombre)}, este es <b>tu</b> link para vender. Todo lo que se compre por ac&aacute; queda a tu nombre y suma a tu comisi&oacute;n.</p>
+    <h1 style="margin:0 0 18px;font-family:Helvetica,Arial,sans-serif;font-size:23px;line-height:1.25;color:#F3EFE2">${esc(org.nombre)}</h1>
+    <p style="margin:0 0 22px;font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#F3EFE2">Hola ${esc(p.nombre)}, este es <b>tu</b> link para vender. Es uno solo y sirve para <b>todas las fechas</b> de ${esc(org.nombre)}: ${esc(ev.nombre)} y las que salgan despu&eacute;s. Todo lo que se compre por ac&aacute; queda a tu nombre y suma a tu comisi&oacute;n.</p>
     <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
      <td align="center" bgcolor="#FFE24B" style="border-radius:8px">
       <a href="${link}" style="display:inline-block;padding:14px 26px;font-family:Helvetica,Arial,sans-serif;font-size:15px;font-weight:bold;color:#180E3A;text-decoration:none">Abrir mi link</a>
@@ -134,7 +141,7 @@ function correoDe(p: any, ev: any, org: any) {
   </table>
  </td></tr>
 </table>`;
-  return { from: DESDE, to: [p.email_contacto], subject: `Tu link de venta — ${ev.nombre}`, html };
+  return { from: DESDE, to: [p.email_contacto], subject: `Tu link de venta — ${org.nombre}`, html };
 }
 
 Deno.serve(async (req) => {

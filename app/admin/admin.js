@@ -2096,8 +2096,8 @@ async function pintarReparto(eventoId, estado) {
       ? `<p class="vacio">Ningún relacionador tiene código y correo cargados
            todavía. Cargáselos en <b>Equipo</b> y volvé.</p>`
       : faltan > 0
-        ? `<p class="ayuda">Le manda a cada uno un correo con <b>su</b> link de
-             este evento. ${ya > 0
+        ? `<p class="ayuda">Le manda a cada uno un correo con <b>su</b> link — el
+             único, el mismo de Equipo, que vende todas las fechas. ${ya > 0
                ? `${ya} ya lo ${ya === 1 ? "recibió" : "recibieron"}${
                    ultimo ? ` el ${fechaHoraBO(ultimo)}` : ""}.` : ""}</p>
            <div class="acciones">

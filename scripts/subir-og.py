@@ -3,6 +3,9 @@
 
     python3 scripts/subir-og.py distrito-ferial viernes-18 ~/Downloads/previa.jpg
     python3 scripts/subir-og.py distrito-ferial viernes-18        # usa el flyer que ya tiene
+    python3 scripts/subir-og.py distrito-ferial viernes-18 ~/Downloads/previa.jpg --flyer
+        # además guarda esa imagen tal cual como flyer del evento (la de la
+        # cartelera), con el mismo nombre que le pondría el panel
 
 El flyer es vertical (9:16): hecho para la historia de Instagram. La tarjeta
 de WhatsApp es cuadrada y chica, y un 9:16 ahí sale recortado por el medio:
@@ -58,10 +61,14 @@ def componer(original: Image.Image, fondo_hex=None) -> bytes:
 
 
 def main() -> int:
-    if len(sys.argv) < 3:
-        sys.exit("Uso: subir-og.py <organizador> <evento> [imagen]")
-    org_slug, ev_slug = sys.argv[1], sys.argv[2]
-    ruta = pathlib.Path(sys.argv[3]) if len(sys.argv) > 3 else None
+    args = [a for a in sys.argv[1:] if a != "--flyer"]
+    tambien_flyer = "--flyer" in sys.argv[1:]
+    if len(args) < 2:
+        sys.exit("Uso: subir-og.py <organizador> <evento> [imagen] [--flyer]")
+    org_slug, ev_slug = args[0], args[1]
+    ruta = pathlib.Path(args[2]) if len(args) > 2 else None
+    if tambien_flyer and not ruta:
+        sys.exit("--flyer necesita la imagen: sin ella no hay nada nuevo que guardar.")
 
     srv = service_key(pat())
     base = f"https://{REF}.supabase.co"
@@ -107,9 +114,28 @@ def main() -> int:
         sys.exit(f"No se pudo subir: {body[:300]}")
     url = f"{base}/storage/v1/object/public/arte/{destino}"
 
+    cambios = {"og_url": url}
+
+    # El flyer de la cartelera es la imagen ORIGINAL, sin componer: la
+    # tarjeta la recorta a lo alto y el cuadrado con bandas quedaría peor.
+    # Mismo nombre que le pone el panel ({org}/{evento}/flyer-<marca>.<ext>)
+    # para que "Quitar el flyer" desde el panel lo encuentre y lo borre.
+    if tambien_flyer:
+        fmt = (original.format or "JPEG").upper()
+        ext, mime = {"PNG": ("png", "image/png"), "WEBP": ("webp", "image/webp")}.get(
+            fmt, ("jpg", "image/jpeg"))
+        flyer = f"{org_q}/{ev_q}/flyer-{sello}.{ext}"
+        codigo, body = request(f"{base}/storage/v1/object/arte/{flyer}", "POST",
+                               {**h, "Content-Type": mime, "x-upsert": "true",
+                                "cache-control": "max-age=31536000"}, crudo)
+        if codigo not in ("200", "201"):
+            sys.exit(f"No se pudo subir el flyer: {body[:300]}")
+        cambios["flyer_url"] = f"{base}/storage/v1/object/public/arte/{flyer}"
+        print(f"flyer: {original.width}×{original.height}, {len(crudo)//1024} KB")
+
     request(f"{base}/rest/v1/eventos?id=eq.{ev['id']}", "PATCH",
-            {**h, "Content-Type": "application/json"}, json.dumps({"og_url": url}))
-    print("og_url del evento actualizado")
+            {**h, "Content-Type": "application/json"}, json.dumps(cambios))
+    print("evento actualizado: " + ", ".join(cambios))
     print(url)
     return 0
 

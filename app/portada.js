@@ -17,7 +17,10 @@
 
      1 evento  → una entrada sola a tamaño de afiche. Sin grilla: una
                  cuadrícula de un elemento se lee como una que no cargó.
-     2 a 4     → la más próxima grande y el resto en la grilla.
+     2 a 4     → la más próxima grande y el resto en la grilla. Salvo en
+                 la vidriera de un cliente (/<organizador>), donde van
+                 todas en renglones chicos con botón: ahí lo que hay que
+                 ver de un vistazo es que hay más de una fecha.
      5 o más   → carrusel con las cinco más próximas y la grilla completa
                  debajo. Recién ahí "lo destacado" separa algo de algo.
 
@@ -330,6 +333,41 @@ function destacado(e, i) {
   </a>`;
 }
 
+/* ── la fecha de la vidriera ──
+   La tercera forma de la misma entrada: acostada y chica. Es para la
+   vidriera de un cliente con dos, tres, cuatro fechas, y nació de un pedido
+   concreto: con la primera fecha a tamaño de afiche y la segunda a tamaño
+   de afiche debajo, en el teléfono no se veía que hubiera dos. Había que
+   bajar media página para enterarse, y el que llega por el link del
+   relacionador viene a elegir fecha, no a bajar.
+
+   Acá cada fecha es un renglón de la misma altura: el flyer al costado, la
+   fecha, el lugar, el precio y el botón — el mismo botón que la entrada
+   grande, porque las dos fechas valen lo mismo y ninguna es "la otra". En
+   un teléfono entran dos en la primera pantalla, debajo del nombre del
+   cliente. Eso es lo que la vidriera tiene que decir: quién, y cuándo.
+
+   El nombre va siempre en el talón, con o sin flyer: el papel acá mide
+   cien píxeles y el CSS le apaga el nombre —queda el día grande, que es
+   lo que un afiche chico alcanza a mostrar de lejos. */
+function fecha(e, i) {
+  const ya = cerca(e.fecha);
+  return `<a class="fecha${e.venta === "agotado" ? " agotado" : ""}" href="${esc(e.url)}">
+    ${afiche(e, i < 3)}
+    ${perf}
+    <div class="talon">
+      <span class="cuando">${ya ? `<b class="ya">${esc(ya)}</b>`
+        : `${esc(e.dia_semana)} ${esc(e.dia)} ${esc(e.mes)}`} · ${esc(e.hora)}</span>
+      <h3 class="nombre">${esc(e.nombre)}</h3>
+      <p class="donde">${esc(e.lugar)}</p>
+      <div class="accion">
+        <span class="ver" aria-hidden="true">Ver entradas<i class="flecha"></i></span>
+        ${precio(e)}
+      </div>
+    </div>
+  </a>`;
+}
+
 const claveMes = e => e.fecha.slice(0, 7);
 
 /* El rótulo del mes, con el año sólo cuando NO es este. "diciembre" y
@@ -428,7 +466,7 @@ const observador = "IntersectionObserver" in window
   : null;
 
 function revelar(zona) {
-  const piezas = zona.querySelectorAll(".evento");
+  const piezas = zona.querySelectorAll(".evento, .fecha");
   /* Sin IntersectionObserver no hay entrada escalonada, hay cartelera: se
      muestran y listo. Una animación es un lujo; ver los eventos, no. */
   if (!observador) { piezas.forEach(p => p.classList.add("vista")); return; }
@@ -517,7 +555,7 @@ function cablearSalida() {
     if (ev.defaultPrevented || ev.button !== 0) return;
     if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
     if (quieto.matches) return;
-    const a = ev.target.closest("a.evento, a.destacado");
+    const a = ev.target.closest("a.evento, a.destacado, a.fecha");
     if (!a || !a.href) return;
     ev.preventDefault();
     a.classList.add("saliendo");
@@ -537,10 +575,12 @@ function cablearSalida() {
 /* La cuenta del rótulo. Con un filtro puesto dice de cuántos: "3 de 14
    eventos". Sin el total, un "3 eventos" después de tipear se lee como una
    cartelera que se achicó sola, y no como una búsqueda que encontró tres. */
-function contar(n, total) {
+/* En la vidriera de un cliente se cuentan "fechas" y no "eventos": para el
+   que compra son dos noches del mismo lugar, no dos productos distintos. */
+function contar(n, total, cosa = "evento") {
   $("#rotuloCuenta").textContent = total
-    ? `${n} de ${total} eventos`
-    : (n === 1 ? "1 evento" : `${n} eventos`);
+    ? `${n} de ${total} ${cosa}s`
+    : (n === 1 ? `1 ${cosa}` : `${n} ${cosa}s`);
 }
 
 /* ── la puerta a "mis entradas" ──
@@ -736,6 +776,23 @@ async function pintar() {
                "Los eventos aparecen acá apenas el organizador los publica. Volvé en unos días.");
     const b = $("#btnReintentar");
     if (b && ORG) b.onclick = () => { location.href = "/"; };
+    return;
+  }
+
+  /* La vidriera de un cliente con pocas fechas (de dos a cinco) no destaca
+     ninguna: van todas en renglones del mismo tamaño, con el botón, una
+     debajo de la otra. Destacar la primera a tamaño de afiche dejaba a la
+     segunda fuera de la pantalla del teléfono, y el que entra por el link
+     del relacionador tiene que ver de un vistazo que hay dos fechas para
+     elegir. Con una sola fecha sigue la entrada grande: un renglón solo
+     no es una lista, es una tarjeta que quedó chica. Con seis o más, el
+     carrusel y la grilla de siempre: ahí ya hay cartelera. */
+  if (ORG && eventos.length >= 2 && eventos.length < MUCHOS) {
+    contar(eventos.length, 0, "fecha");
+    grilla.classList.add("fechas");
+    grilla.innerHTML = eventos.map(fecha).join("");
+    vigilarImagenes(grilla);
+    revelar(grilla);
     return;
   }
 

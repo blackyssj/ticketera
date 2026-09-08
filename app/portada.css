@@ -313,18 +313,18 @@ img{max-width:100%;display:block}
    La firma de la portada y la pieza que comparten las dos zonas: afiche,
    troquel, talón. No es decoración — es la forma del producto, y hace que
    una cartelera se lea como una tira de entradas. */
-.evento,.destacado{
+.evento,.destacado,.fecha{
   position:relative;overflow:hidden;isolation:isolate;
   display:flex;flex-direction:column;
   background:var(--tinta-2);border-radius:14px;
   box-shadow:inset 0 0 0 1px var(--canto);
   transition:transform .22s var(--curva),box-shadow .22s var(--curva);
 }
-.evento:hover,.destacado:hover{
+.evento:hover,.destacado:hover,.fecha:hover{
   transform:translateY(-5px);
   box-shadow:inset 0 0 0 1px rgba(255,226,75,.28),0 22px 46px rgba(0,0,0,.42);
 }
-.evento:focus-visible,.destacado:focus-visible{outline-offset:4px}
+.evento:focus-visible,.destacado:focus-visible,.fecha:focus-visible{outline-offset:4px}
 
 /* ── el afiche ── */
 /* El contenedor de consulta va acá y no en la tarjeta: en la entrada grande
@@ -344,7 +344,7 @@ img{max-width:100%;display:block}
   transition:opacity .42s ease,scale .58s var(--curva),
              transform .5s var(--curva),filter .3s ease;
 }
-.evento:hover .afiche img,.destacado:hover .afiche img{transform:scale(1.045)}
+.evento:hover .afiche img,.destacado:hover .afiche img,.fecha:hover .afiche img{transform:scale(1.045)}
 
 /* ── el papel ──
    Debajo del flyer, siempre. Mientras la imagen viaja es el fondo que se ve
@@ -413,7 +413,7 @@ img{max-width:100%;display:block}
   border-top:1.5px dashed rgba(243,239,226,.22);
   transition:border-color .22s ease;
 }
-.evento:hover .perf::before,.destacado:hover .perf::before{
+.evento:hover .perf::before,.destacado:hover .perf::before,.fecha:hover .perf::before{
   border-color:rgba(255,226,75,.55);
 }
 .perf i{
@@ -462,7 +462,7 @@ img{max-width:100%;display:block}
   transform:rotate(45deg);
   transition:translate .22s var(--curva);
 }
-.evento:hover .flecha,.destacado:hover .flecha{translate:4px 0}
+.evento:hover .flecha,.destacado:hover .flecha,.fecha:hover .flecha{translate:4px 0}
 
 .nombre{
   margin-top:8px;
@@ -702,7 +702,7 @@ img{max-width:100%;display:block}
   color:var(--fluor);
   transition:background-color .22s ease,color .22s ease;
 }
-.destacado:hover .ver{background:var(--fluor);color:var(--tinta)}
+.destacado:hover .ver,.fecha:hover .ver{background:var(--fluor);color:var(--tinta)}
 
 /* De 860px para arriba la entrada se acuesta: flyer a la izquierda, troquel
    vertical, talón a la derecha. Es la misma pieza girada, no otra tarjeta.
@@ -739,6 +739,80 @@ img{max-width:100%;display:block}
   .destacado .perf .p2{bottom:calc(var(--muesca) / -2)}
 }
 @media (min-width:1180px){ .destacado{--alto:510px} }
+
+/* ═══ LA FECHA ════════════════════════════════════════════════════
+   La misma entrada, acostada y chica: es la vidriera de un cliente con
+   dos, tres, cuatro fechas (portada.js decide cuándo). Nació de un pedido
+   concreto —con la primera fecha a tamaño de afiche, en el teléfono no se
+   veía que hubiera una segunda— y de ahí sale cada medida: dos renglones
+   tienen que entrar en la primera pantalla de un teléfono debajo del
+   nombre del cliente, y cada uno lleva el botón de la entrada grande,
+   porque ninguna fecha es "la otra".
+
+   Acostada a todo ancho de ventana, no sólo en escritorio como la grande:
+   el flyer al costado, la perforación vertical, el talón al lado. El
+   afiche no fija su alto —lo fija el talón— así que el recorte sale más
+   alto que el 4:5 de la grilla, que a un flyer de historia (9:16) le
+   sienta mejor: se pierde menos arriba y abajo. En escritorio el talón se
+   achata y el mínimo de abajo le devuelve al afiche el 4:5. */
+.fecha{flex-direction:row}
+.fecha .afiche{
+  flex:0 0 clamp(108px,32%,176px);aspect-ratio:auto;align-self:stretch;
+}
+/* El papel sin flyer, a esta escala: sólo el día grande. El nombre ya va
+   en el talón a diez centímetros y a cien píxeles de ancho sería una
+   palabra partida en tres renglones. */
+.fecha .papel{padding:12px}
+.fecha .papel-dia{right:10px;top:4px;font-size:clamp(48px,54cqi,120px)}
+.fecha .papel-nombre,.fecha .papel-org{display:none}
+.fecha .sello{top:10px;font-size:9px;padding:5px 9px 4px}
+/* La perforación vertical, la misma de la entrada grande acostada. */
+.fecha .perf{width:0;height:auto;align-self:stretch}
+.fecha .perf::before{
+  left:-1px;right:auto;top:14px;bottom:14px;
+  border-top:0;border-left:1.5px dashed rgba(243,239,226,.22);
+  transition:border-color .22s ease;
+}
+.fecha:hover .perf::before{border-left-color:rgba(255,226,75,.55)}
+.fecha .perf i{left:0;top:auto;transform:translateX(-50%)}
+.fecha .perf .p1{top:calc(var(--muesca) / -2)}
+.fecha .perf .p2{bottom:calc(var(--muesca) / -2)}
+
+.fecha .talon{flex:1;min-width:0;padding:16px 16px 15px;justify-content:center}
+.fecha .cuando{
+  font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--fluor);
+}
+.fecha .nombre{
+  margin-top:7px;
+  font-weight:900;font-stretch:100%;
+  font-size:clamp(19px,5.4vw,26px);line-height:.98;letter-spacing:-.026em;
+}
+.fecha .donde{margin-top:6px;font-size:13.5px}
+/* La fila de la acción, la misma de la entrada grande a escala: en un
+   talón de 190px el botón y el precio no entran en un renglón, y el
+   wrap-reverse deja el precio arriba del botón — cuánto sale, y después
+   la manera de entrar. */
+.fecha .accion{margin-top:14px;gap:10px 14px}
+.fecha .ver{min-height:42px;padding:0 16px;font-size:11.5px}
+.fecha .desde{
+  margin-left:0;display:inline-flex;align-items:baseline;gap:7px;
+  font-size:10px;letter-spacing:.14em;color:var(--hueso-40);
+}
+.fecha .desde b{font-size:18px;letter-spacing:-.01em;text-transform:none;color:var(--hueso)}
+
+/* La lista de fechas: una columna en el teléfono y dos de 720 para arriba.
+   Nunca las tres o cuatro de la grilla: acostado, un renglón de 280px es
+   un flyer del tamaño de una estampilla con un botón al lado. Dos clases
+   y no una para ganarle a las columnas que la grilla fija por ancho. */
+.grilla.fechas{gap:14px;grid-template-columns:1fr}
+@media (min-width:720px){
+  .grilla.fechas{grid-template-columns:repeat(2,1fr);gap:18px 20px}
+  .fecha .afiche{min-height:220px}
+  .fecha .talon{padding:22px 24px 20px}
+  .fecha .nombre{font-size:26px}
+  .fecha .accion{margin-top:18px}
+}
 
 /* ── el mando del riel ──
    Vive en el rótulo, nunca encima del flyer. Un control flotando sobre el
@@ -828,8 +902,8 @@ html.js .destacado{animation:sube .55s var(--curva) backwards;animation-delay:.1
 /* Las de la grilla nacen invisibles y las enciende el observador cuando
    entran en pantalla (portada.js). Cuelga de html.js: si el script no
    corre, esta regla no existe y la cartelera se ve igual, sin animación. */
-html.js .evento{opacity:0}
-html.js .evento.vista{
+html.js .evento,html.js .fecha{opacity:0}
+html.js .evento.vista,html.js .fecha.vista{
   opacity:1;
   animation:sube .5s var(--curva) backwards;
   animation-delay:calc(var(--i,0) * 55ms);
@@ -847,7 +921,7 @@ body.yendo{opacity:.35;transition:opacity .19s ease}
   /* Se apaga todo el movimiento, y además se deshace el estado inicial del
      que dependía la aparición: sin esto las tarjetas de la grilla quedarían
      en opacity:0 para siempre — la animación que las encendía ya no corre. */
-  html.js .evento{opacity:1}
+  html.js .evento,html.js .fecha{opacity:1}
   html.js .afiche img{opacity:1;scale:1}
   *{animation:none !important;transition-duration:.001ms !important}
   .rail{scroll-behavior:auto}
