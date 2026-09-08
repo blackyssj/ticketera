@@ -14,7 +14,7 @@ from urllib.parse import quote
 from _api import REF, pat, request
 
 BASE = pathlib.Path(__file__).resolve().parent.parent / "supabase" / "functions"
-TODAS = ["eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
+TODAS = ["og", "eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
          "barrer-pagos",
          "orden", "enviar-entradas", "enviar-links", "equipo", "cuenta",
          "contacto", "liquidar", "pago-callback"]
@@ -37,8 +37,8 @@ TODAS = ["eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
 # `enviar-links` la aprieta un admin o un staff desde el panel, asi que
 # siempre hay sesion: la reja va puesta. Adentro igual se revalida contra
 # /auth/v1/user y se mira el rol EN LA BASE, porque el JWT no lo lleva.
-VERIFY_JWT = {"enviar-entradas": True, "equipo": True, "enviar-links": True,
-               "liquidar": True, "pago-callback": False}
+VERIFY_JWT = {"og": False, "enviar-entradas": True, "equipo": True,
+               "enviar-links": True, "liquidar": True, "pago-callback": False}
 
 def main() -> int:
     token = pat()

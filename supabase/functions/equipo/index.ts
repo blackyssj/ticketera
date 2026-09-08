@@ -72,7 +72,7 @@ const ROLES = ["admin", "staff", "rrpp", "portero"];
    crudo de Postgres, que el organizador no puede leer. */
 const USUARIO_RE = /^[a-z0-9.-]{3,30}$/;
 const SLUG_RE    = /^[a-z0-9-]{2,30}$/;
-/* Flojo a proposito, igual que el check de 0063: validar correos "bien"
+/* Flojo a proposito, igual que el check de 0072: validar correos "bien"
    termina rechazando direcciones legitimas. Lo que si atrapa es el error
    real de esta pantalla, que es escribir un nombre o un telefono ahi. */
 const CORREO_RE  = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;

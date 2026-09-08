@@ -327,9 +327,28 @@ function cotizar() {
   });
 
   const o = D.organizador;
-  const fee = lineas.length
-    ? Math.max(Math.round(subtotal * o.fee_pct) + o.fee_fijo, o.fee_piso) : 0;
-  return { lineas, subtotal, fee, total: subtotal + fee, entradas };
+  /* Dos modos, y la diferencia es de quién sale el cargo:
+
+       'sobre'    el comprador paga precio + cargo. Se redondea a bolivianos
+                  enteros porque el redondeo lo absorbe él y el total queda
+                  redondo, que en una puerta con efectivo importa.
+       'adentro'  el comprador paga el precio publicado y el cargo se
+                  descuenta de lo del organizador. Ahí el redondeo lo
+                  absorbe él, así que va a centavos: diez centavos por
+                  entrada que nadie acordó, en tres mil entradas, son
+                  trescientos bolivianos.
+
+     La cuenta se repite acá y en la base a propósito: esto es lo que se le
+     muestra al comprador antes de apretar, y `crear_orden` es lo que se le
+     cobra. Si difirieran, la que manda es la base — pero no difieren, y por
+     eso las dos reglas están escritas igual. */
+  const adentro = o.comision_modo === "adentro";
+  const fee = !lineas.length ? 0
+    : adentro
+      ? Math.min(Math.max(Math.round(subtotal * o.fee_pct * 100) / 100 + o.fee_fijo, o.fee_piso), subtotal)
+      : Math.max(Math.round(subtotal * o.fee_pct) + o.fee_fijo, o.fee_piso);
+  return { lineas, subtotal, fee, adentro,
+           total: adentro ? subtotal : subtotal + fee, entradas };
 }
 
 /* ══ pintado ══════════════════════════════════════════════════════ */
@@ -415,11 +434,21 @@ function pintarHero() {
      el fijo y el piso en cero, "8% + 0 Bs por compra, mínimo 0 Bs" es la
      misma frase de siempre diciendo nada dos veces, y una letra chica que
      enumera ceros es la que el comprador deja de leer. */
-  const o = D.organizador, notaFee = [`${Math.round(o.fee_pct * 100)}% de servicio`];
-  if (o.fee_fijo > 0) notaFee.push(`+ ${o.fee_fijo} Bs por compra`);
-  if (o.fee_piso > 0) notaFee.push(`mínimo ${o.fee_piso} Bs`);
-  $("#feeNota").textContent =
-    notaFee.join(", ") + ". Ya incluye el procesamiento del pago.";
+  const o = D.organizador;
+  if (o.comision_modo === "adentro") {
+    /* Con el cargo adentro del precio no hay nada que aclarar: lo que se
+       ve es lo que se paga. La nota queda vacía y el rail la esconde.
+       Es un if/else y no un return temprano a propósito: acá abajo es
+       donde se agrega lo próximo que haya que pintar, y un return al
+       final de una función lo deja muerto sin que nada avise. */
+    $("#feeNota").textContent = "";
+  } else {
+    const notaFee = [`${Math.round(o.fee_pct * 100)}% de servicio`];
+    if (o.fee_fijo > 0) notaFee.push(`+ ${o.fee_fijo} Bs por compra`);
+    if (o.fee_piso > 0) notaFee.push(`mínimo ${o.fee_piso} Bs`);
+    $("#feeNota").textContent =
+      notaFee.join(", ") + ". Ya incluye el procesamiento del pago.";
+  }
 }
 
 /* ── cuánto le queda a la fase ────────────────────────────────────
@@ -575,10 +604,16 @@ function pintarRail() {
      abajo le explica el procesamiento de un pago que no existe. Queda el
      total, y el total dice Gratis: es la única palabra que hace falta. */
   const gratis = hay && total === 0;
+  /* Con la comisión adentro del precio, el comprador paga exactamente lo
+     que dice la lista: desglosarle un "cargo por servicio" que ya está
+     incluido lo hace dudar de si le están sumando algo, y de paso le
+     muestra al público cuánto cobra la plataforma, que es un número entre
+     nosotros y el organizador. Se ve el total y nada más. */
+  const ocultarFee = gratis || D.organizador.comision_modo === "adentro";
   $("#railTotales").hidden = !hay;
-  $("#vSubtotal").closest("div").hidden = gratis;
-  $("#vFee").closest("div").hidden = gratis;
-  $("#feeNota").hidden = gratis;
+  $("#vSubtotal").closest("div").hidden = ocultarFee;
+  $("#vFee").closest("div").hidden = ocultarFee;
+  $("#feeNota").hidden = ocultarFee;
   $("#vSubtotal").textContent = bs(subtotal);
   $("#vFee").textContent = bs(fee);
   $("#vTotal").textContent = gratis ? "Gratis" : bs(total);

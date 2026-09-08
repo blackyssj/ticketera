@@ -2294,9 +2294,9 @@ begin
   if v_paso then raise exception 'TEST_FAIL: se anulo una manilla sin motivo'; end if;
 
   -- ── 1) anular devuelve el cupo ──────────────────────────
-  v_antes := disponibilidad_tipo(v_fase, v_gen);
+  reset role;  v_antes := disponibilidad_tipo(v_fase, v_gen);  set local role authenticated;
   v_r := anular_orden(v_o1, 'pago doble: se le cobro dos veces la misma compra');
-  v_desp := disponibilidad_tipo(v_fase, v_gen);
+  reset role;  v_desp := disponibilidad_tipo(v_fase, v_gen);  set local role authenticated;
   if (v_r->>'ok')::boolean is not true or (v_r->>'entradas_anuladas')::int <> 3 then
     raise exception 'TEST_FAIL: anular la orden de 3 manillas devolvio %', v_r;
   end if;
@@ -2314,12 +2314,13 @@ begin
   -- Anularla de nuevo no vuelve a devolver cupo ni escribe otra fila: el
   -- cupo se libera por el estado de la orden, no por una resta propia, y
   -- una segunda pasada no puede duplicar nada.
-  v_antes := disponibilidad_tipo(v_fase, v_gen);
+  reset role;  v_antes := disponibilidad_tipo(v_fase, v_gen);  set local role authenticated;
   v_r := anular_orden(v_o1, 'la aprieto dos veces');
   if (v_r->>'ya_estaba')::boolean is not true then
     raise exception 'TEST_FAIL: anular dos veces la misma orden no aviso que ya estaba: %', v_r;
   end if;
-  if disponibilidad_tipo(v_fase, v_gen) <> v_antes then
+  reset role;  v_desp := disponibilidad_tipo(v_fase, v_gen);  set local role authenticated;
+  if v_desp <> v_antes then
     raise exception 'TEST_FAIL: anular dos veces devolvio el cupo dos veces';
   end if;
 
@@ -2377,9 +2378,9 @@ begin
   end if;
 
   -- ── 5) las cortesías ────────────────────────────────────
-  v_antes := disponibilidad_tipo(v_fase, v_gen);
+  reset role;  v_antes := disponibilidad_tipo(v_fase, v_gen);  set local role authenticated;
   v_r := emitir_cortesias(v_ev, v_gen, 4, 'Radio Line', 'cuatro para la radio que transmite');
-  v_desp := disponibilidad_tipo(v_fase, v_gen);
+  reset role;  v_desp := disponibilidad_tipo(v_fase, v_gen);  set local role authenticated;
   if jsonb_array_length(v_r->'codes') <> 4 then
     raise exception 'TEST_FAIL: se pidieron 4 cortesias y volvieron %', v_r->'codes';
   end if;
@@ -2389,42 +2390,50 @@ begin
   if v_n <> 4 then
     raise exception 'TEST_FAIL: las cortesias no salieron como cortesias: % filas', v_n;
   end if;
-  if v_desp <> v_antes - 4 then
-    raise exception 'TEST_FAIL: 4 cortesias tenian que bajar el cupo de % a %, quedo en %',
-      v_antes, v_antes - 4, v_desp;
+  -- 0065: el cupo es el limite de VENTA, no el aforo. Cuatro cortesias no
+  -- le sacan cuatro entradas al organizador para vender.
+  if v_desp <> v_antes then
+    raise exception 'TEST_FAIL: 4 cortesias no tenian que tocar el cupo de venta: % -> %',
+      v_antes, v_desp;
   end if;
 
   -- El combo: 3 manillas regaladas de un producto que emite 10 por unidad
   -- son UNA unidad de cupo. Redondear para abajo sería vender esa mesa
   -- otra vez con tres personas ya sentadas.
-  v_antes := disponibilidad_tipo(v_fase, v_combo);
+  reset role;  v_antes := disponibilidad_tipo(v_fase, v_combo);  set local role authenticated;
   perform emitir_cortesias(v_ev, v_combo, 3, 'El DJ', 'la mesa del dj y su gente');
-  v_desp := disponibilidad_tipo(v_fase, v_combo);
-  if v_desp <> v_antes - 1 then
-    raise exception 'TEST_FAIL: 3 manillas de un combo de 10 son 1 unidad: % -> %', v_antes, v_desp;
+  reset role;  v_desp := disponibilidad_tipo(v_fase, v_combo);  set local role authenticated;
+  if v_desp <> v_antes then
+    raise exception 'TEST_FAIL: regalar manillas de un combo no toca el cupo de venta: % -> %',
+      v_antes, v_desp;
   end if;
 
   -- anular una cortesía SÍ devuelve su lugar: no tiene orden que la sostenga
   select id into v_e_cort from entradas
    where evento_id = v_ev and canal = 'cortesia' and cliente = 'Radio Line' order by id limit 1;
-  v_antes := disponibilidad_tipo(v_fase, v_gen);
+  reset role;  v_antes := disponibilidad_tipo(v_fase, v_gen);  set local role authenticated;
   v_r := anular_entrada(v_e_cort, 'esa manilla se le mando dos veces al mismo periodista');
-  if (v_r->>'devuelve_cupo')::boolean is not true then
-    raise exception 'TEST_FAIL: anular una cortesia no dijo que devuelve cupo: %', v_r;
+  -- 0067: una cortesia nunca ocupo un lugar, asi que anularla no devuelve
+  -- ninguno. Decir que si dejaba a la pantalla prometiendo una entrada mas
+  -- para vender que no aparecia por ningun lado.
+  if (v_r->>'devuelve_cupo')::boolean is not false then
+    raise exception 'TEST_FAIL: anular una cortesia no devuelve cupo: %', v_r;
   end if;
-  if disponibilidad_tipo(v_fase, v_gen) <> v_antes + 1 then
-    raise exception 'TEST_FAIL: anular una cortesia no devolvio su lugar';
+  reset role;  v_desp := disponibilidad_tipo(v_fase, v_gen);  set local role authenticated;
+  if v_desp <> v_antes then
+    raise exception 'TEST_FAIL: anular una cortesia movio el cupo de venta: % -> %', v_antes, v_desp;
   end if;
 
   -- anular una manilla de una orden pagada NO devuelve cupo: la unidad se
   -- vendió y se cobró; lo que se perdió es una manilla, no una venta
   select id into v_e_suelta from entradas where orden_id = v_o6 order by id limit 1;
-  v_antes := disponibilidad_tipo(v_fase, v_gen);
+  reset role;  v_antes := disponibilidad_tipo(v_fase, v_gen);  set local role authenticated;
   v_r := anular_entrada(v_e_suelta, 'manilla perdida, se le emite otra a mano');
   if (v_r->>'devuelve_cupo')::boolean is not false then
     raise exception 'TEST_FAIL: una manilla de una orden pagada no devuelve cupo: %', v_r;
   end if;
-  if disponibilidad_tipo(v_fase, v_gen) <> v_antes then
+  reset role;  v_desp := disponibilidad_tipo(v_fase, v_gen);  set local role authenticated;
+  if v_desp <> v_antes then
     raise exception 'TEST_FAIL: anular una manilla suelta devolvio cupo que sigue vendido';
   end if;
   if (select estado from entradas where id = v_e_suelta) <> 'anulada'
@@ -2457,9 +2466,9 @@ begin
   select count(*) into v_n from entradas where orden_id = v_o4;
   if v_n <> 0 then raise exception 'TEST_FAIL: una orden en revision no deberia tener entradas'; end if;
 
-  v_antes := disponibilidad_tipo(v_fase, v_gen);
+  reset role;  v_antes := disponibilidad_tipo(v_fase, v_gen);  set local role authenticated;
   v_r := resolver_revision(v_o4, 'confirmar', 'la pasarela cobro 1 Bs de menos por redondeo, se acepta');
-  v_desp := disponibilidad_tipo(v_fase, v_gen);
+  reset role;  v_desp := disponibilidad_tipo(v_fase, v_gen);  set local role authenticated;
   if (v_r->>'ok')::boolean is not true or (v_r->>'entradas')::int <> 1 then
     raise exception 'TEST_FAIL: confirmar la revision devolvio %', v_r;
   end if;
@@ -2473,9 +2482,9 @@ begin
   end if;
 
   -- Anular la otra: sin entradas, y el cupo que iba a ocupar queda libre.
-  v_antes := disponibilidad_tipo(v_fase, v_gen);
+  reset role;  v_antes := disponibilidad_tipo(v_fase, v_gen);  set local role authenticated;
   v_r := resolver_revision(v_o5, 'anular', 'la pasarela cobro 1 Bs, no hay pago que confirmar');
-  v_desp := disponibilidad_tipo(v_fase, v_gen);
+  reset role;  v_desp := disponibilidad_tipo(v_fase, v_gen);  set local role authenticated;
   if (v_r->>'ok')::boolean is not true or (v_r->>'decision') <> 'anular' then
     raise exception 'TEST_FAIL: anular la revision devolvio %', v_r;
   end if;
@@ -2743,8 +2752,12 @@ begin
   if (select estado from eventos where id = v_ev) <> 'cerrado' then
     raise exception 'TEST_FAIL: el evento no quedo cerrado';
   end if;
+  -- 0065: la comision del relacionador ya NO se le descuenta al
+  -- organizador. Esa plata no pasa por nosotros —el organizador arregla
+  -- con los suyos— asi que el neto es el bruto y las comisiones quedan
+  -- informadas al lado, para que sepa cuanto debe.
   if (x->>'bruto')::numeric <> 300 or (x->>'comisiones')::numeric <> 30
-     or (x->>'neto')::numeric <> 270 then
+     or (x->>'neto')::numeric <> 300 then
     raise exception 'TEST_FAIL: la cuenta del cierre no da: %', x;
   end if;
 
@@ -3456,13 +3469,18 @@ begin
   -- justo el error que nadie mira hasta que la preventa cerro un dia antes.
   set local role authenticated;
   perform set_config('request.jwt.claim.sub', v_staff::text, true);
-  update evento_fase set hasta = '2026-09-05T23:59:00-04:00'::timestamptz where id = v_hoy;
+  -- El `desde` se limpia en el mismo update: la fase arranca en `now()` y
+  -- el check exige desde < hasta, asi que un literal fijo se rompe solo el
+  -- dia que la fecha de la prueba queda atras. Lo que se comprueba aca es
+  -- la conversion de zona, no el almanaque.
+  update evento_fase set desde = null, hasta = '2027-09-05T23:59:00-04:00'::timestamptz
+   where id = v_hoy;
   reset role;
   select hasta into v_hasta from evento_fase where id = v_hoy;
-  if v_hasta <> '2026-09-06 03:59:00+00'::timestamptz then
-    raise exception 'TEST_FAIL: cerrar "el 5" de Bolivia tenia que guardar 2026-09-06 03:59 UTC, guardo %', v_hasta;
+  if v_hasta <> '2027-09-06 03:59:00+00'::timestamptz then
+    raise exception 'TEST_FAIL: cerrar "el 5" de Bolivia tenia que guardar 2027-09-06 03:59 UTC, guardo %', v_hasta;
   end if;
-  if to_char(v_hasta at time zone 'America/La_Paz', 'YYYY-MM-DD HH24:MI') <> '2026-09-05 23:59' then
+  if to_char(v_hasta at time zone 'America/La_Paz', 'YYYY-MM-DD HH24:MI') <> '2027-09-05 23:59' then
     raise exception 'TEST_FAIL: leido en hora de Bolivia no da el 5 a las 23:59, da %',
       to_char(v_hasta at time zone 'America/La_Paz', 'YYYY-MM-DD HH24:MI');
   end if;

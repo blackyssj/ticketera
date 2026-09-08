@@ -51,6 +51,11 @@ async function cargarPerfil() {
      esa constante ya no existe. Si la consulta falla no se corta la sesión —
      el panel entero no puede caerse porque no se pudo armar un link. */
   await miOrganizadorSlug().catch(() => null);
+  /* Si somos TICKETAZO. Un `false` por error de red esconde la pestaña,
+     que es el lado seguro: la alternativa es mostrarla y que cada
+     consulta rebote con "Sin permiso". */
+  const { data: esPlat } = await sb.rpc("es_plataforma");
+  S.plataforma = esPlat === true;
   return true;
 }
 
@@ -106,13 +111,30 @@ const PANTALLAS = [
   { id: "misventas", txt: "Mis ventas", roles: ["rrpp"] },
   { id: "puerta",    txt: "Puerta",     roles: ["portero", "admin"] },
   { id: "equipo",    txt: "Equipo",     roles: ["admin"] },
+  /* La pestaña de TICKETAZO. No se elige por rol —el rol es del cliente,
+     no nuestro— sino por `plataforma_operador`, que es una tabla sin
+     policies: nadie se da de alta solo. Ver 0069. */
+  { id: "plataforma", txt: "Plataforma", roles: ["admin", "staff"], plataforma: true },
 ];
 
 function arrancarApp() {
   $("#pantallaEntrar").hidden = true;
   $("#app").hidden = false;
   $("#yo").textContent = `${S.yo.nombre} · ${S.yo.rol}`;
-  const mias = PANTALLAS.filter(p => p.roles.includes(S.yo.rol));
+  let mias = PANTALLAS.filter(p =>
+    p.roles.includes(S.yo.rol) && (!p.plataforma || S.plataforma));
+  /* Para una cuenta de TICKETAZO, Plataforma va primera y es la que abre.
+     Las otras pestañas son de un organizador vacío —el nuestro no vende
+     nada— así que aterrizar en "Eventos" es aterrizar en una lista sin
+     nada, que parece un sistema roto. */
+  if (S.plataforma) {
+    mias = mias.slice().sort((a, b) => (b.plataforma ? 1 : 0) - (a.plataforma ? 1 : 0));
+    /* `S.pantalla` nace en "eventos", así que preguntar por vacío nunca da
+       true: hay que pisarlo. Se pisa una sola vez, al entrar — después la
+       pestaña la elige quien está usando el panel. */
+    if (!S.arranco) S.pantalla = "plataforma";
+  }
+  S.arranco = true;
   $("#tabs").innerHTML = mias.map(p =>
     `<button data-p="${p.id}"${p.id === S.pantalla ? ' aria-current="page"' : ""}>${esc(p.txt)}</button>`
   ).join("");
@@ -133,6 +155,7 @@ function mostrar(p) {
   if (p === "misventas") return pantallaMisVentas();
   if (p === "puerta") return window.PUERTA.pantalla();   // vive en puerta.js
   if (p === "equipo") return pantallaEquipo();
+  if (p === "plataforma") return pantallaPlataforma();
   $("#main").innerHTML = "";
 }
 
@@ -327,10 +350,15 @@ const puedeEditar = () => !!S.yo && (S.yo.rol === "admin" || S.yo.rol === "staff
    La RLS de `organizadores` ya deja ver una sola fila: la propia. */
 async function miOrganizadorSlug() {
   if (S.orgSlug) return S.orgSlug;
-  const { data, error } = await sb.from("organizadores")
-    .select("slug").eq("id", S.yo.organizador_id).maybeSingle();
+  /* Una sola llamada trae el slug y la configuración del organizador. La
+     pantalla del relacionador necesita saber si su organizador le muestra
+     los números para poder decir "acá no se muestran" en vez de "todavía
+     no vendiste nada", que sería mentira y lo dejaría creyendo que su link
+     no funciona. */
+  const { data, error } = await sb.rpc("mi_organizador_config");
   if (error || !data) throw new Error("No pude averiguar tu organizador, así que no sé dónde guardar la imagen.");
   S.orgSlug = data.slug;
+  S.org = data;
   return data.slug;
 }
 
@@ -1884,6 +1912,7 @@ async function pantallaMisVentas() {
       ${zonaLinks(re.data || [], re.error)}
     </section>
 
+    ${S.org && S.org.rrpp_ve_ventas === false ? "" : `
     <h3 class="titulo-bloque">Lo que vendiste</h3>
     ${ventas.length ? `
       <ul class="lista">${ventas.map(v => `
@@ -1904,9 +1933,14 @@ async function pantallaMisVentas() {
         <span class="monto">${bs(total)}</span>
       </div>`
     : `<p class="vacio">Todavía no vendiste nada. En cuanto alguien compre
-         entrando por tu link y pague, acá aparecen las entradas y tu comisión.</p>`}
+         entrando por tu link y pague, acá aparecen las entradas y tu comisión.</p>`}`}
 
-    ${evs.length ? `
+    ${S.org && S.org.rrpp_ve_ventas === false ? `
+      <p class="nota">Tu organizador no muestra las ventas por relacionador.
+        Tu link funciona igual y todo lo que se compre entrando por ahí queda
+        a tu nombre — el detalle lo lleva él.</p>` : ""}
+
+    ${(S.org && S.org.rrpp_ve_ventas === false) ? "" : `${evs.length ? `
       <div class="cab-bloque sep">
         <h3 class="titulo-bloque">Tu evento</h3>
         ${evs.length > 1
@@ -1915,7 +1949,7 @@ async function pantallaMisVentas() {
              </select>`
           : `<span class="conteo">${esc(evs[0].nombre)} · ${fmtF(evs[0].fecha)}</span>`}
       </div>
-      <section id="zonaCompradores"></section>` : ""}`;
+      <section id="zonaCompradores"></section>` : ""}`}`;
 
   cablearCopiar();
 
@@ -1927,7 +1961,7 @@ async function pantallaMisVentas() {
      Este bloque se llamaba «Tu salón» y traía también el plano de mesas.
      El plano se fue en la limpieza de mesas: acá solo se venden entradas
      y las reservas de mesa las maneja el local por fuera del sistema. */
-  if (evs.length) {
+  if (evs.length && !(S.org && S.org.rrpp_ve_ventas === false)) {
     const sel = $("#selEventoSalon");
     const cual = id => evs.find(e => e.id === id) || evs[0];
     if (sel) sel.onchange = () => montarSalon(sel.value,
@@ -3927,7 +3961,7 @@ function cablearEdicion() {
    "perfiles_slug_uk"», que no le explica a nadie qué tiene que cambiar. */
 function errorDePerfil(error) {
   if (error.code === "23505") return "Ya hay alguien con ese código en tu equipo. Elegí otro.";
-  /* 23514 es "un check no pasó", y desde 0063 la fila tiene dos: el del
+  /* 23514 es "un check no pasó", y desde 0072 la fila tiene dos: el del
      código y el del correo. Sin mirar cuál, el panel le echaba la culpa al
      código siempre — o sea, mandaba a corregir el campo que estaba bien. */
   if (error.code === "23514") {
@@ -4118,5 +4152,138 @@ async function cambiarActivo(id) {
 /* `bitacora` se expone para la puerta: el portero necesita poder revisar
    sus propios escaneos sin salir de su pestaña, y la pantalla es la misma
    —lo que ve cada uno lo decide bitacora_puerta() adentro, no esto. */
+/* ══ Plataforma: el negocio entero ════════════════════════════════
+   Todo el resto del panel está cortado por organizador. Esta pantalla es
+   la única que mira a todos, y existe por una pregunta que ninguna otra
+   puede contestar: ¿la plata que quedó en la pasarela es la que tiene que
+   estar?
+
+   La igualdad es una sola:
+
+       lo cobrado − lo girado = lo que debe haber en la wallet
+
+   Si el número de acá y el que muestra BeePay no coinciden, o cobramos
+   algo que no registramos o giramos de más. Las dos son urgentes y
+   ninguna se ve desde la pantalla de un cliente. Por eso el número se
+   muestra grande y solo, no escondido en una fila de una tabla. */
+async function pantallaPlataforma() {
+  $("#main").innerHTML = `<p class="cargando">Cargando el tablero…</p>`;
+  const [rp, rg] = await Promise.all([
+    sb.rpc("panel_plataforma"),
+    sb.rpc("pagos_plataforma", { p_limite: 25 }),
+  ]);
+  if (rp.error) { $("#main").innerHTML = `<p class="error">${esc(rp.error.message)}</p>`; return; }
+
+  const d = rp.data || {}, t = d.total || {}, cl = d.clientes || [];
+  const pagos = rg.error ? [] : (rg.data || []);
+  const pctPas = Number(d.costo_pct || 0);
+  /* Qué parte de lo que facturamos se va en procesar. Es el número que
+     dice si la tarifa alcanza, y no se ve en ninguna otra pantalla. */
+  const mordida = Number(t.nuestro) > 0
+    ? Math.round(Number(t.costo_pasarela) / Number(t.nuestro) * 100) : 0;
+
+  $("#main").innerHTML = `
+    <div class="cab-seccion"><h2>Plataforma</h2>
+      <span class="conteo">${cl.length} ${cl.length === 1 ? "cliente" : "clientes"}</span></div>
+
+    <section class="tarjeta plat-cuadre">
+      <div>
+        <h3>${bs(t.en_pasarela)}</h3>
+        <p class="ayuda">Es lo que tiene que haber en la wallet del comercio:
+          ${bs(t.cobrado)} cobrados menos ${bs(t.girado)} girados. Si BeePay dice
+          otra cosa, hay algo cobrado sin registrar o girado de más.</p>
+      </div>
+      <dl class="plat-cifras">
+        <div><dt>Cobrado a compradores</dt><dd>${bs(t.cobrado)}</dd></div>
+        <div><dt>De los clientes</dt><dd>${bs(t.del_cliente)}</dd></div>
+        <div class="tenue"><dt>Ya girado</dt><dd>−${bs(t.girado)}</dd></div>
+        <div><dt>Falta girarles</dt><dd>${bs(t.por_girar)}</dd></div>
+        ${Number(t.en_camino) ? `<div class="tenue"><dt>En camino</dt><dd>${bs(t.en_camino)}</dd></div>` : ""}
+      </dl>
+    </section>
+
+    <section class="tarjeta plat-cuadre">
+      <div>
+        <h3 class="ok">${bs(t.margen)}</h3>
+        <p class="ayuda">Lo que nos queda de verdad: ${bs(t.nuestro)} que
+          facturamos menos ${bs(t.costo_pasarela)} que se lleva la pasarela.
+          ${mordida ? `El <b>${mordida}%</b> de nuestra comisión se va en procesar.` : ""}</p>
+      </div>
+      <dl class="plat-cifras">
+        <div><dt>Nuestra comisión</dt><dd>${bs(t.nuestro)}</dd></div>
+        <div class="tenue"><dt>Pasarela (${(pctPas * 100).toFixed(2)}% de lo cobrado)</dt>
+          <dd>−${bs(t.costo_pasarela)}</dd></div>
+        <div><dt>Nos queda</dt><dd class="ok">${bs(t.margen)}</dd></div>
+      </dl>
+      <label class="liq-auto-min">
+        <span>La pasarela nos cobra</span>
+        <input id="pctPasarela" inputmode="decimal" value="${(pctPas * 100).toFixed(2)}" size="5">
+        <span>% de lo cobrado</span>
+        <button type="button" class="btn plano chico" id="btnPctPasarela">Guardar</button>
+      </label>
+      <p class="ayuda">Hoy la pasarela acredita el monto entero al monedero y
+        cobra por fuera, así que este costo se calcula, no se descuenta.
+        Cuando lo empiece a retener, el número del cuadre de arriba se va a
+        mover y va a ser por esto.</p>
+    </section>
+
+    <h3 class="titulo-bloque">Por cliente</h3>
+    <div class="tabla-scroll">
+      <table class="tabla">
+        <thead><tr><th>Cliente</th><th>Tarifa</th><th class="num">Entradas</th>
+          <th class="num">Cobrado</th><th class="num">Comisión</th>
+          <th class="num">Pasarela</th><th class="num">Nos queda</th>
+          <th class="num">Girado</th><th class="num">Falta</th><th>Giro</th></tr></thead>
+        <tbody>${cl.map(c => {
+          const falta = Number(c.del_cliente) - Number(c.girado);
+          return `<tr>
+            <td><b>${esc(c.organizador)}</b>${Number(c.simuladas)
+              ? `<em class="ayuda"> ${bs(c.simuladas)} en pruebas</em>` : ""}</td>
+            <td class="dato">${Math.round(Number(c.fee_pct) * 100)}%
+              <em class="ayuda">${c.modo === "adentro" ? "descontada" : "sumada"}</em></td>
+            <td class="num">${Number(c.entradas)}</td>
+            <td class="num">${bs(c.cobrado)}</td>
+            <td class="num">${bs(c.nuestro)}</td>
+            <td class="num tenue">−${bs(c.costo_pasarela)}</td>
+            <td class="num ok">${bs(c.margen)}</td>
+            <td class="num">${bs(c.girado)}</td>
+            <td class="num${falta > 0 ? " plat-falta" : ""}">${bs(falta)}</td>
+            <td>${c.automatico
+              ? `<span class="pastilla verde">auto ${bs(c.minimo)}</span>`
+              : `<span class="pastilla amarilla">a mano</span>`}${
+              Number(c.rechazados) ? ` <span class="pastilla roja">${c.rechazados} rech.</span>` : ""}</td>
+          </tr>`; }).join("")}</tbody>
+      </table>
+    </div>
+
+    <h3 class="titulo-bloque sep">Últimos giros</h3>
+    ${pagos.length ? `<ul class="lista">${pagos.map(p => {
+      const [txt, color] = ESTADO_PAGO[p.estado] || [p.estado, "amarilla"];
+      return `<li class="fila quieta liq-linea">
+        <span class="fila-nombre">${esc(p.cliente)}
+          <em>${esc(p.titular)} · ${esc(p.banco)}${p.referencia ? " · ref " + esc(p.referencia) : ""}</em></span>
+        <span class="cifra destacada">${bs(p.monto)}</span>
+        <span class="pastilla ${color}">${esc(txt)}</span>
+        <span class="fila-dato tenue">${fmtFH(p.cuando)} · ${p.automatico ? "automático" : "a mano"}${
+          p.motivo ? " · " + esc(p.motivo) : ""}</span>
+      </li>`; }).join("")}</ul>`
+    : `<p class="vacio">Todavía no se giró nada a ningún cliente.</p>`}
+
+    <p class="ayuda sep">Al ${fmtFH(d.al)}. Las órdenes de prueba de la pasarela
+      no suman a ningún total.</p>`;
+
+  const bp = $("#btnPctPasarela");
+  if (bp) bp.onclick = async () => {
+    const v = Number($("#pctPasarela").value);
+    if (!(v >= 0 && v < 100)) { avisar("Poné el porcentaje, por ejemplo 1.5"); return; }
+    /* Se escribe en pantalla como porcentaje y se guarda como fracción: es
+       lo que la gente dice en voz alta contra lo que la cuenta necesita. */
+    const { data, error } = await sb.rpc("guardar_costo_pasarela", { p_pct: v / 100 });
+    if (error) { avisar(sinCodigo(error.message)); return; }
+    avisar(data.motivo || "Guardado.");
+    pantallaPlataforma();
+  };
+}
+
 window.ADMIN = { S, sb, mostrar, avisar, esc, bitacora: pantallaBitacora };
 })();

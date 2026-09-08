@@ -43,7 +43,7 @@ from _api import REF, pat, request, service_key
 
 USUARIO_RE = re.compile(r"^[a-z0-9.-]{3,30}$")
 SLUG_RE    = re.compile(r"^[a-z0-9-]{2,30}$")
-# El mismo criterio flojo que el check de 0063 y que la Edge Function: lo
+# El mismo criterio flojo que el check de 0072 y que la Edge Function: lo
 # que hay que atrapar es un nombre o un telefono escrito en esa columna,
 # no una direccion rara pero valida.
 CORREO_RE  = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

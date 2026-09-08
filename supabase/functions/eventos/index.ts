@@ -123,6 +123,12 @@ Deno.serve(async (req) => {
            viaja null y la portada dibuja un afiche tipográfico: no hay
            imagen de repuesto que valga la pena mostrar. */
         flyer_url: e.flyer_url ?? null,
+        /* Los dos colores de la marca, en el formato que la portada ya
+           sabe leer (`papel`, de la cartelera de demostración). Van sólo
+           si están los dos: con uno solo el afiche queda a medio pintar,
+           y medio pintado se ve peor que sin pintar. */
+        papel: (e.color_fondo && e.color_acento)
+          ? [e.color_fondo, e.color_acento] : null,
         desde,
         venta,
       };

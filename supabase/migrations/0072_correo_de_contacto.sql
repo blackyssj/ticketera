@@ -1,5 +1,5 @@
 -- ============================================================
--- 0063 — el correo de verdad de la gente del equipo
+-- 0072 — el correo de verdad de la gente del equipo
 --
 -- Hoy un perfil YA tiene un correo, y es una trampa: el alta arma
 -- <usuario>@ticketera.local para que GoTrue tenga un identificador con

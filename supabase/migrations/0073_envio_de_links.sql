@@ -1,5 +1,5 @@
 -- ============================================================
--- 0064 — a quien ya se le mando su link, y de que evento
+-- 0073 — a quien ya se le mando su link, y de que evento
 --
 -- Repartir los links es hoy copiar y pegar del panel a WhatsApp, uno por
 -- uno. Con 108 relacionadores y dos eventos son 216 pegadas, y el que se
