@@ -41,7 +41,10 @@ def main() -> int:
     token = pat()
     fallos = 0
     for slug in (sys.argv[1:] or TODAS):
-        cuerpo = (BASE / slug / "index.ts").read_text()
+        # Igual que en sql.py: sin encoding, Windows lee el .ts como cp1252 y
+        # sube los acentos rotos. En enviar-entradas eso llega al correo del
+        # comprador.
+        cuerpo = (BASE / slug / "index.ts").read_text(encoding="utf-8")
         verify_jwt = VERIFY_JWT.get(slug, False)
         carga = json.dumps({"slug": slug, "name": slug, "body": cuerpo, "verify_jwt": verify_jwt})
         h = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
