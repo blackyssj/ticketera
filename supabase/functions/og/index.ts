@@ -121,7 +121,15 @@ Deno.serve(async (req) => {
 <meta property="og:description" content="Entradas con QR. Elegís, pagás y te llega al toque.">
 <meta property="og:url" content="${esc(url)}">
 <meta property="og:type" content="website">
-<meta name="twitter:card" content="summary">
+<!-- La tarjeta de marca, la misma que llevan las páginas estáticas. Una
+     vista previa sin imagen se lee como un link roto, y este camino corre
+     justo cuando algo ya salió mal: mejor la marca que nada. -->
+<meta property="og:image" content="${SITIO}/og-ticketazo.jpg?v=1">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="${SITIO}/og-ticketazo.jpg?v=1">
 <link rel="canonical" href="${esc(url)}">
 </head><body><p><a href="${esc(url)}">Ver el evento</a></p><!-- ${esc(motivo)} --></body></html>`);
 

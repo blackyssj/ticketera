@@ -4,6 +4,30 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Entradas — TICKETAZO</title>
+<!-- ── la vista previa de respaldo ──
+     Al que comparte el link lo atiende la función `og`: vercel.json manda
+     ahí a los rastreadores y les arma la tarjeta con el flyer, el nombre y
+     la fecha del evento. Esto es lo que se ve cuando ESE camino no corre:
+     un rastreador que no está en la lista de user-agents, un cliente de
+     mensajería nuevo, o una vista previa que quedó cacheada de antes.
+
+     Sin estas etiquetas, ese caso mostraba el título crudo del archivo
+     —"Entradas — TICKETAZO"— y ninguna imagen, que se lee como un link
+     roto justo cuando alguien lo está recomendando. Con ellas muestra la
+     marca: no dice qué evento es, pero se ve como algo que funciona.
+     No llevan og:url ni canonical a propósito: los pone la función con la
+     dirección real, y acá una fija mandaría todos los eventos al mismo
+     lado. -->
+<meta property="og:site_name" content="TICKETAZO">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Entradas — TICKETAZO">
+<meta property="og:description" content="Elegís tus entradas, pagás con QR y te llegan al toque.">
+<meta property="og:image" content="https://ticketazo.com.bo/og-ticketazo.jpg?v=1">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://ticketazo.com.bo/og-ticketazo.jpg?v=1">
 <meta name="theme-color" content="#180E3A">
 <!-- La base y el storage viven en el mismo host: un apretón de manos para
      la función `evento` y para el afiche. -->

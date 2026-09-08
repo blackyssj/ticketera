@@ -6,6 +6,30 @@
 <title>TICKETAZO — entradas para las noches de Santa Cruz</title>
 <link rel="canonical" href="https://ticketazo.com.bo/">
 <meta name="description" content="La cartelera de TICKETAZO: qué hay a la venta en Santa Cruz de la Sierra. Elegís el evento, pagás con QR y la entrada te llega al toque.">
+<!-- ── la vista previa de respaldo ──
+     Al que comparte el link lo atiende la función `og`: vercel.json manda
+     ahí a los rastreadores y les arma la tarjeta con el flyer, el nombre y
+     la fecha del evento. Esto es lo que se ve cuando ESE camino no corre:
+     un rastreador que no está en la lista de user-agents, un cliente de
+     mensajería nuevo, o una vista previa que quedó cacheada de antes.
+
+     Sin estas etiquetas, ese caso mostraba el título crudo del archivo
+     —"Entradas — TICKETAZO"— y ninguna imagen, que se lee como un link
+     roto justo cuando alguien lo está recomendando. Con ellas muestra la
+     marca: no dice qué evento es, pero se ve como algo que funciona.
+     No llevan og:url ni canonical a propósito: los pone la función con la
+     dirección real, y acá una fija mandaría todos los eventos al mismo
+     lado. -->
+<meta property="og:site_name" content="TICKETAZO">
+<meta property="og:type" content="website">
+<meta property="og:title" content="TICKETAZO — entradas para las noches de Santa Cruz">
+<meta property="og:description" content="La cartelera de TICKETAZO: qué hay a la venta en Santa Cruz de la Sierra.">
+<meta property="og:image" content="https://ticketazo.com.bo/og-ticketazo.jpg?v=1">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://ticketazo.com.bo/og-ticketazo.jpg?v=1">
 <meta name="theme-color" content="#180E3A">
 <!-- La entrada troquelada, dibujada acá adentro: la misma figura que es la
      firma de la página, que a 16px se reconoce por la silueta y no por
