@@ -82,8 +82,15 @@ function medidas(b: Uint8Array): { w: number; h: number } | null {
 Deno.serve(async (req) => {
   const u = new URL(req.url);
   const org = (u.searchParams.get("org") ?? "").trim().toLowerCase();
-  const ev  = (u.searchParams.get("ev")  ?? "").trim().toLowerCase();
-  const url = `${SITIO}/${encodeURIComponent(org)}/${encodeURIComponent(ev)}`;
+  let   ev  = (u.searchParams.get("ev")  ?? "").trim().toLowerCase();
+  /* Sin `ev` es la vidriera del organizador —el link único que el
+     relacionador reparte— y la tarjeta muestra su fecha más próxima. La URL
+     de la tarjeta es la de la vidriera, no la del evento: el que toca tiene
+     que caer donde puede elegir fecha, que es el punto del link único. */
+  const vidriera = !ev;
+  const url = vidriera
+    ? `${SITIO}/${encodeURIComponent(org)}`
+    : `${SITIO}/${encodeURIComponent(org)}/${encodeURIComponent(ev)}`;
 
   /* Lo que se muestra cuando no se pudo averiguar nada: la marca y el
      link. Nunca un error — una vista previa rota es peor que una genérica,
@@ -100,7 +107,7 @@ Deno.serve(async (req) => {
 <link rel="canonical" href="${esc(url)}">
 </head><body><p><a href="${esc(url)}">Ver el evento</a></p><!-- ${esc(motivo)} --></body></html>`);
 
-  if (!org || !ev) return generico("faltan parámetros");
+  if (!org) return generico("faltan parámetros");
 
   /* ── la imagen, servida por nosotros ─────────────────────────
      Storage manda cada objeto público con `x-robots-tag: none`, y el
@@ -119,11 +126,16 @@ Deno.serve(async (req) => {
   const quiereImagen = u.searchParams.get("img") === "1";
 
   try {
+    /* Con `ev`: ese evento. Sin `ev`: el publicado más próximo del
+       organizador que todavía no pasó — hoy en La Paz, no medianoche UTC. */
+    const hoy = new Date(Date.now() - 4 * 3600 * 1000).toISOString().slice(0, 10);
+    const filtro = vidriera
+      ? `&estado=eq.publicado&fecha=gte.${hoy}&order=fecha.asc,hora_inicio.asc`
+      : `&slug=eq.${encodeURIComponent(ev)}`;
     const r = await fetch(
-      `${SB}/rest/v1/eventos?select=nombre,lugar,fecha,hora_inicio,descripcion,` +
+      `${SB}/rest/v1/eventos?select=slug,nombre,lugar,fecha,hora_inicio,descripcion,` +
       `flyer_url,arte_url,estado,organizadores!inner(slug,nombre,activo)` +
-      `&slug=eq.${encodeURIComponent(ev)}&organizadores.slug=eq.${encodeURIComponent(org)}` +
-      `&limit=1`,
+      `&organizadores.slug=eq.${encodeURIComponent(org)}${filtro}&limit=1`,
       { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } });
     const filas = await r.json().catch(() => []);
     const e = Array.isArray(filas) ? filas[0] : null;
@@ -135,7 +147,10 @@ Deno.serve(async (req) => {
     const hora = String(e.hora_inicio ?? "").slice(0, 5);
     const cuando = `${DIA[f.getDay()]} ${f.getDate()} de ${MES[f.getMonth()]}` +
                    (hora ? ` · ${hora}` : "");
-    const titulo = `${e.nombre} — ${cuando}`;
+    if (vidriera) ev = String(e.slug ?? "");
+    const titulo = vidriera
+      ? `${e.organizadores.nombre} — próxima fecha: ${cuando}`
+      : `${e.nombre} — ${cuando}`;
     /* La bajada del organizador si la escribió; si no, el dato que igual
        hace falta para decidir: dónde y cuándo. Una descripción vacía deja
        la tarjeta con el título flotando. */

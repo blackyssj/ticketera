@@ -121,6 +121,45 @@ function cerca(fecha) {
    gente que ahora mismo está comprando de verdad. */
 const DEMO = new URLSearchParams(location.search).get("demo") === "1";
 
+/* ── la vidriera de un organizador ──────────────────────────────
+   Esta misma página sirve para dos cosas. En `/` es la cartelera de
+   TICKETAZO: todo lo que está a la venta, de todos. En `/<organizador>`
+   es la vidriera de UN cliente: sólo sus fechas, con su nombre arriba.
+
+   Existe por el relacionador. Antes tenía un link POR EVENTO, y un cliente
+   con dos fechas le daba dos links a cada uno de sus relacionadores: el
+   doble de cosas para confundir, y la venta de la segunda fecha se perdía
+   cuando alguien compartía el link de la primera. Con esto el relacionador
+   tiene UN link —`/distrito-ferial?r=nico`— que sirve para todo lo que ese
+   cliente venda, hoy y lo que publique mañana.
+
+   Las rutas reservadas (/admin, /orden, /mis-entradas…) nunca llegan acá:
+   vercel.json las atrapa antes. Lo que llega con un solo segmento es un
+   organizador o nada. */
+const ORG = (() => {
+  const seg = location.pathname.split("/").filter(Boolean);
+  return seg.length === 1 ? decodeURIComponent(seg[0]).toLowerCase() : null;
+})();
+
+/* La atribución del relacionador, guardada con la MISMA llave que usa la
+   página del evento (app.js): así el comprador entra por el link único,
+   pasea por las fechas, elige una, y la compra sigue siendo de quien le
+   pasó el link aunque el `?r=` ya no esté en la URL. sessionStorage y no
+   localStorage por el mismo motivo que allá: dura la visita, no para
+   siempre. Además el `?r=` se re-escribe en cada link de la vidriera —dos
+   caminos para el mismo dato, porque uno de los dos falla en navegadores
+   con el storage bloqueado. */
+const REL = (() => {
+  const key = "ticketera.r";
+  const url = new URLSearchParams(location.search).get("r");
+  try {
+    if (url) sessionStorage.setItem(key, url);
+    return sessionStorage.getItem(key) || null;
+  } catch { return url || null; }
+})();
+
+const conAtribucion = url => REL ? `${url}?r=${encodeURIComponent(REL)}` : url;
+
 function pedirCartelera() {
   if (DEMO) {
     return Promise.resolve({ ok: true, eventos: window.DEMO_CARTELERA || [] });
@@ -627,6 +666,33 @@ function cablearFiltros(lista, grilla) {
   aplicar();
 }
 
+/* El hero de la vidriera. En `/` dice "Entradas para las noches de Santa
+   Cruz"; en la vidriera de un cliente dice SU nombre, porque el que llega
+   por el link de un relacionador viene a comprar lo de ese cliente y no a
+   enterarse de qué es TICKETAZO. El nombre sale de sus propios eventos —no
+   hay otra llamada— y si no tiene ninguno se deja el título general, que es
+   mejor que un hueco. La marca (fondo y acento) también, si la tiene: los
+   mismos dos colores que ya visten la página del evento. */
+function vestirVidriera(eventos) {
+  const e = eventos[0];
+  if (!e) return;
+  const t = $(".hero .titulo");
+  if (t) t.innerHTML = `<span class="l fluor">${esc(e.organizador_nombre)}</span>`;
+  const b = $(".hero .bajada");
+  if (b) b.textContent = eventos.length > 1
+    ? "Elegí tu fecha, pagás con QR y la entrada te llega al toque."
+    : "Pagás con QR y la entrada te llega al toque.";
+  document.title = `${e.organizador_nombre} — entradas`;
+  if (e.papel && e.papel.length === 2) {
+    const r = document.documentElement.style;
+    r.setProperty("--noche", e.papel[0]);
+    r.setProperty("--fluor", e.papel[1]);
+  }
+  /* En la vidriera "Lo próximo" y "La cartelera" no separan nada: son las
+     fechas de un solo cliente. Se callan, no se borran (ver más abajo). */
+  $("#rotuloTxt").textContent = "Sus fechas";
+}
+
 async function pintar() {
   const grilla = $("#grilla");
   let r = null, motivo = "";
@@ -653,14 +719,23 @@ async function pintar() {
     return;
   }
 
-  const eventos = r.eventos || [];
+  const todos = r.eventos || [];
+  const eventos = (ORG ? todos.filter(e => e.organizador === ORG) : todos)
+    .map(e => ({ ...e, url: conAtribucion(e.url) }));
   grilla.setAttribute("aria-busy", "false");
+
+  if (ORG) vestirVidriera(eventos);
 
   if (!eventos.length) {
     $("#rotuloCuenta").textContent = "";
-    grilla.innerHTML = cartel(
-      "Todavía no hay nada a la venta",
-      "Los eventos aparecen acá apenas el organizador los publica. Volvé en unos días.");
+    grilla.innerHTML = ORG
+      ? cartel("Este organizador no tiene nada a la venta ahora",
+               "Cuando publique una fecha, aparece acá. Mientras tanto, mirá lo que sí está en venta.",
+               "Ver toda la cartelera")
+      : cartel("Todavía no hay nada a la venta",
+               "Los eventos aparecen acá apenas el organizador los publica. Volvé en unos días.");
+    const b = $("#btnReintentar");
+    if (b && ORG) b.onclick = () => { location.href = "/"; };
     return;
   }
 

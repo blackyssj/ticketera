@@ -1983,17 +1983,18 @@ function zonaLinks(eventos, error) {
   if (!eventos.length) return `<p class="nota">Todavía no hay ningún evento a la
     venta. Cuando el organizador publique uno, tu link aparece acá.</p>`;
 
-  return eventos.map((e, i) => {
-    const url = `${location.origin}/${S.orgSlug}/${e.slug}` +
-                `?r=${encodeURIComponent(S.yo.slug)}`;
-    return `<div class="link-evento">
-      <span class="link-titulo">${esc(e.nombre)} · ${fmtF(e.fecha)}</span>
-      <p class="link-publico">
-        <code id="lkr${i}">${esc(url)}</code>
-        <button type="button" class="btn plano chico" data-copiar="lkr${i}">Copiar</button>
-      </p>
-    </div>`;
-  }).join("");
+  /* Un solo link para todas las fechas del organizador (ver linkDe). Las
+     fechas se listan debajo para que sepa qué está vendiendo con él. */
+  const url = linkDe(S.yo.slug);
+  return `<div class="link-evento">
+    <p class="link-publico">
+      <code id="lkr0">${esc(url)}</code>
+      <button type="button" class="btn plano chico" data-copiar="lkr0">Copiar</button>
+    </p>
+    <p class="ayuda">Sirve para ${eventos.length === 1 ? "esta fecha" : "todas estas fechas"}:
+      ${eventos.map(e => `<b>${esc(e.nombre)}</b> · ${fmtF(e.fecha)}`).join(" — ")}.
+      Y para lo que se publique después, sin cambiar de link.</p>
+  </div>`;
 }
 
 /* El desglose por persona vive DENTRO del evento y no en una pestaña
@@ -3918,21 +3919,27 @@ function filaPersona(p) {
 /* El link de venta de una persona, listo para copiar y mandar. Uno por
    evento a la venta: el ?r= es de la persona, pero el link es de un evento
    concreto y mandar el del evento equivocado vende otra cosa. */
+/* UN link por persona, no uno por evento. Antes eran tantos como fechas a
+   la venta, y un cliente con dos fechas le daba dos links a cada
+   relacionador: el doble para confundir, y la venta de la segunda fecha se
+   perdía cuando compartían el de la primera. El link cae en la vidriera del
+   organizador —sus fechas, su nombre— y la atribución viaja a la compra de
+   cualquiera de ellas. Y sirve para lo que se publique mañana sin tener que
+   repartir nada de nuevo. */
+function linkDe(slug) {
+  return `${location.origin}/${S.orgSlug}?r=${encodeURIComponent(slug)}`;
+}
+
 function zonaLinksDe(p) {
-  if (!EQ.eventos.length) return `<div class="persona-links vacio-links">
-    Cuando haya un evento a la venta, acá aparece el link de ${esc(p.nombre)}.</div>`;
+  const url = linkDe(p.slug), id = `lk-${p.id}`;
   return `<div class="persona-links">
-    ${EQ.eventos.map((e, i) => {
-      const url = `${location.origin}/${S.orgSlug}/${e.slug}` +
-                  `?r=${encodeURIComponent(p.slug)}`;
-      const id = `lk-${p.id}-${i}`;
-      return `<p class="link-publico">
-        ${EQ.eventos.length > 1 ? `<span class="link-evento-nombre">${esc(e.nombre)}</span>` : ""}
-        <code id="${id}">${esc(url)}</code>
-        <button type="button" class="btn plano chico" data-copiar="${id}"
-          data-que="El link de ${esc(p.nombre)}">Copiar</button>
-      </p>`;
-    }).join("")}
+    <p class="link-publico">
+      <code id="${id}">${esc(url)}</code>
+      <button type="button" class="btn plano chico" data-copiar="${id}"
+        data-que="El link de ${esc(p.nombre)}">Copiar</button>
+    </p>
+    ${!EQ.eventos.length ? `<em class="ayuda">Todavía no hay ningún evento a la
+      venta: el link ya funciona, pero muestra la vidriera vacía.</em>` : ""}
   </div>`;
 }
 
