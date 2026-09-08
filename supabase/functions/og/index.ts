@@ -102,6 +102,22 @@ Deno.serve(async (req) => {
 
   if (!org || !ev) return generico("faltan parámetros");
 
+  /* ── la imagen, servida por nosotros ─────────────────────────
+     Storage manda cada objeto público con `x-robots-tag: none`, y el
+     rastreador de Facebook y WhatsApp lo respeta: levanta el título y la
+     descripción, y DESCARTA la imagen. Esa cabecera es de Supabase y no
+     se puede apagar desde la consola.
+
+     Así que la vista previa apunta acá y esto la reemite sin esa
+     cabecera. Es un hop más, pero sólo lo paga el rastreador — la página
+     que ve el comprador sigue usando la URL directa de Storage.
+
+     La ruta NO viene por parámetro: se resuelve del evento contra la
+     base. Aceptar una URL de afuera convertiría esto en un proxy abierto
+     con el que cualquiera se descarga lo que quiera desde nuestro
+     dominio. */
+  const quiereImagen = u.searchParams.get("img") === "1";
+
   try {
     const r = await fetch(
       `${SB}/rest/v1/eventos?select=nombre,lugar,fecha,hora_inicio,descripcion,` +
@@ -128,7 +144,29 @@ Deno.serve(async (req) => {
     /* El FLYER primero: es el afiche que la gente reconoce. El arte de la
        entrada es el último recurso —tiene el hueco del QR en el medio— y
        aun así es mejor que una tarjeta sin imagen. */
-    const img = e.flyer_url || e.arte_url || "";
+    const directa = e.flyer_url || e.arte_url || "";
+
+    if (quiereImagen) {
+      if (!directa) return new Response("Sin imagen", { status: 404 });
+      const r3 = await fetch(directa);
+      if (!r3.ok) return new Response("Sin imagen", { status: 404 });
+      return new Response(r3.body, {
+        headers: {
+          "Content-Type": r3.headers.get("content-type") ?? "image/jpeg",
+          /* Un dia: el afiche de un evento no cambia todos los dias, y si
+             cambia se refresca antes con un `?v=` en la etiqueta que con
+             una espera corta acá. */
+          "Cache-Control": "public, max-age=86400, s-maxage=86400",
+          /* Lo contrario de lo que manda Storage, que es todo el punto. */
+          "X-Robots-Tag": "all",
+        },
+      });
+    }
+
+    // La que viaja en la etiqueta pasa por acá; la página usa la directa.
+    const img = directa
+      ? `${SB}/functions/v1/og?org=${encodeURIComponent(org)}&ev=${encodeURIComponent(ev)}&img=1`
+      : "";
 
     /* Las medidas de la imagen. WhatsApp y Facebook deciden entre la
        tarjeta grande y el thumbnail chico con esto: sin las medidas
@@ -138,9 +176,9 @@ Deno.serve(async (req) => {
        Se sacan de los primeros bytes del JPEG/PNG/WebP, que es lo unico
        que hace falta y no cuesta una descarga entera. */
     let med: { w: number; h: number } | null = null;
-    if (img) {
+    if (directa) {
       try {
-        const r2 = await fetch(img, { headers: { Range: "bytes=0-2047" } });
+        const r2 = await fetch(directa, { headers: { Range: "bytes=0-2047" } });
         med = medidas(new Uint8Array(await r2.arrayBuffer()));
       } catch { med = null; }
     }
