@@ -50,6 +50,11 @@ async function cargarPerfil() {
      una constante: La Manzana veía sus eventos con el link de Amstel. Ahora
      esa constante ya no existe. Si la consulta falla no se corta la sesión —
      el panel entero no puede caerse porque no se pudo armar un link. */
+  /* Se olvida lo del organizador anterior ANTES de preguntar. Entrar con
+     otra cuenta sin recargar —pasa al probar, y pasa cuando alguien
+     comparte una compu— dejaba `S.orgSlug` cacheado del primero, y todos
+     los links de relacionador salían con el slug de OTRO cliente. */
+  S.orgSlug = null; S.org = null;
   await miOrganizadorSlug().catch(() => null);
   /* Si somos TICKETAZO. Un `false` por error de red esconde la pestaña,
      que es el lado seguro: la alternativa es mostrarla y que cada

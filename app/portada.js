@@ -775,7 +775,9 @@ async function pintar() {
     return;
   }
 
-  $("#rotuloTxt").textContent = muchos ? "Toda la cartelera" : "También a la venta";
+  /* En la vidriera de un cliente el rótulo no compara con nada: son sus
+     fechas y punto. vestirVidriera() ya lo puso; acá no se pisa. */
+  if (!ORG) $("#rotuloTxt").textContent = muchos ? "Toda la cartelera" : "También a la venta";
   contar(abajo.length);
   /* Con la cartelera larga, en el teléfono la grilla pasa a dos columnas.
      Con una sola, veinte eventos son doce mil píxeles de scroll: no se
