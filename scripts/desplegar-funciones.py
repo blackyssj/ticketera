@@ -16,8 +16,8 @@ from _api import REF, pat, request
 BASE = pathlib.Path(__file__).resolve().parent.parent / "supabase" / "functions"
 TODAS = ["eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
          "barrer-pagos",
-         "orden", "enviar-entradas", "equipo", "cuenta", "contacto", "liquidar",
-         "pago-callback"]
+         "orden", "enviar-entradas", "enviar-links", "equipo", "cuenta",
+         "contacto", "liquidar", "pago-callback"]
 
 # Por defecto False: eventos, evento, crear-orden, iniciar-pago, estado-orden y
 # orden las llama el público con la anon key, sin sesión. enviar-entradas es la
@@ -34,8 +34,11 @@ TODAS = ["eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
 # anon key para crear la cuenta (todavía no hay sesión que exigir). La
 # función verifica el JWT a mano contra /auth/v1/user en la acción que sí
 # lo necesita (vincular).
-VERIFY_JWT = {"enviar-entradas": True, "equipo": True, "liquidar": True,
-               "pago-callback": False}
+# `enviar-links` la aprieta un admin o un staff desde el panel, asi que
+# siempre hay sesion: la reja va puesta. Adentro igual se revalida contra
+# /auth/v1/user y se mira el rol EN LA BASE, porque el JWT no lo lleva.
+VERIFY_JWT = {"enviar-entradas": True, "equipo": True, "enviar-links": True,
+               "liquidar": True, "pago-callback": False}
 
 def main() -> int:
     token = pat()

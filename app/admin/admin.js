@@ -1990,6 +1990,7 @@ async function pantallaRelacionadores(eventoId) {
       <button class="btn plano chico" id="btnVolver">← ${esc(ev.data.nombre)}</button>
       <h2>Relacionadores</h2>
     </div>
+    <section class="tarjeta reparto" id="zonaReparto"></section>
     ${rr.error ? `<p class="error">${esc(rr.error.message)}</p>` : ""}
     ${filas.length ? `
       <ul class="lista">${filas.map(v => `
@@ -2014,6 +2015,97 @@ async function pantallaRelacionadores(eventoId) {
         por un ?r=.</p>`}`;
 
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
+  if (puedeEditar()) pintarReparto(eventoId);
+  else $("#zonaReparto").remove();
+}
+
+/* ── repartir los links ──
+   El link de cada relacionador se copiaba del panel y se pegaba en
+   WhatsApp, uno por uno. Con 108 personas y dos eventos son 216 pegadas, y
+   el que se equivoca manda el link de otro: no falla, VENDE, y le atribuye
+   la venta a la persona equivocada.
+
+   La pantalla pregunta el estado antes de dibujar el botón porque el botón
+   NO dice lo mismo siempre: la primera vez manda a todos, la segunda solo
+   a los que se agregaron después. Un botón que dijera "mandar los links" y
+   mandara 108 correos repetidos por haber agregado a uno es la clase de
+   botón que se aprieta una sola vez en la vida. */
+async function pintarReparto(eventoId, estado) {
+  const z = $("#zonaReparto");
+  if (!z) return;
+  if (!estado) {
+    z.innerHTML = `<p class="cargando">Viendo a quién le falta su link…</p>`;
+    try {
+      estado = await llamarFuncion("enviar-links", { accion: "estado", evento: eventoId });
+    } catch (ex) {
+      z.innerHTML = `<h3>Repartir los links</h3><p class="error">${esc(ex.message)}</p>`;
+      return;
+    }
+  }
+
+  const { con_link: conLink, faltan, ya_recibieron: ya, sin_correo: sinCorreo = [],
+          sin_codigo: sinCodigo = [], ultimo_envio: ultimo } = estado;
+  const pendientes = [
+    sinCorreo.length ? `${sinCorreo.length} sin correo cargado` : "",
+    sinCodigo.length ? `${sinCodigo.length} sin código` : "",
+  ].filter(Boolean);
+
+  z.innerHTML = `
+    <h3>Repartir los links</h3>
+    ${conLink === 0
+      ? `<p class="vacio">Ningún relacionador tiene código y correo cargados
+           todavía. Cargáselos en <b>Equipo</b> y volvé.</p>`
+      : faltan > 0
+        ? `<p class="ayuda">Le manda a cada uno un correo con <b>su</b> link de
+             este evento. ${ya > 0
+               ? `${ya} ya lo ${ya === 1 ? "recibió" : "recibieron"}${
+                   ultimo ? ` el ${fechaHoraBO(ultimo)}` : ""}.` : ""}</p>
+           <div class="acciones">
+             <button class="btn primario" id="btnMandar">Mandar el link ${
+               faltan === 1 ? "al que falta" : `a los ${faltan} que faltan`}</button>
+             ${ya > 0 ? `<button type="button" class="btn plano" id="btnMandarTodos"
+                >Reenviar a los ${conLink} igual</button>` : ""}
+           </div>`
+        : `<p class="ayuda">Los ${conLink} relacionadores con código y correo ya
+             recibieron su link${ultimo ? `, el último el ${fechaHoraBO(ultimo)}` : ""}.</p>
+           <div class="acciones">
+             <button type="button" class="btn plano" id="btnMandarTodos"
+               >Reenviar a los ${conLink} igual</button>
+           </div>`}
+    ${pendientes.length
+      /* Los que no pueden recibir se dicen SIEMPRE y con nombre: son
+         exactamente los que después dicen "a mí no me llegó", y sin esta
+         línea el panel informa "108 enviados" y nadie sabe que faltaban 3. */
+      ? `<p class="ayuda aviso">No entran en el envío: ${esc(pendientes.join(" y "))}.
+           ${esc([...sinCorreo, ...sinCodigo].slice(0, 6).join(", "))}${
+             sinCorreo.length + sinCodigo.length > 6 ? "…" : ""}.
+           Se arregla en <b>Equipo</b>.</p>`
+      : ""}
+    <p class="error" id="repError"></p>`;
+
+  const mandar = async (forzar, boton) => {
+    const cuantos = forzar ? conLink : faltan;
+    if (!confirm(`Se van a mandar ${cuantos} ${cuantos === 1 ? "correo" : "correos"}.` +
+        (forzar && ya > 0 ? `\n\n${ya} de ${cuantos === 1 ? "ellos" : "esos"} ya lo ` +
+          `recibieron antes y les va a llegar de nuevo.` : "") + "\n\n¿Los mando?")) return;
+    boton.disabled = true;
+    boton.textContent = "Mandando…";
+    try {
+      const r = await llamarFuncion("enviar-links",
+        { accion: "enviar", evento: eventoId, forzar });
+      avisar(r.enviados === 0 ? "No había a quién mandarle."
+        : `${r.enviados} ${r.enviados === 1 ? "correo enviado" : "correos enviados"}.` +
+          (r.fallados?.length ? ` ${r.fallados.length} no salieron.` : ""));
+      await pintarReparto(eventoId);
+    } catch (ex) {
+      $("#repError").textContent = ex.message;
+      boton.disabled = false;
+      await pintarReparto(eventoId);
+    }
+  };
+  const b1 = $("#btnMandar"), b2 = $("#btnMandarTodos");
+  if (b1) b1.onclick = () => mandar(false, b1);
+  if (b2) b2.onclick = () => mandar(true, b2);
 }
 
 /* ══ el tablero del evento ════════════════════════════════════════
@@ -3579,9 +3671,18 @@ const ROLES_TXT = { admin: "Administrador", staff: "Staff",
    venció— y viaja en el Authorization. La función no cree nada de lo que
    le mandemos: se lo pregunta a /auth/v1/user. */
 async function llamarEquipo(cuerpo) {
+  return llamarFuncion("equipo", cuerpo);
+}
+
+/* Las Edge Functions del panel contestan todas igual —{ok:false, motivo} o
+   {ok:true, ...}— y fallan todas de las mismas dos formas: la sesión que se
+   cerró y la reja del gateway, que ante un 401 o un 500 contesta HTML y no
+   JSON. Eso último es lo que hacía aparecer "Unexpected token <" en la
+   pantalla en vez de "entrá de nuevo". */
+async function llamarFuncion(nombre, cuerpo) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) throw new Error("Se cerró tu sesión. Entrá de nuevo.");
-  const r = await fetch(`${CFG.SUPABASE_URL}/functions/v1/equipo`, {
+  const r = await fetch(`${CFG.SUPABASE_URL}/functions/v1/${nombre}`, {
     method: "POST",
     headers: { "Content-Type": "application/json",
                apikey: CFG.SUPABASE_ANON_KEY,

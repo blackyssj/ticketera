@@ -1654,3 +1654,14 @@ body[data-filtro="1"] .puerta-visor::before{
 @media (prefers-reduced-motion:reduce){
   .puerta-cartel[data-on="1"]{animation:none}
 }
+
+/* ── repartir los links ──
+   La tarjeta va arriba de la lista de ventas y no abajo: el reparto es lo
+   que se hace ANTES de que haya ventas, y con el evento recién creado la
+   lista está vacía y esto sería lo único útil de la pantalla. */
+.reparto{margin-bottom:18px}
+.reparto .acciones{margin-top:12px}
+/* El renglón de los que no entran en el envío. En color de aviso porque no
+   es un error —el envío sale igual— pero es la única señal de que hay gente
+   afuera, y sin ella el panel dice "108 enviados" y nadie busca a los 3. */
+.reparto .ayuda.aviso{display:block;margin-top:12px;color:var(--aviso);line-height:1.6}
