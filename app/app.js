@@ -404,6 +404,17 @@ function pintarMarca(e) {
        da superficies vino y no manchas grises flotando encima. */
     raiz.style.setProperty("--noche-2", `color-mix(in srgb, ${f} 90%, #fff)`);
     raiz.style.setProperty("--noche-3", `color-mix(in srgb, ${f} 80%, #fff)`);
+    /* La tinta del panel crema —el texto, los chips del paso y de la fase,
+       el stepper— pasa a ser el mismo fondo del cliente. Es lo que hace
+       que el panel se lea como parte de la misma página y no como un
+       formulario de otra marca pegado debajo: un chip violeta de
+       TICKETAZO sobre una página vino era exactamente "mucha variación
+       de color". Los tres grises de la tinta se derivan por
+       transparencia, como estaban escritos a mano para el violeta. */
+    raiz.style.setProperty("--tinta", f);
+    raiz.style.setProperty("--tinta-60", `color-mix(in srgb, ${f} 60%, transparent)`);
+    raiz.style.setProperty("--tinta-40", `color-mix(in srgb, ${f} 40%, transparent)`);
+    raiz.style.setProperty("--tinta-16", `color-mix(in srgb, ${f} 16%, transparent)`);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.content = f;
   }
