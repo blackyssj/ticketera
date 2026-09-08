@@ -105,8 +105,12 @@ async function repartoDe(ev: any, yo: any) {
 
 function correoDe(p: any, ev: any, org: any) {
   const link = `${SITIO}/${org.slug}/${ev.slug}?r=${encodeURIComponent(p.slug)}`;
+  /* &middot; y no el caracter suelto, como en todo el resto de la plantilla:
+     el correo sale en UTF-8 y Resend lo declara, pero alcanza un cliente que
+     adivine la codificacion para que ese punto se vea "Â·". La entidad se ve
+     igual en todos y no depende de que nadie adivine bien. */
   const cuando = ev.fecha
-    ? `${ev.fecha}${ev.hora_inicio ? " · " + String(ev.hora_inicio).slice(0, 5) : ""}`
+    ? `${ev.fecha}${ev.hora_inicio ? " &middot; " + String(ev.hora_inicio).slice(0, 5) : ""}`
     : "";
   const html = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#180E3A;padding:28px 0">
  <tr><td align="center">

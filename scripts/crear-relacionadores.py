@@ -36,7 +36,7 @@ otra media afuera, y a vos adivinando cuál era cuál — porque las claves
 de las que sí entraron ya se imprimieron y las de las que no, no existen.
 Mejor fallar entera y sin haber tocado nada.
 """
-import csv, datetime, json, pathlib, re, secrets, string, sys
+import csv, datetime, json, pathlib, re, secrets, string, sys, unicodedata
 from urllib.parse import quote
 
 from _api import REF, pat, request, service_key
@@ -90,6 +90,16 @@ def leer(ruta: pathlib.Path):
     return filas, errores
 
 
+def igual(a: str, b: str) -> bool:
+    """Dos nombres que son la misma persona. Sin acentos, sin mayúsculas y
+    sin espacios de más: la lista viene de un WhatsApp copiado a mano."""
+    def limpiar(s):
+        s = unicodedata.normalize("NFKD", s or "")
+        s = "".join(c for c in s if not unicodedata.combining(c))
+        return " ".join(s.lower().split())
+    return limpiar(a) == limpiar(b)
+
+
 def repetidos(filas):
     """Choques adentro del propio archivo. La base los frenaría igual, pero
     recién en el insert — o sea, con la mitad de la lista ya creada."""
@@ -138,16 +148,38 @@ def main() -> int:
     code, body = request(
         f"{base}/rest/v1/perfiles?organizador_id=eq.{org_id}&select=nombre,slug", cabeceras=h)
     tomados = {p["slug"]: p["nombre"] for p in json.loads(body or "[]") if p.get("slug")}
+    # Un código tomado por OTRA persona es un error: hay que elegir otro, y
+    # hasta que se elija no se crea nadie. Pero tomado por alguien que se
+    # llama igual es un REINTENTO — la corrida anterior llegó hasta ahí y se
+    # cortó. Con una lista de cien, obligar a borrar a mano las que ya
+    # entraron es pedirle a alguien que edite cien líneas a las tres de la
+    # mañana, y ahí es donde se borra la línea equivocada.
+    ya_estaban, pendientes = [], []
     for f in filas:
-        if f["slug"] and f["slug"] in tomados:
+        duenio = tomados.get(f["slug"]) if f["slug"] else None
+        if duenio is None:
+            pendientes.append(f)
+        elif igual(duenio, f["nombre"]):
+            ya_estaban.append(f)
+        else:
             errores.append(f"línea {f['linea']}: el código «{f['slug']}» ya es de "
-                           f"{tomados[f['slug']]} en {org_nombre}")
+                           f"{duenio} en {org_nombre}")
+    filas = pendientes
 
     if errores:
         print(f"No creé a nadie. {len(errores)} problema(s) en la lista:\n")
         for e in errores:
             print("  · " + e)
         return 1
+
+    if ya_estaban:
+        print(f"{len(ya_estaban)} ya estaban creadas de antes, las salteo:")
+        for f in ya_estaban:
+            print(f"  ==  {f['usuario']:<20} {f['nombre']}")
+        print()
+    if not filas:
+        print("No queda nadie por crear.")
+        return 0
 
     print(f"{len(filas)} persona(s) para {org_nombre}. Creando…\n")
     alfabeto = string.ascii_letters + string.digits
