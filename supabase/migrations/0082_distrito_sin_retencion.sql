@@ -1,0 +1,42 @@
+-- ============================================================
+-- 0082 — a Distrito Ferial se le gira el 100%, no el 70%
+--
+-- ── qué era el 70% ──
+--
+-- `anticipo_pct` (0052) es cuánto de lo suyo puede sacar el organizador
+-- ANTES de que el evento pase. Existe por una asimetría: nosotros
+-- cobramos hoy y el show es dentro de diez días, y si en el medio el
+-- evento se cae, los que compraron nos reclaman a NOSOTROS. La entrada
+-- la vendió TICKETAZO, el cargo salió del monedero de TICKETAZO, y el
+-- comprador no sabe ni quiere saber quién organiza.
+--
+-- Si ya le giramos el 100% al organizador, devolverle la plata al
+-- comprador sale de nuestro bolsillo y después hay que ir a pedírsela al
+-- cliente. El 30% retenido es exactamente eso: el colchón que hace que
+-- una cancelación sea un trámite y no una pérdida. Pasada la fecha del
+-- evento se libera solo, porque ahí ya no hay nada que devolver.
+--
+-- ── por qué se puede sacar igual ──
+--
+-- Porque 0052 lo escribió como una decisión de confianza por cliente y no
+-- como una regla del sistema: "a un cliente conocido se le puede poner
+-- 1.00". Distrito Ferial es un cliente conocido, con el que hablamos
+-- todos los días, y la decisión comercial es girarle todo al cerrar el
+-- día. Se hace, y queda escrito acá que se hizo a sabiendas.
+--
+-- Lo que cambia en concreto: el cierre de medianoche pasa a mandar todo
+-- lo vendido ese día en vez de siete décimos. Si el evento se cae, el
+-- reembolso a los compradores lo adelanta TICKETAZO y se le reclama al
+-- cliente.
+--
+-- Para volver atrás es una línea:
+--   update organizadores set anticipo_pct = 0.70 where slug = 'distrito-ferial';
+--
+-- El default para los clientes nuevos sigue siendo 0.70 a propósito: la
+-- confianza se gana por cliente, no viene puesta de fábrica.
+-- ============================================================
+
+update organizadores set anticipo_pct = 1.0000 where slug = 'distrito-ferial';
+
+-- ── control ─────────────────────────────────────────────────
+select * from chequeo_funciones_sin_guardia();
