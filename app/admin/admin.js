@@ -4287,14 +4287,20 @@ async function cambiarActivo(id) {
    muestra grande y solo, no escondido en una fila de una tabla. */
 async function pantallaPlataforma() {
   $("#main").innerHTML = `<p class="cargando">Cargando el tablero…</p>`;
-  const [rp, rg] = await Promise.all([
+  const [rp, rg, re] = await Promise.all([
     sb.rpc("panel_plataforma"),
     sb.rpc("pagos_plataforma", { p_limite: 25 }),
+    sb.rpc("eventos_plataforma"),
   ]);
   if (rp.error) { $("#main").innerHTML = `<p class="error">${esc(rp.error.message)}</p>`; return; }
 
   const d = rp.data || {}, t = d.total || {}, cl = d.clientes || [];
   const pagos = rg.error ? [] : (rg.data || []);
+  /* La plata no se liquida por cliente, se liquida por evento: cada fecha
+     tiene su tope del 70%, su disponible y sus giros. Sin esta tabla, para
+     saber cuál de las dos noches de un cliente tiene plata lista había que
+     entrar con las credenciales del cliente. */
+  const evs = re.error ? [] : ((re.data || {}).eventos || []);
   const pctPas = Number(d.costo_pct || 0);
   /* Qué parte de lo que facturamos se va en procesar. Es el número que
      dice si la tarifa alcanza, y no se ve en ninguna otra pantalla. */
@@ -4374,6 +4380,37 @@ async function pantallaPlataforma() {
           </tr>`; }).join("")}</tbody>
       </table>
     </div>
+
+    ${evs.length ? `
+    <h3 class="titulo-bloque sep">Por evento</h3>
+    <p class="ayuda">El disponible es lo que se le puede mandar HOY: hasta que
+      pase la fecha sólo sale el anticipo, y nunca más de lo que realmente
+      entró por la pasarela. Es la misma cuenta que ve el cliente en su panel.</p>
+    <div class="tabla-scroll">
+      <table class="tabla">
+        <thead><tr><th>Cliente</th><th>Evento</th><th class="num">Entradas</th>
+          <th class="num">Cobrado</th><th class="num">Comisión</th>
+          <th class="num">Nos queda</th><th class="num">Girado</th>
+          <th class="num">Disponible hoy</th><th class="num">Falta en total</th></tr></thead>
+        <tbody>${evs.map(e => {
+          const disp = Number(e.disponible), falta = Number(e.por_girar);
+          return `<tr>
+            <td>${esc(e.organizador)}</td>
+            <td><b>${esc(e.evento)}</b>
+              <em class="ayuda">${esc(fechaBO(e.fecha + "T12:00:00Z"))}${
+                e.estado !== "publicado" ? ` · ${esc(e.estado)}` : ""}${
+                e.evento_pasado ? " · ya pasó" : ""}</em></td>
+            <td class="num">${Number(e.entradas)}</td>
+            <td class="num">${bs(e.cobrado)}</td>
+            <td class="num">${bs(e.nuestro)}</td>
+            <td class="num ok">${bs(e.margen)}</td>
+            <td class="num">${bs(e.girado)}</td>
+            <td class="num${disp > 0 ? " plat-falta" : ""}">${bs(disp)}${
+              Number(e.en_camino) ? `<em class="ayuda">${bs(e.en_camino)} en camino</em>` : ""}</td>
+            <td class="num${falta > 0 ? " plat-falta" : ""}">${bs(falta)}</td>
+          </tr>`; }).join("")}</tbody>
+      </table>
+    </div>` : ""}
 
     <h3 class="titulo-bloque sep">Últimos giros</h3>
     ${pagos.length ? `<ul class="lista">${pagos.map(p => {
