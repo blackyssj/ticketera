@@ -727,8 +727,8 @@ function cablearFiltros(lista, grilla) {
   aplicar();
 }
 
-/* El hero de la vidriera. En `/` dice "Entradas para lo que pasa en Santa
-   Cruz"; en la vidriera de un cliente dice SU nombre, porque el que llega
+/* El hero de la vidriera. En `/` dice "Santa Cruz tiene plan. Vos tenés
+   entrada."; en la vidriera de un cliente dice SU nombre, porque el que llega
    por el link de un relacionador viene a comprar lo de ese cliente y no a
    enterarse de qué es TICKETAZO. El nombre sale de sus propios eventos —no
    hay otra llamada— y si no tiene ninguno se deja el título general, que es
