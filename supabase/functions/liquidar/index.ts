@@ -261,14 +261,25 @@ Deno.serve(async (req) => {
 
   let pago: string | null = null;
   try {
-    const { evento, monto } = await req.json();
+    const { evento, monto, plataforma } = await req.json();
     if (!evento) return json({ ok: false, motivo: "Falta el evento." }, 400);
 
-    /* Con el token de quien llama: la base aplica puede_editar(), el tope de
+    /* Dos puertas para el mismo trámite. `pedir_pago_organizador` es la del
+       cliente girándose a sí mismo (guardia: puede_editar sobre SU
+       organizador). `pedir_pago_plataforma` es la de TICKETAZO girándole a
+       un cliente sin entrar con sus credenciales (guardia: es_plataforma).
+
+       Quién puede usar cuál lo decide la BASE, no esta bandera: las dos
+       funciones corren con el token de quien llama y tienen su propia
+       guardia adentro. Mandar `plataforma: true` sin ser operador no abre
+       nada, devuelve "Sin permiso". La bandera acá sólo elige a qué puerta
+       tocar. */
+    const fn = plataforma === true ? "pedir_pago_plataforma" : "pedir_pago_organizador";
+
+    /* Con el token de quien llama: la base aplica la guardia, el tope de
        anticipo y el candado por evento. Un 401/403 de acá es la respuesta
        correcta y no hay que traducirla. */
-    const pedido = await rpc("pedir_pago_organizador",
-      { p_evento: evento, p_monto: monto ?? null }, token);
+    const pedido = await rpc(fn, { p_evento: evento, p_monto: monto ?? null }, token);
     if (!pedido?.ok) return json(pedido ?? { ok: false, motivo: "No se pudo pedir el pago." }, 409);
 
     pago = pedido.pago;

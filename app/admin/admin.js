@@ -4391,7 +4391,8 @@ async function pantallaPlataforma() {
         <thead><tr><th>Cliente</th><th>Evento</th><th class="num">Entradas</th>
           <th class="num">Cobrado</th><th class="num">Comisión</th>
           <th class="num">Nos queda</th><th class="num">Girado</th>
-          <th class="num">Disponible hoy</th><th class="num">Falta en total</th></tr></thead>
+          <th class="num">Disponible hoy</th><th class="num">Falta en total</th>
+          <th></th></tr></thead>
         <tbody>${evs.map(e => {
           const disp = Number(e.disponible), falta = Number(e.por_girar);
           return `<tr>
@@ -4408,6 +4409,11 @@ async function pantallaPlataforma() {
             <td class="num${disp > 0 ? " plat-falta" : ""}">${bs(disp)}${
               Number(e.en_camino) ? `<em class="ayuda">${bs(e.en_camino)} en camino</em>` : ""}</td>
             <td class="num${falta > 0 ? " plat-falta" : ""}">${bs(falta)}</td>
+            <td>${disp < 0.01 ? ""
+              : e.cuenta
+                ? `<button type="button" class="btn plano chico" data-girar="${esc(e.id)}"
+                     >Girar ${bs(disp)}</button>`
+                : `<em class="ayuda">sin cuenta cargada</em>`}</td>
           </tr>`; }).join("")}</tbody>
       </table>
     </div>` : ""}
@@ -4428,6 +4434,14 @@ async function pantallaPlataforma() {
     <p class="ayuda sep">Al ${fmtFH(d.al)}. Las órdenes de prueba de la pasarela
       no suman a ningún total.</p>`;
 
+  /* Un giro por fila. La confirmación dice monto, cliente y CUENTA: ésta es
+     la única pantalla desde donde se mueve plata de un cliente sin tener su
+     panel delante, así que el destino tiene que estar a la vista antes de
+     apretar y no después. */
+  document.querySelectorAll("[data-girar]").forEach(b => {
+    b.onclick = () => girarDesdePlataforma(evs.find(x => x.id === b.dataset.girar), b);
+  });
+
   const bp = $("#btnPctPasarela");
   if (bp) bp.onclick = async () => {
     const v = Number($("#pctPasarela").value);
@@ -4439,6 +4453,41 @@ async function pantallaPlataforma() {
     avisar(data.motivo || "Guardado.");
     pantallaPlataforma();
   };
+}
+
+/* ── girarle a un cliente desde nuestra cuenta ──────────────────
+   El mismo endpoint que usa el cliente para pagarse a sí mismo, con la
+   bandera `plataforma`. Quién puede hacerlo lo decide la base
+   (`es_plataforma()` adentro de `pedir_pago_plataforma`): mandar la
+   bandera sin ser operador devuelve "Sin permiso".
+
+   Queda registrado como pago a mano y en la bitácora DEL CLIENTE, con
+   nuestro nombre. Es su plata: tiene que poder ver que el giro no lo
+   pidió él. */
+async function girarDesdePlataforma(e, btn) {
+  if (!e) return;
+  const monto = Number(e.disponible || 0), c = e.cuenta || {};
+  if (monto < 0.01) return;
+  if (!confirm(`Girarle ${bs(monto)} a ${e.organizador}\n` +
+               `por ${e.evento}.\n\n` +
+               `Va a ${c.titular}\n${c.banco}, cuenta ${c.cuenta}.\n\n` +
+               `Sale del monedero de TICKETAZO y no se deshace desde acá.`)) return;
+
+  await conBoton(btn, "Girando…", async () => {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) { avisar("Se cerró tu sesión. Entrá de nuevo."); return; }
+    const r = await fetch(`${CFG.SUPABASE_URL}/functions/v1/liquidar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: CFG.SUPABASE_ANON_KEY,
+                 Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ evento: e.id, plataforma: true }),
+    });
+    const txt = await r.text();
+    let j = null;
+    try { j = txt ? JSON.parse(txt) : null; } catch { /* la reja del gateway no contesta JSON */ }
+    avisar(j?.motivo || `No se pudo completar (${r.status}).`);
+    await pantallaPlataforma();
+  });
 }
 
 window.ADMIN = { S, sb, mostrar, avisar, esc, bitacora: pantallaBitacora };
