@@ -7,9 +7,9 @@
 # pero lo guarda como fuente del deployment y queda descargable desde su
 # dashboard: quien tenga acceso al equipo de Vercel pasa de "toca el
 # front" a "controla la base". Estuvo subiéndose en cada deploy manual
-# hasta el 10/09 (lo encontró el audit); el token se rotó ese día.
+# hasta el 10/09, cuando lo encontró el audit. Sacarlo de acá no
+# desinfecta los deploys viejos: el token hay que rotarlo en Supabase.
 .pat
-~/.supabase_pat
 .claude
 .superpowers
 supabase
