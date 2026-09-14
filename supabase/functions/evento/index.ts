@@ -135,6 +135,12 @@ Deno.serve(async (req) => {
         marca_1: partes[0],
         marca_2: partes.slice(1).join(" "),
         lugar: e.lugar ?? "",
+        // Dónde queda (0086): la dirección en texto y el punto para el mapa
+        // y el botón "Cómo llegar". Nulos si el organizador no los cargó;
+        // la página esconde el bloque entero.
+        direccion: e.direccion ?? null,
+        lat: e.lat == null ? null : Number(e.lat),
+        lng: e.lng == null ? null : Number(e.lng),
         // La fecha también cruda: el texto de abajo no trae año, y el front la
         // necesita entera para el .ics y para "Mis entradas". Sin esto el
         // cliente la reconstruye adivinando el año por el día de semana.

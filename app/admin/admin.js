@@ -236,6 +236,16 @@ async function abrirEvento(id) {
         <input id="fSlug" value="${esc(e.slug)}" pattern="[a-z0-9\\-]{2,60}" required>
         <em class="ayuda">/${esc(S.orgSlug || "…")}/<b id="vistaSlug">${esc(e.slug || "…")}</b></em></label>
       <label><span>Lugar</span><input id="fLugar" value="${esc(e.lugar || "")}"></label>
+      <!-- Dónde queda (0086): la dirección en texto y el punto del mapa. El
+           punto no se tipea: se pega el link de "Compartir" de Google Maps
+           y de ahí salen lat y lng (leerPunto). Sin link, sin mapa: la
+           página muestra sólo la dirección. -->
+      <label><span>Dirección</span>
+        <input id="fDireccion" value="${esc(e.direccion || "")}" placeholder="Calle, número, referencia"></label>
+      <label><span>Link de Google Maps</span>
+        <input id="fMapa" type="url" inputmode="url" placeholder="https://maps.google.com/?q=-17.78,-63.21"
+               value="${e.lat != null && e.lng != null ? `https://maps.google.com/?q=${e.lat},${e.lng}` : ""}">
+        <em class="ayuda">En Google Maps: buscá el lugar → Compartir → copiar link. La página arma el mapa y el botón "Cómo llegar".</em></label>
       <label><span>Fecha</span><input id="fFecha" type="date" value="${e.fecha || ""}" required></label>
       <label><span>Hora</span><input id="fHora" type="time" value="${String(e.hora_inicio).slice(0,5)}"></label>
       <label><span>Edad mínima</span><input id="fEdad" type="number" min="0" max="99" value="${e.edad_min}"></label>
@@ -303,8 +313,21 @@ async function abrirEvento(id) {
   $("#formEvento").onsubmit = async ev => {
     ev.preventDefault();
     $("#fError").textContent = "";
+    /* El link de Google Maps viene en cuatro formas y las cuatro traen el
+       punto en algún lado: ?q=lat,lng · @lat,lng · query=lat,lng ·
+       !3dlat!4dlng. Un link acortado (maps.app.goo.gl) no trae nada: hay
+       que abrirlo y copiar el largo. */
+    const mapaTxt = $("#fMapa").value.trim();
+    const punto = leerPunto(mapaTxt);
+    if (mapaTxt && !punto) {
+      $("#fError").textContent = "Ese link no trae coordenadas. Abrilo en Google Maps y copiá el link largo (con los números después de @ o de q=).";
+      return;
+    }
     const fila = {
       organizador_id: S.yo.organizador_id,
+      direccion: $("#fDireccion").value.trim() || null,
+      lat: punto ? punto[0] : null,
+      lng: punto ? punto[1] : null,
       nombre: $("#fNombre").value.trim(),
       slug: $("#fSlug").value.trim().toLowerCase(),
       lugar: $("#fLugar").value.trim() || null,
@@ -330,6 +353,18 @@ async function abrirEvento(id) {
     avisar("Evento guardado.");
     id ? mostrar("eventos") : abrirEvento(data.id);
   };
+}
+
+/* Saca [lat, lng] de un link de Google Maps, o null si no hay. */
+function leerPunto(url) {
+  if (!url) return null;
+  const m = url.match(/[?&](?:q|query|ll)=(-?\d{1,2}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)/)
+         || url.match(/@(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)/)
+         || url.match(/!3d(-?\d{1,2}(?:\.\d+)?)!4d(-?\d{1,3}(?:\.\d+)?)/);
+  if (!m) return null;
+  const lat = Number(m[1]), lng = Number(m[2]);
+  if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) return null;
+  return [Number(lat.toFixed(6)), Number(lng.toFixed(6))];
 }
 
 /* ══ las dos imágenes de un evento ════════════════════════════════

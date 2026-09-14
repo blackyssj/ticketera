@@ -456,6 +456,29 @@ function ponerLogo(e) {
   img.src = e.logo_url;
 }
 
+/* Dónde queda (0086). Con dirección o punto, el bloque aparece; sin nada,
+   sigue oculto y la página es la de siempre. El mapa se pide recién acá y
+   no en el HTML: un iframe de Google en una página sin punto es un pedido
+   a Google por nada. `loading="lazy"` para que no compita con el afiche. */
+function pintarUbicacion() {
+  const e = D.evento;
+  const punto = e.lat != null && e.lng != null;
+  const caja = $("#ubicacion");
+  if (!caja || (!punto && !e.direccion)) return;
+  $("#ubiLugar").textContent = e.lugar || "";
+  $("#ubiDireccion").textContent = e.direccion || "";
+  if (punto) {
+    const q = `${e.lat},${e.lng}`;
+    const mapa = $("#ubiMapa");
+    mapa.innerHTML = `<iframe src="https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=16&hl=es&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mapa: ${esc(e.lugar || e.direccion || "")}"></iframe>`;
+    mapa.hidden = false;
+    const ir = $("#ubiLlegar");
+    ir.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+    ir.hidden = false;
+  }
+  caja.hidden = false;
+}
+
 function pintarHero() {
   const e = D.evento;
   $("#marca").innerHTML = `<b>${esc(e.marca_1)}</b> ${esc(e.marca_2)}`;
@@ -503,6 +526,7 @@ function pintarHero() {
     otras.textContent = `Ver todas las fechas de ${D.organizador.nombre} →`;
     otras.hidden = false;
   }
+  pintarUbicacion();
   document.title = `${e.marca_1} ${e.marca_2} — ${VOCAB.titulo}`;
   $("#faseChip").innerHTML = `<i></i>${esc(D.fase.nombre)} · ${esc(D.fase.hasta_txt)}`;
   /* La nota se arma con las partes que el organizador realmente cobra. Con

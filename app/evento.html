@@ -70,7 +70,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=38">
+<link rel="stylesheet" href="/styles.css?v=39">
 </head>
 <body>
 
@@ -177,6 +177,20 @@
               <span class="hueso" style="width:150px;height:34px"></span>
             </article>
           </div>
+
+          <!-- Dónde queda. Nace oculto: app.js lo abre cuando la función
+               trae dirección o punto (0086). El mapa es un iframe de Google
+               sin clave (output=embed) que se carga perezoso; el botón lleva
+               al mismo punto y en el teléfono abre la app de mapas. -->
+          <section class="ubicacion" id="ubicacion" aria-label="Ubicación" hidden>
+            <h3>Ubicación</h3>
+            <p class="ubi-lugar"><b id="ubiLugar"></b><span id="ubiDireccion"></span></p>
+            <div class="ubi-mapa" id="ubiMapa" hidden></div>
+            <a class="ubi-llegar" id="ubiLlegar" target="_blank" rel="noopener" hidden>
+              <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 14s4.5-4.2 4.5-8A4.5 4.5 0 0 0 3.5 6c0 3.8 4.5 8 4.5 8Z"/><circle cx="8" cy="6" r="1.6"/></svg>
+              Cómo llegar
+            </a>
+          </section>
 
           <!-- Las dudas que llegan por WhatsApp mientras la persona todavía
                no compró. Contestadas acá, antes de pedirle un dato. -->
@@ -383,6 +397,6 @@
 <!-- La sesión del comprador. Antes de app.js: crearOrden le pide el token
      y la pantalla "listo" le pide crear/entrar/vincular. -->
 <script src="/cuenta.js?v=4"></script>
-<script src="/app.js?v=40"></script>
+<script src="/app.js?v=41"></script>
 </body>
 </html>

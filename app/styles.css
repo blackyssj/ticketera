@@ -344,6 +344,24 @@ input{font:inherit}
    Al pie del primer paso, después de las entradas: contestan lo que hoy se
    pregunta por WhatsApp antes de comprar. <details> nativo, sin JS, y el
    renglón entero es el blanco del dedo. */
+/* Dónde queda (0086). Mismo borde superior que las dudas, así los dos
+   bloques de "antes de comprar" se leen como una serie. El mapa es un
+   rectángulo con las esquinas de las tarjetas; el iframe adentro no tiene
+   borde propio. "Cómo llegar" es un link de texto como "Compartir": la
+   acción principal de la página sigue siendo comprar. */
+.ubicacion{margin-top:34px;padding-top:6px;border-top:1.5px solid var(--tinta-16)}
+.ubicacion h3{font-size:22px;margin:16px 0 8px}
+.ubi-lugar{margin:0 0 12px;font-size:15px;line-height:1.5;color:var(--tinta-60)}
+.ubi-lugar b{display:block;color:var(--tinta);font-weight:800}
+.ubi-mapa{aspect-ratio:16 / 9;max-height:280px;border-radius:6px;overflow:hidden;background:var(--tinta-16)}
+.ubi-mapa iframe{display:block;width:100%;height:100%;border:0}
+.ubi-llegar{
+  display:inline-flex;align-items:center;gap:8px;min-height:44px;margin:6px 0 0 -8px;padding:0 8px;
+  font-family:var(--dato);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--tinta);text-decoration:none;transition:color .16s ease;
+}
+.ubi-llegar svg{width:15px;height:15px;flex:0 0 auto}
+.ubi-llegar:hover{color:var(--rojo)}
 .dudas{margin-top:34px;padding-top:6px;border-top:1.5px solid var(--tinta-16)}
 .dudas h3{font-size:22px;margin:16px 0 4px}
 .dudas details{border-bottom:1px solid var(--tinta-16)}
