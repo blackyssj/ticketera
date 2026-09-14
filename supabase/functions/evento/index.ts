@@ -147,10 +147,14 @@ Deno.serve(async (req) => {
         // El dato de reservas solo aparece si hay reservas. "0 disponibles"
         // en un evento que no vende mesas no es un cero, es un renglón que
         // el comprador tiene que descartar solo.
+        // Un evento gratis (todos los precios en 0) no tiene "Pago": tiene
+        // inscripción. Y "Edad mínima 0" no es un dato, es un renglón vacío:
+        // un congreso o un DevFest no piden edad.
         datos: [["Puertas", String(e.hora_inicio).slice(0,5)],
-                ["Edad mínima", String(e.edad_min)],
+                ...(Number(e.edad_min) > 0 ? [["Edad mínima", String(e.edad_min)]] : []),
                 ...(reservas > 0 ? [["Reservas", `${reservas} disponibles`]] : []),
-                ["Pago", "Con QR"]],
+                tipos.length && tipos.every((t) => Number(t.precio) === 0)
+                  ? ["Inscripción", "Gratis"] : ["Pago", "Con QR"]],
         tope_entradas_orden: e.tope_entradas_orden,
         arte_url: e.arte_url ?? null,
         /* La marca del organizador (0062). Van los tres o no va ninguno:
