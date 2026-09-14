@@ -46,3 +46,7 @@ __pycache__/
 # gente del equipo de un cliente: ninguna de las dos cosas se versiona.
 claves-*.csv
 relacionadores*.txt
+
+# graphify: el grafo del código es derivado y se reconstruye en 3 s (graphify update .);
+# no se versiona. Lo usa Claude Code para leer menos archivos.
+graphify-out/

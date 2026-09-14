@@ -121,3 +121,12 @@ Si creaste datos de prueba en la base, **borralos y decilo**. Nunca borres
 
 `docs/diseno.md` (decisiones de producto), `docs/diseno-vistas-internas.md`
 (panel, relacionador, puerta), y el README para la estructura de carpetas.
+
+## Mapa del código (graphify)
+
+`graphify-out/graph.json` es el grafo del repo (no se versiona; se rehace solo
+en cada commit y checkout, o con `graphify update .`). Antes de abrir archivos
+para ubicar algo, preguntarle al grafo: `graphify query "…" --budget 1500`,
+`graphify explain "nombre"`, `graphify path "A" "B"`. Devuelve archivo:línea;
+recién ahí se lee el tramo que hace falta. Ojo: las migraciones redefinen
+funciones; vale la versión con el número más alto.
