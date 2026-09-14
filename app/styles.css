@@ -353,7 +353,7 @@ input{font:inherit}
 .ubicacion h3{font-size:22px;margin:16px 0 8px}
 .ubi-lugar{margin:0 0 12px;font-size:15px;line-height:1.5;color:var(--tinta-60)}
 .ubi-lugar b{display:block;color:var(--tinta);font-weight:800}
-.ubi-mapa{aspect-ratio:16 / 9;max-height:280px;border-radius:6px;overflow:hidden;background:var(--tinta-16)}
+.ubi-mapa{width:100%;height:clamp(200px,42vw,300px);border-radius:6px;overflow:hidden;background:var(--tinta-16)}
 .ubi-mapa iframe{display:block;width:100%;height:100%;border:0}
 .ubi-llegar{
   display:inline-flex;align-items:center;gap:8px;min-height:44px;margin:6px 0 0 -8px;padding:0 8px;
