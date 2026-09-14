@@ -241,6 +241,14 @@ async function abrirEvento(id) {
       <label><span>Edad mínima</span><input id="fEdad" type="number" min="0" max="99" value="${e.edad_min}"></label>
       <label><span>Máximo de entradas por compra</span>
         <input id="fTope" type="number" min="1" max="50" value="${e.tope_entradas_orden}"></label>
+      <!-- Publicado y listado son dos cosas: publicado es "a la venta";
+           listado es "en la portada de TICKETAZO y contado como otra fecha
+           del organizador". Una demo para un cliente o la fiesta de una
+           empresa se venden por su link y no se anuncian. -->
+      <label class="check">
+        <input id="fListado" type="checkbox"${e.listado === false ? "" : " checked"}>
+        <span>Mostrar en la cartelera de TICKETAZO (apagado: solo se llega por el link)</span>
+      </label>
       <!-- Los dos colores con los que se viste la página pública del evento:
            el fondo y el de los botones. Dos y no seis: el resto de la paleta
            se deriva solo. Apagados, la página sale con la marca de TICKETAZO,
@@ -304,6 +312,7 @@ async function abrirEvento(id) {
       hora_inicio: $("#fHora").value || "21:00",
       edad_min: Number($("#fEdad").value),
       tope_entradas_orden: Number($("#fTope").value),
+      listado: $("#fListado").checked,
       // null y no "" — la base exige #rrggbb o nulo, y "" no es ninguno.
       color_fondo:  $("#fSinMarca").checked ? null : $("#fFondo").value.toUpperCase(),
       color_acento: $("#fSinMarca").checked ? null : $("#fAcento").value.toUpperCase(),
