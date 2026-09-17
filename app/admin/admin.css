@@ -1,8 +1,8 @@
 /* ══════════════════════════════════════════════════════════════════
    Administración de la ticketera.
 
-   Oscura, como la landing: son dos caras del mismo producto y antes se
-   veían como dos aplicaciones distintas. La profundidad la da una pila de
+   Oscura y neutra: grises, sin resplandores, títulos en la misma familia
+   que el texto. La landing es el afiche; esto es la oficina (17/09/2026). La profundidad la da una pila de
    superficies con bordes de un pelo, no cajas con marco — es lo que hace
    que Puerta se vea armada y esto no.
 
@@ -12,40 +12,44 @@
 
 :root{
   /* la pila de superficies: cada nivel un escalón hacia el lector */
-  --noche:#0B0A0A;
-  --hundido:#08080A;        /* más abajo que el fondo: donde van los inputs */
-  --sup:#141118;
-  --sup-2:#1B1720;
-  --sup-3:#241F2A;
+  --noche:#131316;
+  --hundido:#0E0E11;        /* más abajo que el fondo: donde van los inputs */
+  --sup:#1A1A1F;
+  --sup-2:#212127;
+  --sup-3:#2A2A31;
 
-  --linea:rgba(246,241,228,.07);
-  --linea-2:rgba(246,241,228,.13);
+  --linea:rgba(236,236,238,.09);
+  --linea-2:rgba(236,236,238,.16);
 
   /* tres niveles de texto: la jerarquía no la carga el tamaño */
-  --txt:#F6F1E4;
-  --txt-2:#A9A2B0;
-  --txt-3:#6E6878;
+  --txt:#ECECEE;
+  --txt-2:#A0A0A8;
+  --txt-3:#6B6B74;
 
   --rojo:#DC0A2D;
   --rojo-claro:#F01236;
   --rojo-suave:rgba(220,10,45,.14);
-  --dorado:#E9B44C;
+  --dorado:#D9A441;
 
   /* semánticos, separados del acento: un evento a la venta no es "lo activo",
      es "lo que está bien" */
-  --ok:#3DD68C;
-  --ok-bg:rgba(61,214,140,.13);
-  --aviso:#F6B44A;
-  --aviso-bg:rgba(246,180,74,.13);
-  --peligro:#FB7185;
-  --peligro-bg:rgba(251,113,133,.12);
+  --ok:#4CAF7D;
+  --ok-bg:rgba(76,175,125,.12);
+  --aviso:#D9A441;
+  --aviso-bg:rgba(217,164,65,.12);
+  --peligro:#E5484D;
+  --peligro-bg:rgba(229,72,77,.12);
 
-  --display:"Big Shoulders Display","Arial Narrow",system-ui,sans-serif;
+  /* Los títulos van en la misma familia que el texto: es una herramienta,
+     no un afiche. La condensada queda sólo para Puerta, que se lee a un
+     metro y de noche. */
+  --display:"Inter Tight",system-ui,-apple-system,sans-serif;
+  --display-puerta:"Big Shoulders Display","Arial Narrow",system-ui,sans-serif;
   --texto:"Inter Tight",system-ui,-apple-system,sans-serif;
   --dato:"DM Mono",ui-monospace,Menlo,monospace;
 
-  --r:14px;
-  --r-chico:10px;
+  --r:10px;
+  --r-chico:7px;
   --carril:1120px;
 }
 
@@ -56,24 +60,23 @@ body{
   font-family:var(--texto);font-size:15px;line-height:1.5;
   -webkit-font-smoothing:antialiased;
 }
-h1,h2,h3{margin:0;font-family:var(--display);text-transform:uppercase;line-height:.95;letter-spacing:.01em}
+h1,h2,h3{margin:0;font-family:var(--display);font-weight:600;line-height:1.15;letter-spacing:-.01em}
 p{margin:0}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
 input{font:inherit}
-:focus-visible{outline:2px solid var(--dorado);outline-offset:2px;border-radius:4px}
+:focus-visible{outline:2px solid var(--txt-2);outline-offset:2px;border-radius:4px}
 [hidden]{display:none !important}
 
 /* ─── entrar ───
    Centrada y sola: no hay nada más que hacer en esta pantalla. */
 .entrar{
   min-height:100dvh;display:grid;place-items:center;padding:24px;
-  background:radial-gradient(80% 50% at 50% 0%, rgba(220,10,45,.16), transparent 62%), var(--noche);
+  background:var(--noche);
 }
 .caja{
   width:min(370px,100%);background:var(--sup);
-  border:1px solid var(--linea);border-radius:20px;padding:28px 24px;
+  border:1px solid var(--linea);border-radius:12px;padding:28px 24px;
   display:flex;flex-direction:column;gap:15px;
-  box-shadow:0 24px 60px rgba(0,0,0,.5);
 }
 .caja h1{font-size:38px}
 .caja .sub{
@@ -87,7 +90,7 @@ input{font:inherit}
   background:var(--sup);border-bottom:1px solid var(--linea);
   position:sticky;top:0;z-index:20;
 }
-.marca{font-family:var(--display);font-size:20px;text-transform:uppercase;letter-spacing:.06em}
+.marca{font-family:var(--display);font-size:17px;font-weight:700;letter-spacing:-.01em}
 .tabs{display:flex;gap:3px}
 .tabs button{
   padding:7px 14px;border-radius:999px;
@@ -192,7 +195,7 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 .grilla tr:last-child th,.grilla tr:last-child td{border-bottom:0}
 .grilla thead th{
   background:var(--sup-2);color:var(--txt);
-  font-family:var(--display);font-size:17px;text-transform:uppercase;font-weight:700;
+  font-family:var(--display);font-size:17px;font-weight:700;
   position:sticky;top:0;
 }
 .grilla th em{
@@ -202,7 +205,7 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 /* La primera columna se acota: si la descripción del tipo crece, empuja las
    columnas de fases fuera de pantalla — y esas columnas SON la pantalla. */
 .grilla tbody th{
-  font-family:var(--display);font-size:19px;text-transform:uppercase;
+  font-family:var(--display);font-size:19px;
   background:var(--sup);border-right:1px solid var(--linea);
   width:230px;min-width:190px;max-width:230px;
 }
@@ -429,7 +432,7 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 .total p{margin:5px 0 0;font-family:var(--dato);font-size:12px;color:var(--txt-3)}
 .total .monto{
   margin-left:auto;flex:0 0 auto;white-space:nowrap;
-  font-family:var(--display);font-size:34px;color:var(--dorado);
+  font-family:var(--display);font-size:30px;font-weight:600;color:var(--txt);
 }
 
 /* ─── el arte de la entrada ───
@@ -469,7 +472,7 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 }
 .arte-qr i{
   font-style:normal;font-family:var(--dato);font-size:9px;
-  letter-spacing:.16em;text-transform:uppercase;color:var(--dorado);
+  letter-spacing:.16em;text-transform:uppercase;color:var(--txt-3);
 }
 .arte-controles{
   flex:1 1 230px;min-width:210px;
@@ -483,7 +486,7 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 .arte-controles input[type="file"]::file-selector-button{
   margin-right:11px;padding:7px 12px;border-radius:8px;cursor:pointer;
   border:1px solid var(--linea-2);background:var(--sup-2);color:var(--txt);
-  font-family:var(--display);font-size:13px;text-transform:uppercase;letter-spacing:.06em;
+  font-family:var(--display);font-size:13px;
 }
 .arte-controles input[type="file"]:disabled{opacity:.5;cursor:progress}
 /* Tres estados y tres colores: subiendo, salió bien, salió mal. El error se
@@ -506,7 +509,7 @@ input[type="date"],input[type="time"]{color-scheme:dark}
   padding:18px 20px;display:flex;flex-direction:column;gap:6px;min-width:0;
 }
 .cifra-grande .valor{
-  font-family:var(--display);font-size:44px;line-height:.9;
+  font-family:var(--display);font-size:36px;font-weight:600;line-height:1.05;letter-spacing:-.02em;
   font-variant-numeric:tabular-nums;overflow-wrap:anywhere;
 }
 /* Lo recaudado es la única cifra en dorado: la plata se distingue de las
@@ -537,11 +540,11 @@ input[type="date"],input[type="time"]{color-scheme:dark}
   border-radius:var(--r);border:1px solid var(--linea);background:var(--sup);
 }
 .alerta-cifra{
-  font-family:var(--display);font-size:34px;line-height:.9;
+  font-family:var(--display);font-size:28px;font-weight:600;line-height:1.05;letter-spacing:-.02em;
   font-variant-numeric:tabular-nums;flex:0 0 auto;
 }
 .alerta-txt{min-width:0;flex:1 1 auto}
-.alerta h4{margin:0;font-family:var(--display);font-size:19px;text-transform:uppercase;letter-spacing:.01em}
+.alerta h4{margin:0;font-family:var(--display);font-size:19px;}
 .alerta p{margin:4px 0 0;font-size:13px;line-height:1.45;color:var(--txt-2)}
 .alerta-pie{
   display:block;margin-top:7px;font-family:var(--dato);font-size:11.5px;
@@ -719,7 +722,7 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 }
 .rev-cab{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
 .rev-cab>div{min-width:0;flex:1 1 auto}
-.rev-cab h4{margin:0;font-family:var(--display);font-size:21px;text-transform:uppercase}
+.rev-cab h4{margin:0;font-family:var(--display);font-size:21px;}
 .rev-cab p{margin:3px 0 0;font-family:var(--dato);font-size:12px;color:var(--txt-2)}
 .rev-detalle{margin:12px 0 0;font-size:13.5px;color:var(--txt-2)}
 .rev-plata{display:flex;gap:26px;flex-wrap:wrap;margin:14px 0}
@@ -772,14 +775,14 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
    separa de un rectángulo pintado. */
 .btn{
   padding:12px 20px;border-radius:var(--r-chico);
-  font-family:var(--display);font-size:18px;text-transform:uppercase;letter-spacing:.04em;
+  font-family:var(--display);font-size:18px;
   transition:background .15s ease,box-shadow .15s ease,transform .08s ease,color .15s ease;
 }
 .btn.ancho{width:100%}
 .btn.chico{font-size:13px;padding:8px 13px;letter-spacing:.06em}
-.btn.primario{background:var(--rojo);color:#fff;box-shadow:0 8px 22px rgba(220,10,45,.34)}
+.btn.primario{background:var(--rojo);color:#fff}
 .btn.primario:hover:not(:disabled){background:var(--rojo-claro)}
-.btn.primario:active:not(:disabled){transform:scale(.985);box-shadow:0 4px 12px rgba(220,10,45,.3)}
+.btn.primario:active:not(:disabled){transform:scale(.985)}
 .btn.primario:disabled{background:var(--sup-3);color:var(--txt-3);box-shadow:none;cursor:not-allowed}
 .btn.plano{border:1px solid var(--linea-2);color:var(--txt-2)}
 .btn.plano:hover{border-color:var(--txt-3);color:var(--txt);background:var(--sup-2)}
@@ -799,7 +802,7 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
   background:var(--sup-3);color:var(--txt);
   border:1px solid var(--linea-2);
   padding:13px 18px;border-radius:var(--r-chico);font-size:14px;
-  box-shadow:0 16px 44px rgba(0,0,0,.55);
+  box-shadow:0 8px 24px rgba(0,0,0,.35);
   transition:transform .28s cubic-bezier(.2,.9,.3,1.1);
 }
 .toast[data-on="1"]{transform:translate(-50%,0)}
@@ -968,7 +971,7 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 .puerta-cartel.pasa{background:#0E7A4A;color:#F2FFF8}
 .puerta-cartel.no{background:#A50A22;color:#FFF1F3}
 .puerta-titulo{
-  font-family:var(--display);font-weight:800;line-height:.9;
+  font-family:var(--display-puerta);font-weight:800;line-height:.9;
   font-size:clamp(46px,15vw,88px);text-transform:uppercase;letter-spacing:.01em;
 }
 .puerta-quien{font-size:clamp(17px,4.4vw,23px);font-weight:600;line-height:1.2}
@@ -988,7 +991,7 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
   background:var(--sup);border:1px solid var(--linea);
 }
 .puerta-conteo-num{
-  font-family:var(--display);font-size:clamp(38px,11vw,54px);line-height:.85;
+  font-family:var(--display-puerta);font-size:clamp(38px,11vw,54px);line-height:.85;
   font-variant-numeric:tabular-nums;color:var(--txt);
 }
 /* El total en apagado y más chico: lo que cambia toda la noche es el de
@@ -1208,7 +1211,7 @@ body[data-filtro="1"] .puerta-visor::before{
 .liq-cifras .tenue dt,.liq-cifras .tenue dd{color:var(--txt-3);font-size:13px}
 .liq-cifras .total{border-bottom:0;border-top:1px solid var(--linea-2);margin-top:6px;padding-top:14px}
 .liq-cifras .total dt{color:var(--txt);font-weight:600;font-size:15px}
-.liq-cifras .total dd{font-family:var(--display);font-size:30px;font-weight:700;color:var(--dorado)}
+.liq-cifras .total dd{font-family:var(--display);font-size:26px;font-weight:600;color:var(--txt)}
 
 /* Lo que falta resolver y la diferencia usan el mismo amarillo de aviso:
    ninguna de las dos impide cerrar, las dos cambian lo que hay que hacer. */
@@ -1443,7 +1446,7 @@ body[data-filtro="1"] .puerta-visor::before{
   }
   .grilla tbody td::before{
     content:attr(data-fase);grid-area:1/1;
-    font-family:var(--display);font-size:18px;text-transform:uppercase;
+    font-family:var(--display);font-size:18px;
     letter-spacing:.01em;line-height:1;overflow-wrap:anywhere;
   }
   .grilla tbody td::after{
