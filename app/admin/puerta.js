@@ -46,6 +46,7 @@ const $ = s => document.querySelector(s);
    frente a la cámara nunca se repite: recién se vuelve a poder escanear
    cuando desapareció del cuadro por este tiempo. */
 const REBOTE_MS = 2500;
+const ESCANEO_MS = 4000;   // tope del escaneo con señal; después decide la lista local
 
 /* Cada cuánto se le pasa el cuadro a jsQR. A 60fps es trabajo tirado —
    nadie mueve un QR tan rápido — y el teléfono se calienta antes de la
@@ -528,14 +529,23 @@ async function resolver(code, { aMano }) {
        garantiza que el filtro tenga el mismo antirrebote, el mismo
        cartel y el mismo sonido que el resto. */
     const fn = P.filtro ? "marcar_filtro_entrada" : "validar_entrada";
-    const { data, error } = await sb.rpc(fn,
-      { p_evento: P.evento.id, p_code: code });
+    /* Cuatro segundos y se decide con la lista local. Sin este tope, con
+       una barra de señal el fetch espera el timeout del navegador (medio
+       minuto o más) y la fila mira una pantalla congelada. Un 5xx es lo
+       mismo que un corte: la base no contestó que no, no contestó. */
+    const tope = new AbortController();   // AbortSignal.timeout() falta en Android viejos
+    const reloj = setTimeout(() => tope.abort(), ESCANEO_MS);
+    const { data, error, status } = await sb.rpc(fn,
+      { p_evento: P.evento.id, p_code: code }).abortSignal(tope.signal);
+    clearTimeout(reloj);   // si tiró, el abort tardío cae sobre un fetch ya cerrado: inocuo
     if (error) {
       /* Un error de red se trata como el corte que es; uno de permisos o
          de datos NO, porque ahí la base contestó y contestó que no. Dejar
          entrar por local ante un "Sin permiso" sería abrir la puerta
          justamente cuando la base la está cerrando. */
-      if (esDeRed(error.message)) { P.red = false; return terminarLocal(code, aMano); }
+      if (esDeRed(error.message) || (status >= 500 && status < 600)) {
+        P.red = false; return terminarLocal(code, aMano);
+      }
       mostrarCartel({ resultado: "error", code, motivo: error.message });
       return;
     }
@@ -901,7 +911,7 @@ function terminarLocal(code, aMano, motivo) {
    que se buscan las formas conocidas y nada más: cualquier otra cosa es
    una respuesta de la base y se muestra tal cual. */
 function esDeRed(msg) {
-  return /failed to fetch|networkerror|load failed|network request failed|timeout|abort/i
+  return /failed to fetch|networkerror|load failed|network request failed|timeout|timed out|abort/i
     .test(String(msg || ""));
 }
 
