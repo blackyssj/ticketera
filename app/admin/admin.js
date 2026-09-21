@@ -4331,15 +4331,21 @@ async function cambiarActivo(id) {
    muestra grande y solo, no escondido en una fila de una tabla. */
 async function pantallaPlataforma() {
   $("#main").innerHTML = `<p class="cargando">Cargando el tablero…</p>`;
-  const [rp, rg, re] = await Promise.all([
+  const [rp, rg, re, rr] = await Promise.all([
     sb.rpc("panel_plataforma"),
     sb.rpc("pagos_plataforma", { p_limite: 25 }),
     sb.rpc("eventos_plataforma"),
+    sb.rpc("retiros_plataforma", { p_limite: 25 }),
   ]);
   if (rp.error) { $("#main").innerHTML = `<p class="error">${esc(rp.error.message)}</p>`; return; }
 
   const d = rp.data || {}, t = d.total || {}, cl = d.clientes || [];
   const pagos = rg.error ? [] : (rg.data || []);
+  /* Lo que ya nos sacamos del monedero. Sin esto el "nos queda" seguía
+     diciendo el mismo número después de retirar, y el cuadre contra la
+     wallet quedaba corrido por ese monto. */
+  const retiros = rr.error ? [] : (rr.data || []);
+  const disponible = Number(t.disponible ?? t.margen ?? 0);
   /* La plata no se liquida por cliente, se liquida por evento: cada fecha
      tiene su tope del 70%, su disponible y sus giros. Sin esta tabla, para
      saber cuál de las dos noches de un cliente tiene plata lista había que
@@ -4359,8 +4365,9 @@ async function pantallaPlataforma() {
       <div>
         <h3>${bs(t.en_pasarela)}</h3>
         <p class="ayuda">Es lo que tiene que haber en la wallet del comercio:
-          ${bs(t.cobrado)} cobrados menos ${bs(t.girado)} girados. Si BeePay dice
-          otra cosa, hay algo cobrado sin registrar o girado de más.</p>
+          ${bs(t.cobrado)} cobrados menos ${bs(t.girado)} girados a clientes${
+          Number(t.retirado) ? ` y ${bs(t.retirado)} retirados por nosotros` : ""}.
+          Si BeePay dice otra cosa, hay algo cobrado sin registrar o girado de más.</p>
       </div>
       <dl class="plat-cifras">
         <div><dt>Cobrado a compradores</dt><dd>${bs(t.cobrado)}</dd></div>
@@ -4383,7 +4390,18 @@ async function pantallaPlataforma() {
         <div class="tenue"><dt>Pasarela (${(pctPas * 100).toFixed(2)}% de lo cobrado)</dt>
           <dd>−${bs(t.costo_pasarela)}</dd></div>
         <div><dt>Nos queda</dt><dd class="ok">${bs(t.margen)}</dd></div>
+        <div class="tenue"><dt>Ya retirado</dt><dd>−${bs(t.retirado)}</dd></div>
+        <div><dt>Disponible para retirar</dt><dd${disponible > 0.99 ? ' class="ok"' : ""}>${bs(disponible)}</dd></div>
       </dl>
+      <label class="liq-auto-min">
+        <span>Retiré</span>
+        <input id="montoRetiro" inputmode="decimal" value="${disponible > 0 ? disponible.toFixed(2) : ""}" size="8">
+        <span>Bs</span>
+        <input id="notaRetiro" type="text" placeholder="nota o referencia (opcional)" size="28">
+        <button type="button" class="btn plano chico" id="btnRetiro">Anotar retiro</button>
+      </label>
+      <p class="ayuda">El giro se hace a mano en BeePay; acá sólo queda anotado
+        para que el disponible y el cuadre digan la verdad.</p>
       <label class="liq-auto-min">
         <span>La pasarela nos cobra</span>
         <input id="pctPasarela" inputmode="decimal" value="${(pctPas * 100).toFixed(2)}" size="5">
@@ -4475,6 +4493,15 @@ async function pantallaPlataforma() {
       </li>`; }).join("")}</ul>`
     : `<p class="vacio">Todavía no se giró nada a ningún cliente.</p>`}
 
+    <h3 class="titulo-bloque sep">Retiros de TICKETAZO</h3>
+    ${retiros.length ? `<ul class="lista">${retiros.map(r => `<li class="fila quieta liq-linea">
+        <span class="fila-nombre">${esc(r.quien || "—")}
+          <em>${esc(r.nota || "")}${r.referencia ? " · ref " + esc(r.referencia) : ""}</em></span>
+        <span class="cifra destacada">${bs(r.monto)}</span>
+        <span class="fila-dato tenue">${fmtFH(r.cuando)}</span>
+      </li>`).join("")}</ul>`
+    : `<p class="vacio">Todavía no nos retiramos nada.</p>`}
+
     <p class="ayuda sep">Al ${fmtFH(d.al)}. Las órdenes de prueba de la pasarela
       no suman a ningún total.</p>`;
 
@@ -4485,6 +4512,19 @@ async function pantallaPlataforma() {
   document.querySelectorAll("[data-girar]").forEach(b => {
     b.onclick = () => girarDesdePlataforma(evs.find(x => x.id === b.dataset.girar), b);
   });
+
+  const br = $("#btnRetiro");
+  if (br) br.onclick = async () => {
+    const v = Number(String($("#montoRetiro").value).replace(",", "."));
+    if (!(v > 0)) { avisar("Poné el monto que retiraste."); return; }
+    if (!confirm(`Anotar un retiro de ${bs(v)} de nuestra comisión.\n\n` +
+                 `No mueve plata: sólo queda registrado que ya lo sacamos del monedero.`)) return;
+    const { data, error } = await sb.rpc("registrar_retiro_plataforma",
+      { p_monto: v, p_nota: $("#notaRetiro").value || null });
+    if (error) { avisar(sinCodigo(error.message)); return; }
+    avisar(data.motivo || (data.ok ? "Anotado." : "No se pudo anotar."));
+    if (data.ok) pantallaPlataforma();
+  };
 
   const bp = $("#btnPctPasarela");
   if (bp) bp.onclick = async () => {

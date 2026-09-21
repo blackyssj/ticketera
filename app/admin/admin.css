@@ -1023,10 +1023,12 @@ body[data-filtro="1"] .puerta-conteo{border-color:rgba(246,180,74,.35)}
   display:flex;align-items:center;gap:8px;margin-top:11px;
   font-family:var(--dato);font-size:12.5px;color:var(--txt-2);
 }
+.liq-auto-min{flex-wrap:wrap}
 .liq-auto-min input{
   width:5.5em;padding:7px 9px;text-align:right;
   font-family:var(--dato);font-variant-numeric:tabular-nums;
 }
+.liq-auto-min input[type=text]{width:min(100%,22em);text-align:left;font-family:inherit}
 
 /* ─── Plataforma: el tablero de TICKETAZO ───
    Una tarjeta con el numero del cuadre arriba y una tabla abajo. Es la
