@@ -20,7 +20,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Azeret+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/comercial.css?v=9">
+<link rel="stylesheet" href="/comercial.css?v=10">
 <script>document.documentElement.className="js"</script>
 </head>
 <body>
@@ -44,7 +44,13 @@
        El titular no dice "la plataforma más moderna": dice las dos
        cosas que el organizador hace ese día. Vender y controlar. -->
   <section class="hero">
-    <div class="carril">
+    <!-- El fondo. Un canvas y no un GIF ni un video: son tres curvas
+         dibujadas por cuadro, pesa cero y se apaga solo cuando la
+         sección sale de pantalla o el visitante pidió menos
+         movimiento. Es decorativo, así que sale del árbol accesible. -->
+    <canvas class="ondas" id="ondas" aria-hidden="true"></canvas>
+    <div class="carril hero-in">
+      <div class="hero-txt">
       <h1>
         <span class="l">Vendé tus entradas.</span>
         <span class="l">Cobrá al instante.</span>
@@ -62,8 +68,33 @@
         </a>
         <a class="btn btn-linea" href="/presentacion/">Ver la presentación</a>
       </div>
+      </div>
 
-      <div class="tira rev">
+      <!-- La entrada que recibe el comprador, armada en HTML y no una
+           captura: una captura se ve vieja el día que cambiamos un
+           color, y pesa veinte veces más. El QR lo dibuja el script. -->
+      <div class="hero-fig" aria-hidden="true">
+        <div class="tel" data-anim="entrada">
+          <div class="tel-marco">
+            <div class="tel-barra"><span>23:40</span><span class="tel-pico"></span></div>
+            <div class="tel-cuerpo">
+              <span class="ent-ojal">Tu entrada</span>
+              <h4 class="ent-nombre">Serenata Cruceña</h4>
+              <p class="ent-pie">Viernes · 21:00 · La Esquina Ferial</p>
+              <canvas class="ent-qr" id="qrHero" width="420" height="420"></canvas>
+              <dl class="ent-datos">
+                <div><dt>A nombre de</dt><dd>Camila Rojas</dd></div>
+                <div><dt>Tipo</dt><dd>General</dd></div>
+              </dl>
+              <span class="ent-sello">Válida · lista para escanear</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="carril">
+      <div class="tira rev escalona">
         <div><b>Al instante</b><span>Tu plata disponible, sin esperar al cierre.</span></div>
         <div><b>Soporte incluido</b><span>Por WhatsApp, mientras dura tu evento.</span></div>
         <div><b>Tu precio</b><span>Lo que ponés es lo que cobrás. El cargo lo paga quien compra.</span></div>
@@ -169,6 +200,135 @@
     </div>
   </section>
 
+  <!-- ═══ LA PUERTA, EN VIVO ══════════════════════════════════════
+       El momento interactivo de la página. Todo lo demás se lee; esto
+       se toca. Es a propósito la función que más cuesta explicar con
+       palabras y la que más pesa en la decisión: el organizador ya
+       sabe vender, lo que no sabe es cómo va a controlar la puerta.
+
+       Mantener apretado y no un botón de "reproducir": el que aprieta
+       elige cuánto dura y suelta cuando entendió. Un video de quince
+       segundos lo mira nadie. -->
+  <section class="seccion puerta-demo" id="puerta">
+    <div class="carril puerta-in">
+      <div class="puerta-txt rev escalona">
+        <span class="ojal">El día del evento</span>
+        <h2 class="h2">Apretá acá y mirá avanzar la fila.</h2>
+        <p class="bajada">
+          Así se ve la puerta desde el celular del portero. Cada QR se valida
+          una sola vez, el número de adentro sube en el momento y todo queda
+          anotado con la hora. Si el wifi se cae, el escáner sigue decidiendo
+          con la lista que se bajó antes y sincroniza cuando vuelve.
+        </p>
+      </div>
+
+      <div class="puerta-fig" aria-hidden="true">
+        <div class="tel" data-anim="puerta">
+          <div class="tel-marco">
+            <div class="tel-barra"><span>23:40</span><span class="tel-pico"></span></div>
+            <div class="tel-cuerpo pta">
+              <div class="pta-cab">
+                <span class="pta-donde">Serenata Cruceña · Puerta 1</span>
+                <span class="pta-vivo">EN VIVO</span>
+              </div>
+
+              <div class="pta-visor" id="ptaVisor">
+                <canvas class="pta-qr" id="qrPuerta" width="300" height="300"></canvas>
+                <span class="pta-mira"></span>
+                <span class="pta-cartel" id="ptaCartel"></span>
+              </div>
+
+              <div class="pta-conteo">
+                <b id="ptaNum">406</b><i>/ 500 adentro</i>
+              </div>
+
+              <ul class="pta-log" id="ptaLog"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- El mando va DESPUÉS de la maqueta en el HTML porque en un
+           teléfono se lee en ese orden: con el botón arriba, el que
+           aprieta no ve lo que provocó y la sección no explica nada. En
+           escritorio vuelve al lado del texto con grid-template-areas,
+           sin que el orden de tabulación cambie. -->
+      <div class="puerta-mando">
+        <button type="button" class="puerta-btn" id="puertaBtn"
+                aria-describedby="puertaAyuda">
+          <span class="puerta-btn-luz" aria-hidden="true"></span>
+          <span>Mantené apretado</span>
+        </button>
+        <p class="puerta-ayuda" id="puertaAyuda">
+          Mantené el dedo (o el mouse) apretado sobre el botón. Soltá cuando quieras.
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ═══ EL PANEL ════════════════════════════════════════════════
+       Las dos cosas del panel que el organizador pregunta siempre:
+       si las fases se cierran solas y si el link del relacionador
+       acredita sin que nadie anote. Se muestran pasando, no en una
+       lista de bullets. -->
+  <section class="seccion panel-demo" id="panel">
+    <div class="carril panel-in">
+      <div class="panel-fig" aria-hidden="true">
+        <div class="lap" data-anim="panel">
+          <div class="lap-marco">
+            <div class="lap-barra">
+              <span class="lap-punto"></span><span class="lap-punto"></span><span class="lap-punto"></span>
+              <span class="lap-donde">Panel · Serenata Cruceña</span>
+            </div>
+            <div class="lap-cuerpo">
+              <div class="fases" id="fases">
+                <div class="fase" data-fase="0">
+                  <span class="fase-nom">Preventa</span>
+                  <span class="fase-barra"><i style="width:100%"></i></span>
+                  <span class="fase-est">agotada</span>
+                </div>
+                <div class="fase" data-fase="1">
+                  <span class="fase-nom">General</span>
+                  <span class="fase-barra"><i id="faseBarra" style="width:34%"></i></span>
+                  <span class="fase-est" id="faseEst">vendiendo</span>
+                </div>
+                <div class="fase apagada" data-fase="2">
+                  <span class="fase-nom">Puerta</span>
+                  <span class="fase-barra"><i style="width:0%"></i></span>
+                  <span class="fase-est">espera turno</span>
+                </div>
+              </div>
+
+              <div class="rrpp">
+                <span class="rrpp-rotulo">Relacionadores</span>
+                <ul id="rrppLista">
+                  <li data-r="0"><span>Micaela</span><b class="rrpp-n">21</b></li>
+                  <li data-r="1"><span>Ari</span><b class="rrpp-n">16</b></li>
+                  <li data-r="2"><span>Ronny</span><b class="rrpp-n">13</b></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rev">
+        <span class="ojal">Antes del evento</span>
+        <h2 class="h2">Las fases se cierran solas. Las ventas se acreditan solas.</h2>
+        <p class="bajada">
+          Ponés preventa, general y puerta con su precio y su cupo. Cuando una se
+          agota, se cierra y abre la siguiente sin que nadie esté mirando el reloj
+          a las dos de la mañana.
+        </p>
+        <p class="bajada">
+          Cada relacionador reparte su propio link. Lo que se compra desde ahí queda
+          a su nombre y su comisión se calcula sola: nadie anota nada en un cuaderno
+          y nadie discute el lunes.
+        </p>
+      </div>
+    </div>
+  </section>
+
   <!-- ═══ CAPACIDADES ═════════════════════════════════════════════ -->
   <section class="seccion" id="que-incluye">
     <div class="carril">
@@ -237,7 +397,7 @@
           una planilla es que sabés quién entró y quién no, y a qué hora.
         </p>
       </div>
-      <div class="tira rev">
+      <div class="tira rev escalona">
         <div><b>Sin cargo al invitado</b><span>Lo nuestro se acuerda con vos.</span></div>
         <div><b>Con QR</b><span>Cada invitado con su entrada, igual que en un evento pago.</span></div>
         <div><b>Misma puerta</b><span>Porteros, escaneo y lista en vivo.</span></div>
@@ -343,7 +503,7 @@
           Está en producción, integrada y andando con cobros reales.
         </p>
       </div>
-      <div class="tira rev">
+      <div class="tira rev escalona">
         <div><b>Propia</b><span>La pasarela de cobro y el liquidador son nuestros.</span></div>
         <div><b>Boliviana</b><span>Cobro por QR desde cualquier banco del país.</span></div>
         <div><b>Probada</b><span>Integrada y andando con cobros reales.</span></div>
@@ -450,6 +610,6 @@
 </footer>
 
 <script src="/config.js"></script>
-<script src="/comercial.js?v=8"></script>
+<script src="/comercial.js?v=9"></script>
 </body>
 </html>

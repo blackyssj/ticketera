@@ -293,3 +293,320 @@ const CONTACTO = {
       matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   });
 })();
+
+/* ══════════════════════════════════════════════════════════════════
+   LAS MAQUETAS — 28/09/2026
+
+   Cuatro piezas: el fondo de ondas, el QR dibujado, la puerta que
+   escanea mientras mantenés apretado, y el panel con las fases.
+
+   Tres reglas que valen para las cuatro:
+
+   1. Nada arranca hasta estar en pantalla, y todo se detiene al salir.
+      Un `requestAnimationFrame` corriendo detrás de una sección que
+      nadie mira le come la batería a un teléfono por nada.
+   2. `prefers-reduced-motion` no es "más lento": es apagado. La maqueta
+      se dibuja en su estado final y se queda ahí.
+   3. Si algo falla —un canvas que no da contexto, un elemento que no
+      está— la pieza se calla y la página sigue. Ninguna de estas
+      animaciones vale una excepción que corte el script de contacto o
+      el del formulario, que son los que dan plata.
+   ══════════════════════════════════════════════════════════════════ */
+
+const QUIETO = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* Corre `arrancar` cuando el elemento entra en pantalla y `parar`
+   cuando sale. Devuelve una función que desconecta todo. */
+function enPantalla(el, arrancar, parar) {
+  if (!el || !("IntersectionObserver" in window)) { arrancar(); return () => {}; }
+  let dentro = false;
+  const obs = new IntersectionObserver(es => {
+    const v = es.some(e => e.isIntersecting);
+    if (v === dentro) return;
+    dentro = v;
+    v ? arrancar() : parar();
+  }, { threshold: .08 });
+  obs.observe(el);
+  /* Una pestaña en segundo plano no dispara el observer pero tampoco
+     pinta: parar acá ahorra el rAF de una ventana que nadie ve. */
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) parar(); else if (dentro) arrancar();
+  });
+  return () => obs.disconnect();
+}
+
+/* ─── 1. el fondo de ondas ────────────────────────────────────────
+   Tres senos superpuestos, dibujados por cuadro. No es ruido Perlin ni
+   WebGL: a este tamaño y esta velocidad la diferencia no se ve, y un
+   seno corre en cualquier teléfono.
+
+   El canvas se dibuja a resolución de dispositivo (devicePixelRatio)
+   pero tapado a 2: en un teléfono con pantalla 3x, dibujar 3x de un
+   fondo desenfocado es triplicar el trabajo para nada. */
+(function ondas(){
+  const cv = document.getElementById("ondas");
+  if (!cv) return;
+  const cx = cv.getContext("2d", { alpha: true });
+  if (!cx) return;
+  if (QUIETO) return;                       // el CSS ya lo esconde
+
+  let w = 0, h = 0, t = 0, id = 0, vivo = false;
+
+  function medir() {
+    const r = cv.getBoundingClientRect();
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    w = Math.max(1, Math.round(r.width));
+    h = Math.max(1, Math.round(r.height));
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  const CAPAS = [
+    { amp: .16, largo: 1.35, vel: .00028, y: .60, color: "rgba(58,36,120,.55)", grosor: 1.4 },
+    { amp: .11, largo: 1.90, vel: .00041, y: .68, color: "rgba(35,21,80,.75)",  grosor: 1.2 },
+    { amp: .07, largo: 2.60, vel: .00062, y: .76, color: "rgba(255,226,75,.10)", grosor: 1   }
+  ];
+
+  function pintar(ahora) {
+    if (!vivo) return;
+    t = ahora;
+    cx.clearRect(0, 0, w, h);
+    CAPAS.forEach(c => {
+      cx.beginPath();
+      /* De a 6 píxeles y no de a 1: a 1 son mil puntos por curva por
+         cuadro y la diferencia visual es cero en una curva tan suave. */
+      for (let x = 0; x <= w; x += 6) {
+        const k = x / w * Math.PI * 2 * c.largo + t * c.vel;
+        const y = h * c.y + Math.sin(k) * h * c.amp + Math.sin(k * 1.7) * h * c.amp * .3;
+        x === 0 ? cx.moveTo(x, y) : cx.lineTo(x, y);
+      }
+      cx.strokeStyle = c.color;
+      cx.lineWidth = c.grosor;
+      cx.stroke();
+    });
+    id = requestAnimationFrame(pintar);
+  }
+
+  const arrancar = () => { if (vivo) return; vivo = true; id = requestAnimationFrame(pintar); };
+  const parar = () => { vivo = false; cancelAnimationFrame(id); };
+
+  medir();
+  addEventListener("resize", () => { medir(); }, { passive: true });
+  enPantalla(cv, arrancar, parar);
+})();
+
+/* ─── 2. el QR ────────────────────────────────────────────────────
+   No es un QR de verdad y no pretende serlo: es el DIBUJO de un QR,
+   para que la maqueta se lea de un vistazo como lo que es. Uno real
+   necesitaría una librería de 20 KB para una imagen decorativa que
+   nadie va a escanear desde una landing.
+
+   El patrón sale de una semilla fija, así que el mismo QR sale igual
+   en cada carga: un QR que cambia de forma cada vez que recargás la
+   página es de las cosas que hacen dudar de todo lo demás. */
+function dibujarQR(cv, { celdas = 25, semilla = 7, avance = 1 } = {}) {
+  const cx = cv.getContext("2d");
+  if (!cx) return;
+  const lado = cv.width, paso = lado / celdas;
+  cx.clearRect(0, 0, lado, lado);
+  cx.fillStyle = "#120A2C";
+
+  /* Congruencial lineal: dos líneas, determinista, suficiente para que
+     el ojo lea "ruido". */
+  let s = semilla;
+  const azar = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
+
+  const ojo = (cf, cc) => {
+    for (let f = 0; f < 7; f++) for (let c = 0; c < 7; c++) {
+      const borde = f === 0 || f === 6 || c === 0 || c === 6;
+      const centro = f >= 2 && f <= 4 && c >= 2 && c <= 4;
+      if (borde || centro) cx.fillRect((cc + c) * paso, (cf + f) * paso, paso, paso);
+    }
+  };
+
+  const dentroDeOjo = (f, c) =>
+    (f < 8 && c < 8) || (f < 8 && c >= celdas - 8) || (f >= celdas - 8 && c < 8);
+
+  const total = celdas * celdas;
+  let hechas = 0;
+  for (let f = 0; f < celdas; f++) {
+    for (let c = 0; c < celdas; c++) {
+      const r = azar();
+      if (dentroDeOjo(f, c)) continue;
+      /* `avance` de 0 a 1 es cuánto del QR ya se dibujó: así el mismo
+         código sirve para la animación de armado y para el estado
+         final, sin dos caminos que se puedan desincronizar. */
+      if (hechas++ / total > avance) continue;
+      if (r > .52) cx.fillRect(c * paso, f * paso, paso, paso);
+    }
+  }
+  if (avance > .7) { ojo(0, 0); ojo(0, celdas - 7); ojo(celdas - 7, 0); }
+}
+
+/* El QR del hero se arma solo la primera vez que se ve. */
+(function qrHero(){
+  const cv = document.getElementById("qrHero");
+  if (!cv) return;
+  if (QUIETO) { dibujarQR(cv); return; }
+
+  let corrio = false, id = 0;
+  const arrancar = () => {
+    if (corrio) return;
+    corrio = true;
+    const desde = performance.now(), dura = 900;
+    const paso = ahora => {
+      const p = Math.min(1, (ahora - desde) / dura);
+      dibujarQR(cv, { avance: p });
+      if (p < 1) id = requestAnimationFrame(paso);
+    };
+    id = requestAnimationFrame(paso);
+  };
+  dibujarQR(cv, { avance: 0 });
+  enPantalla(cv, arrancar, () => cancelAnimationFrame(id));
+})();
+
+/* ─── 3. la puerta ────────────────────────────────────────────────
+   Mientras el botón está apretado entra una persona cada 750 ms. Se
+   sostiene con puntero (mouse, dedo y lápiz en un solo juego de
+   eventos) y con teclado, porque un botón que sólo responde al mouse
+   deja afuera a quien navega con tabulador.
+
+   El conteo sube y baja del mismo lugar que la lista: si el número y
+   los nombres salieran de dos contadores distintos, en algún momento
+   dirían cosas distintas y esa es justo la desconfianza que la
+   maqueta tiene que evitar. */
+(function puerta(){
+  const btn = document.getElementById("puertaBtn");
+  const cartel = document.getElementById("ptaCartel");
+  const num = document.getElementById("ptaNum");
+  const log = document.getElementById("ptaLog");
+  const qr = document.getElementById("qrPuerta");
+  if (!btn || !cartel || !num || !log || !qr) return;
+
+  const GENTE = [
+    ["Camila Rojas", "General"], ["Mateo Áñez", "General"],
+    ["Valeria Suárez", "VIP"],   ["Joaquín Melgar", "General"],
+    ["Antonella Áñez", "General"], ["Bruno Céspedes", "VIP"],
+    ["Fabiana Roca", "General"], ["Ignacio Vaca", "General"]
+  ];
+
+  let i = 0, adentro = 406, reloj = 0, apretado = false;
+
+  dibujarQR(qr, { semilla: 31, celdas: 21 });
+
+  const hora = () => {
+    /* Una hora inventada y estable: la real diría "14:20" en una
+       maqueta de una puerta de boliche y eso se nota. */
+    const m = (40 + i) % 60, h = 23 + Math.floor((40 + i) / 60);
+    return `${String(h % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  };
+
+  function entra() {
+    const [nombre, tipo] = GENTE[i % GENTE.length];
+    /* Uno de cada siete llega con una entrada ya usada. Sin eso la
+       maqueta muestra un sistema que siempre dice que sí, que es
+       justamente lo que un control de puerta NO es. */
+    const repetida = i > 0 && i % 7 === 0;
+    i++;
+
+    if (!repetida) {
+      adentro++;
+      num.textContent = adentro;
+    }
+    cartel.textContent = repetida ? "Ya entró · no pasa" : "Válida · pasá";
+    cartel.dataset.tipo = repetida ? "repetida" : "ok";
+    cartel.dataset.on = "1";
+
+    dibujarQR(qr, { semilla: 31 + i * 13, celdas: 21 });
+
+    const li = document.createElement("li");
+    li.innerHTML = `<span>${nombre} · ${tipo}</span><span>${hora()}</span>`;
+    log.prepend(li);
+    while (log.children.length > 3) log.lastElementChild.remove();
+  }
+
+  function abrir() {
+    if (apretado) return;
+    apretado = true;
+    btn.dataset.on = "1";
+    entra();
+    reloj = setInterval(entra, 750);
+  }
+  function cerrar() {
+    if (!apretado) return;
+    apretado = false;
+    btn.dataset.on = "0";
+    clearInterval(reloj);
+    setTimeout(() => { if (!apretado) cartel.dataset.on = "0"; }, 700);
+  }
+
+  if (QUIETO) {
+    /* Sin movimiento el botón sigue sirviendo: cada toque deja entrar
+       a una persona. La función se entiende igual, sin nada latiendo. */
+    btn.addEventListener("click", entra);
+    return;
+  }
+
+  btn.addEventListener("pointerdown", ev => { ev.preventDefault(); abrir(); });
+  ["pointerup", "pointerleave", "pointercancel"].forEach(e =>
+    btn.addEventListener(e, cerrar));
+  btn.addEventListener("keydown", ev => {
+    if (ev.key === " " || ev.key === "Enter") { ev.preventDefault(); abrir(); }
+  });
+  btn.addEventListener("keyup", cerrar);
+  btn.addEventListener("blur", cerrar);
+})();
+
+/* ─── 4. el panel ─────────────────────────────────────────────────
+   La fase General se llena, se agota y abre Puerta; mientras tanto a
+   un relacionador le entra una venta. Corre una sola vez por visita:
+   en bucle sería un cartel de neón al lado de un párrafo. */
+(function panel(){
+  const barra = document.getElementById("faseBarra");
+  const est = document.getElementById("faseEst");
+  const lista = document.getElementById("rrppLista");
+  const caja = document.getElementById("fases");
+  if (!barra || !est || !lista || !caja) return;
+
+  const fin = () => {
+    barra.style.width = "100%";
+    est.textContent = "agotada";
+    est.dataset.est = "agotada";
+    const tercera = document.querySelector('.fase[data-fase="2"]');
+    if (tercera) {
+      tercera.classList.remove("apagada");
+      const e3 = tercera.querySelector(".fase-est");
+      if (e3) { e3.textContent = "abierta"; e3.dataset.est = "abierta"; }
+    }
+  };
+
+  if (QUIETO) { fin(); return; }
+
+  let corrio = false;
+  const relojes = [];
+  const arrancar = () => {
+    if (corrio) return;
+    corrio = true;
+    est.dataset.est = "vendiendo";
+
+    [[400, 58], [1100, 79], [1900, 94]].forEach(([ms, pct]) =>
+      relojes.push(setTimeout(() => { barra.style.width = pct + "%"; }, ms)));
+
+    /* La venta que se acredita sola: el número sube y la fila se
+       enciende un momento. Es la respuesta visual a "¿y cómo sé que
+       la venta quedó a nombre del que la trajo?". */
+    relojes.push(setTimeout(() => {
+      const li = lista.querySelector('li[data-r="1"]');
+      if (!li) return;
+      const n = li.querySelector(".rrpp-n");
+      if (n) n.textContent = Number(n.textContent) + 1;
+      li.dataset.nueva = "1";
+      relojes.push(setTimeout(() => { li.dataset.nueva = "0"; }, 1400));
+    }, 1500));
+
+    relojes.push(setTimeout(fin, 2700));
+  };
+
+  enPantalla(caja, arrancar, () => {});
+})();

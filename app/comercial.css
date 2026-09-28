@@ -263,8 +263,15 @@ img{max-width:100%;display:block}
 .pie-links a:hover{color:var(--fluor)}
 
 /* ═══ MOVIMIENTO ══════════════════════════════════════════════════
-   Misma regla que la portada: la página se IMPRIME. Sale una vez y se
-   queda quieta. Nada late, nada gira, ningún carrusel avanza solo. */
+   La regla cambió el 28/09/2026. Antes decía acá que la página se
+   IMPRIME: salía una vez y se quedaba quieta. Ahora el texto sigue
+   quieto —nada de lo que hay que LEER se mueve— pero el producto se
+   muestra funcionando: el fondo respira, la entrada se arma, la puerta
+   escanea y las fases se cierran. Lo que se mueve es la maqueta, nunca
+   el párrafo que el visitante está leyendo.
+
+   Todo lo de abajo sigue valiendo: nada arranca antes de estar en
+   pantalla y todo se apaga con `prefers-reduced-motion`. */
 @keyframes sube{ from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none} }
 .hero h1 .l{animation:sube .5s var(--curva) both}
 .hero h1 .l:nth-child(2){animation-delay:.07s}
@@ -568,3 +575,289 @@ html.js .rev.vista{
 .forma-listo h3{font-size:clamp(22px,2.6vw,28px);font-weight:800;letter-spacing:-.022em}
 .forma-listo p{margin:12px 0 18px;color:var(--hueso-72);font-size:15.5px;line-height:1.5}
 .forma-listo .btn{width:100%}
+
+/* ══════════════════════════════════════════════════════════════════
+   LAS MAQUETAS — el producto mostrándose, no contándose
+   ──────────────────────────────────────────────────────────────────
+   Hasta acá la página decía "escanean con la cámara del celular" y el
+   que la leía tenía que imaginarse el resto. Estas tres maquetas son
+   la interfaz de verdad recreada en HTML: la entrada que recibe el
+   comprador, la puerta escaneando y el panel con las fases.
+
+   Recreadas y no capturadas, por tres razones: una captura se ve vieja
+   el día que cambiamos un color, pesa veinte veces más que esto, y no
+   se puede animar. La contra es que hay que mantenerlas cuando el
+   producto cambie de forma — vale la pena mientras sean tres.
+
+   Todo lo que se mueve acá respeta `prefers-reduced-motion` y se
+   apaga cuando su sección no está en pantalla (comercial.js).
+   ══════════════════════════════════════════════════════════════════ */
+
+:root{
+  --verde:#4CC38A;
+  --verde-fondo:rgba(76,195,138,.14);
+  --vidrio:rgba(243,239,226,.045);
+}
+
+/* ─── el fondo vivo ───────────────────────────────────────────────
+   Tres curvas lentas detrás del hero. El canvas se estira al tamaño
+   de la sección y queda DEBAJO de todo (`z-index:0` contra el `1` del
+   carril), así que ningún texto pierde contraste. */
+.hero{position:relative;overflow:hidden;isolation:isolate}
+.ondas{
+  position:absolute;inset:0;width:100%;height:100%;
+  z-index:0;pointer-events:none;
+  opacity:.9;
+  /* Se desvanece abajo para que no corte en seco contra la sección
+     siguiente, que no tiene fondo animado. */
+  -webkit-mask-image:linear-gradient(180deg,#000 55%,transparent 100%);
+          mask-image:linear-gradient(180deg,#000 55%,transparent 100%);
+}
+.hero > .carril{position:relative;z-index:1}
+
+/* ─── hero a dos columnas ─────────────────────────────────────────
+   El teléfono entra recién en escritorio ancho. En un celular, poner
+   la foto de un celular adentro del celular ocupa la pantalla entera
+   y empuja el botón de contacto abajo del pliegue. */
+.hero-in{display:grid;gap:clamp(30px,5vw,56px);align-items:center}
+@media (min-width:900px){
+  .hero-in{grid-template-columns:minmax(0,1.15fr) minmax(300px,.85fr)}
+}
+.hero-fig{display:none;justify-self:center}
+@media (min-width:900px){ .hero-fig{display:block} }
+
+/* ─── el teléfono ─────────────────────────────────────────────────
+   Un marco, una barra de estado y el cuerpo. No imita ninguna marca:
+   esquinas redondas, un borde claro y nada más. */
+.tel{width:min(300px,78vw);margin:0 auto}
+.tel-marco{
+  border:1px solid var(--filo);
+  border-radius:30px;
+  background:linear-gradient(170deg,var(--tinta-2),var(--tinta));
+  padding:9px;
+  box-shadow:0 30px 70px -30px rgba(0,0,0,.75);
+}
+.tel-barra{
+  display:flex;align-items:center;justify-content:space-between;
+  font-family:var(--mono);font-size:10.5px;color:var(--hueso-40);
+  padding:5px 12px 9px;
+}
+.tel-pico{width:26px;height:5px;border-radius:99px;background:var(--hueso-24)}
+.tel-cuerpo{
+  background:var(--tinta-0);
+  border:1px solid var(--canto);
+  border-radius:22px;
+  padding:16px 15px 18px;
+  min-height:400px;
+}
+
+/* ─── la entrada del comprador ────────────────────────────────── */
+.ent-ojal{
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--fluor)
+}
+.ent-nombre{
+  font-family:var(--display);font-weight:800;font-size:19px;
+  line-height:1.15;letter-spacing:-.01em;margin:7px 0 3px
+}
+.ent-pie{font-size:12px;color:var(--hueso-64);margin:0}
+.ent-qr{
+  display:block;width:100%;height:auto;aspect-ratio:1;
+  margin:15px 0;border-radius:12px;background:var(--hueso)
+}
+.ent-datos{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 13px}
+.ent-datos dt{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--hueso-40)
+}
+.ent-datos dd{margin:2px 0 0;font-size:13px;font-weight:600}
+.ent-sello{
+  display:inline-flex;align-items:center;gap:7px;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;
+  color:var(--verde);background:var(--verde-fondo);
+  border-radius:99px;padding:6px 11px
+}
+.ent-sello::before{
+  content:"";width:6px;height:6px;border-radius:50%;background:var(--verde)
+}
+
+/* ─── la puerta ───────────────────────────────────────────────── */
+/* En el teléfono el orden del HTML manda y es el correcto: texto,
+   maqueta, botón. En escritorio el botón sube al lado del texto. */
+.puerta-in{display:grid;gap:clamp(26px,4vw,40px);align-items:center}
+@media (min-width:900px){
+  .puerta-in{
+    grid-template-columns:minmax(0,1fr) minmax(280px,.8fr);
+    grid-template-areas:"txt fig" "mando fig";
+    column-gap:clamp(30px,5vw,58px);
+    row-gap:0;
+    align-items:start
+  }
+  .puerta-txt{grid-area:txt}
+  .puerta-mando{grid-area:mando}
+  .puerta-fig{grid-area:fig;align-self:center}
+}
+.puerta-fig{justify-self:center}
+
+.puerta-btn{
+  display:inline-flex;align-items:center;gap:11px;
+  margin-top:clamp(20px,3vw,28px);
+  font:inherit;font-family:var(--display);font-weight:700;font-size:15px;
+  color:var(--tinta-0);background:var(--fluor);
+  border:0;border-radius:99px;padding:14px 22px;cursor:pointer;
+  transition:transform .12s var(--curva), box-shadow .2s var(--curva);
+  touch-action:none;             /* que mantener apretado no scrollee */
+  -webkit-user-select:none;user-select:none;
+}
+.puerta-btn:active,.puerta-btn[data-on="1"]{transform:scale(.97)}
+.puerta-btn[data-on="1"]{box-shadow:0 0 0 6px rgba(255,226,75,.16)}
+.puerta-btn:focus-visible{outline:2px solid var(--hueso);outline-offset:3px}
+.puerta-btn-luz{
+  width:9px;height:9px;border-radius:50%;background:var(--tinta-0);opacity:.35
+}
+.puerta-btn[data-on="1"] .puerta-btn-luz{opacity:1;animation:pta-late .9s infinite}
+@keyframes pta-late{ 50%{opacity:.25} }
+.puerta-ayuda{
+  margin:11px 0 0;font-family:var(--mono);font-size:11px;
+  letter-spacing:.04em;color:var(--hueso-40)
+}
+
+.pta{display:flex;flex-direction:column;gap:12px}
+.pta-cab{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pta-donde{font-size:11.5px;color:var(--hueso-64)}
+.pta-vivo{
+  font-family:var(--mono);font-size:9px;letter-spacing:.12em;
+  color:#FF6B6B;border:1px solid rgba(255,107,107,.4);
+  border-radius:99px;padding:3px 7px
+}
+.pta-visor{
+  position:relative;aspect-ratio:1;border-radius:16px;overflow:hidden;
+  background:#090616;display:grid;place-items:center
+}
+.pta-qr{width:58%;height:auto;border-radius:8px;background:var(--hueso);opacity:.92}
+.pta-mira{
+  position:absolute;inset:16%;border-radius:12px;
+  border:2px solid var(--hueso-24);
+  box-shadow:0 0 0 999px rgba(9,6,22,.45)
+}
+/* El cartel de resultado. Nace fuera de pantalla y entra sólo cuando
+   el script le pone texto: un cartel vacío ocupando lugar es lo que
+   hace que la maqueta parezca rota antes de que alguien la toque. */
+.pta-cartel{
+  position:absolute;left:10px;right:10px;bottom:10px;
+  display:flex;align-items:center;gap:8px;
+  font-family:var(--display);font-weight:800;font-size:14px;
+  color:#07240F;background:var(--verde);
+  border-radius:11px;padding:10px 13px;
+  opacity:0;transform:translateY(14px);
+  transition:opacity .18s var(--curva), transform .22s var(--curva)
+}
+.pta-cartel[data-on="1"]{opacity:1;transform:none}
+.pta-cartel[data-tipo="repetida"]{background:#FF6B6B;color:#2A0808}
+
+.pta-conteo{display:flex;align-items:baseline;gap:8px}
+.pta-conteo b{
+  font-family:var(--display);font-weight:900;font-size:34px;line-height:1;
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums;
+  color:var(--fluor)
+}
+.pta-conteo i{font-style:normal;font-size:11.5px;color:var(--hueso-40)}
+
+.pta-log{list-style:none;margin:0;padding:0;display:grid;gap:6px;min-height:76px}
+.pta-log li{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  font-size:11.5px;color:var(--hueso-72);
+  background:var(--vidrio);border-radius:8px;padding:7px 10px;
+  animation:pta-entra .28s var(--curva) both
+}
+.pta-log li span:last-child{font-family:var(--mono);font-size:10px;color:var(--hueso-40)}
+@keyframes pta-entra{ from{opacity:0;transform:translateY(-7px)} }
+
+/* ─── el panel ────────────────────────────────────────────────── */
+.panel-in{display:grid;gap:clamp(30px,5vw,58px);align-items:center}
+@media (min-width:900px){
+  .panel-in{grid-template-columns:minmax(300px,.95fr) minmax(0,1fr)}
+}
+.panel-fig{justify-self:center;width:100%}
+.lap{width:min(460px,100%);margin:0 auto}
+.lap-marco{
+  border:1px solid var(--filo);border-radius:14px;overflow:hidden;
+  background:linear-gradient(170deg,var(--tinta-2),var(--tinta));
+  box-shadow:0 30px 70px -34px rgba(0,0,0,.75)
+}
+.lap-barra{
+  display:flex;align-items:center;gap:6px;
+  padding:9px 12px;border-bottom:1px solid var(--canto)
+}
+.lap-punto{width:8px;height:8px;border-radius:50%;background:var(--hueso-24)}
+.lap-donde{
+  margin-left:8px;font-family:var(--mono);font-size:10px;
+  letter-spacing:.06em;color:var(--hueso-40)
+}
+.lap-cuerpo{padding:16px;display:grid;gap:16px;background:var(--tinta-0)}
+
+.fases{display:grid;gap:9px}
+.fase{
+  display:grid;grid-template-columns:78px 1fr auto;align-items:center;gap:11px;
+  transition:opacity .3s var(--curva)
+}
+.fase.apagada{opacity:.38}
+.fase-nom{font-size:12.5px;font-weight:600}
+.fase-barra{
+  height:7px;border-radius:99px;background:var(--hueso-24);overflow:hidden
+}
+.fase-barra i{
+  display:block;height:100%;border-radius:99px;background:var(--fluor);
+  transition:width .5s var(--curva)
+}
+.fase-est{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--hueso-40);
+  min-width:62px;text-align:right
+}
+.fase-est[data-est="agotada"]{color:var(--hueso-40)}
+.fase-est[data-est="vendiendo"]{color:var(--fluor)}
+.fase-est[data-est="abierta"]{color:var(--verde)}
+
+.rrpp{border-top:1px solid var(--canto);padding-top:13px}
+.rrpp-rotulo{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--hueso-40)
+}
+.rrpp ul{list-style:none;margin:9px 0 0;padding:0;display:grid;gap:6px}
+.rrpp li{
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:12.5px;border-radius:8px;padding:6px 9px;
+  background:var(--vidrio);
+  transition:background .3s var(--curva)
+}
+.rrpp li[data-nueva="1"]{background:rgba(255,226,75,.16)}
+.rrpp-n{
+  font-family:var(--mono);font-variant-numeric:tabular-nums;
+  font-size:12px;color:var(--fluor)
+}
+
+/* ─── el desfase de los hijos al revelar ──────────────────────────
+   Un bloque entero apareciendo de golpe se nota menos que sus partes
+   entrando una detrás de otra. Seis pasos y se corta: más que eso y
+   el último llega cuando el visitante ya siguió scrolleando. */
+html.js .rev.escalona > *{opacity:0;transform:translateY(12px)}
+html.js .rev.escalona.vista > *{
+  opacity:1;transform:none;
+  transition:opacity .45s var(--curva), transform .5s var(--curva)
+}
+html.js .rev.escalona.vista > :nth-child(2){transition-delay:.06s}
+html.js .rev.escalona.vista > :nth-child(3){transition-delay:.12s}
+html.js .rev.escalona.vista > :nth-child(4){transition-delay:.18s}
+html.js .rev.escalona.vista > :nth-child(5){transition-delay:.24s}
+html.js .rev.escalona.vista > :nth-child(n+6){transition-delay:.3s}
+
+@media (prefers-reduced-motion:reduce){
+  .ondas{display:none}
+  .puerta-btn[data-on="1"] .puerta-btn-luz{animation:none}
+  .pta-log li{animation:none}
+  .pta-cartel{transition:none}
+  .fase-barra i{transition:none}
+  html.js .rev.escalona > *{opacity:1;transform:none}
+  html.js .rev.escalona.vista > *{transition:none}
+}
