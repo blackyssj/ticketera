@@ -153,6 +153,7 @@ $("#tabs").addEventListener("click", e => {
 });
 
 function mostrar(p) {
+  salirEvento();
   S.pantalla = p;
   document.querySelectorAll("#tabs button").forEach(b =>
     b.toggleAttribute("aria-current", b.dataset.p === p));
@@ -191,13 +192,109 @@ async function pantallaEventos() {
         <span class="fila-nombre">${esc(e.nombre)}</span>
         <span class="pastilla ${ESTADOS[e.estado].cls}">${ESTADOS[e.estado].txt}</span>
         <span class="fila-dato">${fmtF(e.fecha)}</span>
-        <span class="fila-dato tenue">${esc(e.lugar || "")}</span>
+        <span class="fila-dato tenue" data-cifras="${e.id}">${esc(e.lugar || "")}</span>
       </li>`).join("")}</ul>`
       : `<p class="vacio">Todavía no hay eventos. Creá el primero.</p>`}`;
 
   $("#btnNuevo").onclick = () => abrirEvento(null);
   document.querySelectorAll("#main .fila").forEach(f =>
-    f.onclick = () => abrirEvento(f.dataset.ev));
+    f.onclick = () => entrarEvento(f.dataset.ev));
+
+  /* Lo vendido de cada evento, al lado del nombre. Es la pregunta con la
+     que entra el organizador ("¿cuánto llevo?") y antes había que abrir
+     el evento y después el tablero para contestarla. Una llamada por
+     evento publicado, en paralelo y sin bloquear la lista: si alguna
+     falla, esa fila se queda con el lugar y nada más. */
+  if (puedeEditar()) data.filter(e => e.estado !== "borrador").forEach(async e => {
+    const { data: r } = await sb.rpc("resumen_evento", { p_evento: e.id });
+    const z = document.querySelector(`[data-cifras="${e.id}"]`);
+    if (!z || !r || !r.vendido) return;
+    z.textContent = `${num(r.vendido.manillas)} vendidas · ${bs(r.vendido.recaudado)}`;
+  });
+}
+
+/* ══ el evento por dentro ════════════════════════════════════════
+   Antes, entrar a un evento abría el formulario de edición, y desde ahí
+   seis botones con flecha llevaban a cada pantalla. Para ver cuánto se
+   vendió había que pasar por el formulario entero; para volver, otra
+   flecha. Los organizadores decían que no encontraban las cosas.
+
+   Ahora entrar abre el Resumen, y arriba queda una fila de pestañas fija
+   con todo lo del evento. Las pantallas son las mismas de siempre: esto
+   sólo cambia cómo se llega a ellas. Por eso la cabecera vive FUERA de
+   #main (en #evCab): cada pantalla sigue pintando #main a su manera, se
+   repinta sola cuando guarda, y la cabecera no se entera. */
+const PESTANAS_EV = [
+  ["resumen",   "Resumen",        id => pantallaTablero(id)],
+  ["entradas",  "Entradas",       id => pantallaEntradas(id)],
+  ["rrpp",      "Relacionadores", id => pantallaRelacionadores(id)],
+  ["cortesias", "Cortesías",      id => pantallaCortesias(id)],
+  ["cobros",    "Cobros",         id => pantallaCierre(id)],
+  ["ajustes",   "Ajustes",        id => abrirEvento(id)],
+];
+
+async function entrarEvento(id, pestana = "resumen") {
+  const { data: e, error } = await sb.from("eventos")
+    .select("id,nombre,slug,fecha,hora_inicio,estado,lugar").eq("id", id).single();
+  if (error || !e) { avisar("Ese evento ya no existe."); mostrar("eventos"); return; }
+  let org = S.orgSlug;
+  try { org = await miOrganizadorSlug(); } catch { /* sin slug: sin link, el resto anda */ }
+  const link = org ? `${location.origin}/${org}/${e.slug}` : "";
+  const est = ESTADOS[e.estado] || ESTADOS.borrador;
+
+  S.ev = { id, pestana };
+  const cab = $("#evCab");
+  cab.innerHTML = `
+    <div class="evc-fila">
+      <button type="button" class="btn plano chico" id="evcVolver">← Eventos</button>
+    </div>
+    <div class="evc-titulo">
+      <div>
+        <h2>${esc(e.nombre)} <span class="pastilla ${est.cls}">${est.txt}</span></h2>
+        <p class="evc-meta">${fmtF(e.fecha)} · ${String(e.hora_inicio || "").slice(0, 5)}${e.lugar ? " · " + esc(e.lugar) : ""}</p>
+      </div>
+      ${link ? `<div class="evc-acciones">
+        <button type="button" class="btn plano chico" id="evcCopiar">Copiar link</button>
+        <a class="btn plano chico" href="${esc(link)}" target="_blank" rel="noopener">Ver página</a>
+      </div>` : ""}
+    </div>
+    <nav class="evc-tabs" role="tablist" aria-label="Secciones del evento">
+      ${PESTANAS_EV.map(([k, t]) => `<button type="button" role="tab" data-t="${k}"
+        aria-selected="${k === pestana}">${t}</button>`).join("")}
+    </nav>`;
+  cab.hidden = false;
+  $("#app").classList.add("en-evento");
+
+  $("#evcVolver").onclick = () => mostrar("eventos");
+  const cp = $("#evcCopiar");
+  if (cp) cp.onclick = async () => {
+    try { await navigator.clipboard.writeText(link); avisar("Link copiado."); }
+    catch { avisar(link); }
+  };
+  cab.querySelectorAll("[data-t]").forEach(b => b.onclick = () => irPestana(b.dataset.t));
+  irPestana(pestana);
+}
+
+function irPestana(k) {
+  if (!S.ev) return;
+  const def = PESTANAS_EV.find(p => p[0] === k) || PESTANAS_EV[0];
+  S.ev.pestana = def[0];
+  document.querySelectorAll("#evCab [data-t]").forEach(b =>
+    b.setAttribute("aria-selected", String(b.dataset.t === def[0])));
+  /* En el teléfono la fila se desliza: la pestaña elegida tiene que quedar
+     a la vista, o parece que no se eligió ninguna. */
+  const sel = document.querySelector(`#evCab [data-t="${def[0]}"]`);
+  if (sel) sel.scrollIntoView({ block: "nearest", inline: "nearest" });
+  scrollTo(0, 0);
+  return def[2](S.ev.id);
+}
+
+/* Se llama al volver a la lista o al cambiar de pestaña de arriba. */
+function salirEvento() {
+  S.ev = null;
+  const cab = $("#evCab");
+  if (cab) { cab.hidden = true; cab.innerHTML = ""; }
+  $("#app").classList.remove("en-evento");
 }
 
 /* Alta y edición en el mismo formulario: son los mismos campos, y tener dos
@@ -280,12 +377,7 @@ async function abrirEvento(id) {
       </fieldset>
       <div class="acciones">
         <button class="btn primario" id="btnGuardar">Guardar</button>
-        ${id ? `<button type="button" class="btn plano" id="btnTablero">Tablero →</button>
-               <button type="button" class="btn plano" id="btnEntradas">Entradas y precios →</button>
-               <button type="button" class="btn plano" id="btnCortesias">Cortesías →</button>
-               <button type="button" class="btn plano" id="btnRrpp">Relacionadores →</button>
-               <button type="button" class="btn plano" id="btnCierre">Cierre y liquidación →</button>
-               <button type="button" class="btn plano" id="btnBitacora">Bitácora →</button>` : ""}
+        ${id ? `<button type="button" class="btn plano" id="btnBitacora">Historial de cambios</button>` : ""}
       </div>
       <p class="error" id="fError"></p>
     </form>
@@ -299,12 +391,9 @@ async function abrirEvento(id) {
   const sinMarca = $("#fSinMarca");
   ["fFondo", "fAcento"].forEach(k => $("#" + k).oninput = () => { sinMarca.checked = false; });
   if (id) {
-    $("#btnTablero").onclick = () => pantallaTablero(id);
-    $("#btnEntradas").onclick = () => pantallaEntradas(id);
-    $("#btnCortesias").onclick = () => pantallaCortesias(id);
-    $("#btnRrpp").onclick = () => pantallaRelacionadores(id);
-    $("#btnCierre").onclick = () => pantallaCierre(id);
-    $("#btnBitacora").onclick = () => pantallaBitacora(id);
+    /* Del historial se vuelve a Ajustes, que es desde donde se entró. */
+    $("#btnBitacora").onclick = () => pantallaBitacora(id,
+      { volver: () => S.ev ? irPestana("ajustes") : abrirEvento(id) });
     // Solo con evento guardado: sin slug no hay carpeta donde subir.
     cablearImagen(e, IMAGENES.flyer);
     cablearImagen(e, IMAGENES.arte);
@@ -351,7 +440,9 @@ async function abrirEvento(id) {
       return;
     }
     avisar("Evento guardado.");
-    id ? mostrar("eventos") : abrirEvento(data.id);
+    /* Uno nuevo sigue en Entradas, que es lo que le falta para vender;
+       uno editado vuelve a su Resumen con el nombre ya actualizado. */
+    id ? entrarEvento(id, "resumen") : entrarEvento(data.id, "entradas");
   };
 }
 
@@ -703,7 +794,7 @@ async function pantallaEntradas(eventoId) {
       </table>
     </div>
     <section id="zonaFase"></section>
-    <p class="ayuda nota-fee">El precio es lo que te queda. Encima va el
+    <p class="ayuda explica nota-fee">El precio es lo que te queda. Encima va el
        ${Math.round(cfgFee.fee_pct * 100)}% de servicio de TICKETAZO, que paga el
        comprador${Number(cfgFee.fee_fijo_transaccion) > 0
          ? ` más ${bs(cfgFee.fee_fijo_transaccion)} por compra` : ""}${
@@ -714,7 +805,7 @@ async function pantallaEntradas(eventoId) {
       <button class="btn primario" id="btnGuardarGrilla">Guardar precios</button>
     </div>
     <p class="ayuda">Precio vacío = ese tipo no se vende en esa fase. Cupo vacío = sin tope.</p>
-    <p class="ayuda">«En la cartelera» decide si ese producto entra en el
+    <p class="ayuda explica">«En la cartelera» decide si ese producto entra en el
        «desde» y en el «agotado» que la portada muestra del evento. Sacá de la
        cartelera lo que no es una oferta al público —una prueba de cobro, un
        producto interno—: se sigue vendiendo igual, solo deja de fijar el
@@ -1066,7 +1157,7 @@ function pintarFase() {
           <input id="faHastaH" type="time" value="${esc(h.hora)}"></span>
         <em class="ayuda">Vacío = sin fin. Si ponés solo la fecha, cierra ese
           día a las 23:59 de Bolivia.</em></label>
-      <p class="ayuda ancha">Las horas son de Bolivia (UTC−4), como en toda la
+      <p class="ayuda explica ancha">Las horas son de Bolivia (UTC−4), como en toda la
         ticketera.</p>
       <div id="faChoque"></div>
       <div class="acciones">
@@ -1635,7 +1726,7 @@ function bloqueAutomatico(d) {
         <span>Bs</span>
         <button type="button" class="btn plano chico" id="btnAutoMin">Guardar</button>
       </label>
-      <p class="ayuda">El piso evita una transferencia bancaria por cada
+      <p class="ayuda explica">El piso evita una transferencia bancaria por cada
         entrada suelta: debajo de ese monto la plata se junta.</p>
     </div>`;
 }
@@ -2329,7 +2420,7 @@ async function refrescarPorteros(eventoId) {
         : ""}</span>
     </div>
     ${filas.length ? `
-      <p class="ayuda bajo-titulo">Deshacer devuelve una manilla ya usada a válida:
+      <p class="ayuda explica bajo-titulo">Deshacer devuelve una manilla ya usada a válida:
         es el único movimiento con el que se puede hacer entrar a alguien de más.
         Unos pocos en la noche son escaneos corregidos; muchos son otra cosa.</p>
       <div class="grilla-envoltorio">
@@ -2497,7 +2588,7 @@ function quedanTxt(p) {
 function bloqueDesgloses(r) {
   return `
   <h3 class="titulo-bloque">Por producto</h3>
-  <p class="ayuda bajo-titulo">Las unidades son lo que compró el cliente y miden el cupo;
+  <p class="ayuda explica bajo-titulo">Las unidades son lo que compró el cliente y miden el cupo;
     las manillas son la gente que entra. Un combo de 10 vendido una vez es 1 unidad y 10 manillas.</p>
   <div class="grilla-envoltorio">
     <table class="tabla ficha-tabla">
@@ -2817,7 +2908,7 @@ function filaCompraDetalle(c) {
 function bloqueLink(c) {
   const id = c.orden_id;
   return `<div class="link-compra">
-    <p class="ayuda">El link no pide clave: el uuid de la compra es la
+    <p class="ayuda explica">El link no pide clave: el uuid de la compra es la
       credencial. Mandáselo por WhatsApp al que dice que no le llegó nada.</p>
     <p class="link-publico">
       <code id="lkOrden">${esc(linkOrden(id))}</code>
@@ -3388,7 +3479,7 @@ async function pantallaCortesias(eventoId) {
       no hay contra qué descontar el cupo. Abrí una fase en «Entradas y precios» y volvé.</p>`}
     <section class="tarjeta cortesias">
       <h3>Regalar entradas</h3>
-      <p class="ayuda">Salen sin precio y sin compra, a nombre de quien digas, y
+      <p class="ayuda explica">Salen sin precio y sin compra, a nombre de quien digas, y
         <b>consumen cupo</b>: una cortesía ocupa un lugar igual que una entrada vendida.
         Hasta 50 por vez.</p>
       <form class="form-cortesias" id="formCortesias">

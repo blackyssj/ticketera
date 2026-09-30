@@ -103,6 +103,44 @@ input{font:inherit}
 
 main{max-width:var(--carril);margin:0 auto;padding:28px 20px 90px}
 
+/* ─── el evento por dentro ───────────────────────────────────────
+   Cabecera del evento abierto: volver, nombre con su estado, el link, y
+   una fila de pestañas que queda pegada bajo la barra al scrollear. En
+   el teléfono las pestañas se deslizan de costado en vez de partirse en
+   dos renglones. */
+.ev-cab{max-width:var(--carril);margin:0 auto;padding:18px 20px 0}
+.evc-fila{margin:0 0 6px -8px}
+.evc-titulo{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.evc-titulo h2{font-size:clamp(22px,4vw,30px);display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0}
+.evc-titulo h2 .pastilla{font-size:11px}
+.evc-meta{margin:4px 0 0;color:var(--txt-2);font-size:14px}
+.evc-acciones{display:flex;gap:8px;flex-wrap:wrap}
+.evc-acciones a.btn{text-decoration:none;display:inline-flex;align-items:center}
+.evc-tabs{
+  display:flex;gap:2px;margin-top:16px;
+  border-bottom:1px solid var(--linea);
+  overflow-x:auto;scrollbar-width:none;
+  position:sticky;top:58px;z-index:15;background:var(--noche);
+}
+.evc-tabs::-webkit-scrollbar{display:none}
+.evc-tabs button{
+  padding:12px 14px;white-space:nowrap;color:var(--txt-2);font-weight:500;font-size:14px;
+  border-bottom:2px solid transparent;margin-bottom:-1px;
+}
+.evc-tabs button:hover{color:var(--txt)}
+.evc-tabs button[aria-selected="true"]{color:var(--txt);border-bottom-color:var(--rojo)}
+.app.en-evento main{padding-top:22px}
+
+/* Dentro de un evento, cada pantalla ya no necesita su propia flecha de
+   volver ni su título: las pestañas dicen dónde estás. Y una cabecera que
+   quedó sólo con esas dos cosas se esconde entera para no dejar un hueco. */
+.app.en-evento #main #btnVolver{display:none}
+.app.en-evento #main > .cab-seccion > h2{display:none}
+.app.en-evento #main > .cab-seccion:not(:has(> :not(h2):not(#btnVolver))){display:none}
+/* Los párrafos que sólo explicaban cómo funciona algo. Los que informan un
+   estado (quién cerró, a qué cuenta va la plata) siguen a la vista. */
+.app.en-evento .ayuda.explica{display:none}
+
 .cab-seccion{display:flex;align-items:center;gap:14px;margin-bottom:22px;flex-wrap:wrap}
 .cab-seccion h2{font-size:32px}
 .cab-seccion>.btn:last-child{margin-left:auto}
