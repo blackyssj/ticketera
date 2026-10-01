@@ -721,7 +721,7 @@ function cablearImagen(ev, def) {
    para llenar y sin nada que diga qué falta. Pasó con un evento de verdad
    y la lectura fue "esta pantalla está rota", que es la lectura correcta.
 
-   No se esconde la grilla aunque esté vacía: el botón «+ Fase» vive en su
+   No se esconde la grilla aunque esté vacía: el botón «Crear fase» vive en su
    encabezado, así que esconderla deja al organizador sin la única puerta
    que necesita justo en el momento en que la necesita. */
 function estadoVacio(T, F) {
@@ -733,9 +733,9 @@ function estadoVacio(T, F) {
       ? `Ya tenés ${T.length === 1 ? "un tipo de entrada" : `${T.length} tipos de entrada`},
          pero <b>ninguna fase</b>. El precio vive en el cruce de los dos, así que
          hasta que no crees una fase no hay dónde escribirlo: por eso las filas de
-         abajo están sin casillas. Tocá <b>+ Fase</b>.`
+         abajo están sin casillas. Tocá <b>Crear fase</b>.`
       : `Ya tenés ${F.length === 1 ? "una fase" : `${F.length} fases`}, pero
-         <b>ningún tipo de entrada</b>. Tocá <b>+ Tipo de entrada</b> para agregar
+         <b>ningún tipo de entrada</b>. Tocá <b>Crear tipo de entrada</b> para agregar
          la primera —«General», «VIP»— y ahí aparecen las casillas de precio.`;
   return `<p class="falta-armar">${falta}</p>`;
 }
@@ -795,7 +795,7 @@ async function pantallaEntradas(eventoId) {
       <table class="grilla">
         <thead><tr><th>Tipo</th>
           ${F.map(f => cabezaFase(f, vigente, proxima, F)).join("")}
-          <th class="col-accion"><button class="btn plano chico" id="btnFase">+ Fase</button></th>
+          <th class="col-accion"><button class="btn plano chico" id="btnFase">Crear fase</button></th>
         </tr></thead>
         <tbody>
           ${T.map(t => `<tr data-tipo="${t.id}">
@@ -836,7 +836,7 @@ async function pantallaEntradas(eventoId) {
          Number(cfgFee.fee_piso) > 0 ? `, con un mínimo de ${bs(cfgFee.fee_piso)}` : ""}.
        Debajo de cada precio dice cuánto va a pagar.</p>
     <div class="acciones">
-      <button class="btn plano" id="btnTipo">+ Tipo de entrada</button>
+      <button class="btn plano" id="btnTipo">Crear tipo de entrada</button>
       <button class="btn primario" id="btnGuardarGrilla">Guardar precios</button>
     </div>
     <p class="ayuda">Precio vacío = ese tipo no se vende en esa fase. Cupo vacío = sin tope.</p>
