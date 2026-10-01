@@ -1794,9 +1794,17 @@ body[data-filtro="1"] .puerta-visor::before{
 }
 .falta-armar b{color:var(--aviso)}
 
-/* El borrar de cada tipo. Discreto y al final de su celda: se usa una vez
-   —cuando el tipo se creó por error— y conviven con él los controles que
-   sí se tocan seguido. Aparece en rojo solo al pasarle el mouse, para que
-   no compita con el tilde de cartelera. */
-.tipo-borrar{margin-top:8px;opacity:.55}
-.tipo-borrar:hover{opacity:1;color:var(--peligro);border-color:var(--peligro)}
+/* El pie de cada tipo: el tilde de cartelera a la izquierda y «Borrar» al
+   fondo a la derecha, en un solo renglón. La línea que los separa del
+   nombre pasa a vivir acá y no en .zona-cartelera, para que cruce la celda
+   entera y no solo la mitad izquierda.
+
+   «Borrar» lejos del tilde y pegado al borde a propósito: son vecinos en la
+   misma fila y uno de los dos no tiene vuelta atrás. El tilde se toca
+   seguido, esto una vez en la vida. */
+.tipo-pie{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  margin-top:13px;padding-top:11px;border-top:1px solid var(--linea);
+}
+.tipo-pie .zona-cartelera{margin-top:0;padding-top:0;border-top:0}
+.tipo-borrar{margin-left:auto}

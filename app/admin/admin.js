@@ -800,10 +800,12 @@ async function pantallaEntradas(eventoId) {
         <tbody>
           ${T.map(t => `<tr data-tipo="${t.id}">
             <th>${esc(t.nombre)}<em>${esc(t.descripcion || "")}</em>
-              ${marcaCartelera(t)}
-              <button type="button" class="btn plano chico tipo-borrar"
-                      data-borrar-tipo="${esc(t.id)}"
-                      data-nombre="${esc(t.nombre)}">Borrar</button></th>
+              <div class="tipo-pie">
+                ${marcaCartelera(t)}
+                <button type="button" class="btn plano chico peligrosa tipo-borrar"
+                        data-borrar-tipo="${esc(t.id)}"
+                        data-nombre="${esc(t.nombre)}">Borrar</button>
+              </div></th>
             ${F.map(f => {
               const p = P.get(`${f.id}|${t.id}`);
               /* El nombre de la fase viaja repetido en cada celda porque en
