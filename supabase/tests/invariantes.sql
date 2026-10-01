@@ -10,10 +10,13 @@ begin
   -- con ustedes" y un intento de crear cuenta de comprador no pertenecen
   -- a ningún organizador. plataforma_operador y plataforma_config (0069,
   -- 0070) son la mesa de TICKETAZO que mira a TODOS los clientes: atarlas
-  -- a uno sería el error. Todo lo demás lleva organizador_id not null.
+  -- a uno sería el error. retiro_plataforma (0088) son los retiros de
+  -- NUESTRA comisión: tampoco son de un cliente. Todo lo demás lleva
+  -- organizador_id not null.
   where t.schemaname = 'public'
     and t.tablename not in ('organizadores', 'contactos', 'cuenta_intentos',
-                            'plataforma_operador', 'plataforma_config')
+                            'plataforma_operador', 'plataforma_config',
+                            'retiro_plataforma')
     and not exists (select 1 from information_schema.columns c
                      where c.table_schema = 'public' and c.table_name = t.tablename
                        and c.column_name = 'organizador_id' and c.is_nullable = 'NO');

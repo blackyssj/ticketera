@@ -56,6 +56,12 @@ async function cargarPerfil() {
      los links de relacionador salían con el slug de OTRO cliente. */
   S.orgSlug = null; S.org = null;
   await miOrganizadorSlug().catch(() => null);
+  /* Un operador de TICKETAZO que entró como un cliente (0090) escribe con
+     el id de ESE cliente: la base exige que lo que se crea sea del cliente
+     efectivo, y S.yo.organizador_id es lo que el panel manda al crear un
+     evento, un tipo o una fase. El propio se guarda para la franja. */
+  S.yo.organizador_propio = S.yo.organizador_id;
+  if (S.org && S.org.id) S.yo.organizador_id = S.org.id;
   /* Si somos TICKETAZO. Un `false` por error de red esconde la pestaña,
      que es el lado seguro: la alternativa es mostrarla y que cada
      consulta rebote con "Sin permiso". */
@@ -132,7 +138,8 @@ function arrancarApp() {
      Las otras pestañas son de un organizador vacío —el nuestro no vende
      nada— así que aterrizar en "Eventos" es aterrizar en una lista sin
      nada, que parece un sistema roto. */
-  if (S.plataforma) {
+  pintarOperando();
+  if (S.plataforma && !(S.org && S.org.operando)) {
     mias = mias.slice().sort((a, b) => (b.plataforma ? 1 : 0) - (a.plataforma ? 1 : 0));
     /* `S.pantalla` nace en "eventos", así que preguntar por vacío nunca da
        true: hay que pisarlo. Se pisa una sola vez, al entrar — después la
@@ -151,6 +158,56 @@ $("#tabs").addEventListener("click", e => {
   const b = e.target.closest("button[data-p]");
   if (b) mostrar(b.dataset.p);
 });
+
+/* ══ operar como un cliente (0090) ══════════════════════════════
+   Un operador de TICKETAZO elige un cliente en Plataforma y el panel
+   entero pasa a ser el de ese cliente: sus eventos, su equipo, su puerta,
+   sus cobros. Quién puede y sobre qué lo decide la base; acá sólo se pide,
+   se recarga el perfil (que ahora trae el cliente efectivo) y se avisa con
+   una franja que no se va mientras dure. */
+async function operarComo(slug, btn) {
+  const hacer = async () => {
+    const { data, error } = await sb.rpc("plataforma_operar", { p_slug: slug });
+    if (error) { avisar(sinCodigo(error.message)); return; }
+    if (!data || !data.ok) { avisar((data && data.motivo) || "No se pudo entrar."); return; }
+    await recargarSesion(data.operando ? "eventos" : "plataforma");
+    avisar(data.operando ? `Estás operando como ${data.nombre}.` : "Volviste a TICKETAZO.");
+  };
+  btn ? await conBoton(btn, "Entrando…", hacer) : await hacer();
+}
+
+async function dejarDeOperar() {
+  const { error } = await sb.rpc("plataforma_dejar");
+  if (error) { avisar(sinCodigo(error.message)); return; }
+  await recargarSesion("plataforma");
+  avisar("Volviste a TICKETAZO.");
+}
+
+/* Lo mismo que pasa al entrar con la clave, sin pedirla de nuevo: el
+   cliente efectivo cambió, y con él el slug, los links y lo que se ve. */
+async function recargarSesion(pantalla) {
+  salirEvento();
+  try { await cargarPerfil(); }
+  catch (e) { avisar(e.message); return; }
+  S.pantalla = pantalla;
+  arrancarApp();
+}
+
+function pintarOperando() {
+  const z = $("#operando");
+  if (!z) return;
+  const op = !!(S.org && S.org.operando);
+  $("#app").classList.toggle("con-franja", op);
+  z.hidden = !op;
+  if (!op) { z.innerHTML = ""; return; }
+  z.innerHTML = `<span>Estás operando como <b>${esc(S.org.nombre)}</b>. Lo que hagas
+      queda registrado a tu nombre.</span>
+    <button type="button" class="btn plano chico" id="btnDejarOperar">Volver a TICKETAZO</button>`;
+  $("#btnDejarOperar").onclick = dejarDeOperar;
+  /* La franja mide distinto en un teléfono (el texto parte en dos) que en
+     una compu: las pestañas pegajosas del evento se corren lo que mida. */
+  $("#app").style.setProperty("--alto-franja", z.offsetHeight + "px");
+}
 
 function mostrar(p) {
   salirEvento();
@@ -4571,7 +4628,7 @@ async function pantallaPlataforma() {
         <thead><tr><th>Cliente</th><th>Tarifa</th><th class="num">Entradas</th>
           <th class="num">Cobrado</th><th class="num">Comisión</th>
           <th class="num">Pasarela</th><th class="num">Nos queda</th>
-          <th class="num">Girado</th><th class="num">Falta</th><th>Giro</th></tr></thead>
+          <th class="num">Girado</th><th class="num">Falta</th><th>Giro</th><th></th></tr></thead>
         <tbody>${cl.map(c => {
           const falta = Number(c.del_cliente) - Number(c.girado);
           return `<tr>
@@ -4590,6 +4647,8 @@ async function pantallaPlataforma() {
               ? `<span class="pastilla verde">auto ${bs(c.minimo)}</span>`
               : `<span class="pastilla amarilla">a mano</span>`}${
               Number(c.rechazados) ? ` <span class="pastilla roja">${c.rechazados} rech.</span>` : ""}</td>
+            <td><button type="button" class="btn plano chico" data-operar="${esc(c.slug)}"
+                  >Entrar como ${esc(c.organizador)}</button></td>
           </tr>`; }).join("")}</tbody>
       </table>
     </div>
@@ -4660,6 +4719,10 @@ async function pantallaPlataforma() {
      la única pantalla desde donde se mueve plata de un cliente sin tener su
      panel delante, así que el destino tiene que estar a la vista antes de
      apretar y no después. */
+  document.querySelectorAll("[data-operar]").forEach(b => {
+    b.onclick = () => operarComo(b.dataset.operar, b);
+  });
+
   document.querySelectorAll("[data-girar]").forEach(b => {
     b.onclick = () => girarDesdePlataforma(evs.find(x => x.id === b.dataset.girar), b);
   });

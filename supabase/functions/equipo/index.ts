@@ -41,6 +41,21 @@ const SB  = Deno.env.get("SUPABASE_URL")!;
 const KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const H = { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" };
 
+/* El cliente sobre el que trabaja quien llama. Casi siempre es el de su
+   perfil; si es un operador de TICKETAZO que entró como un cliente (0090),
+   es ese cliente. La regla vive en la base (organizador_efectivo) y se le
+   pregunta a ella para que la función y el panel nunca discrepen. Si la
+   consulta falla, null: se sigue con el del perfil, que es el lado seguro. */
+async function organizadorEfectivo(uid: string): Promise<string | null> {
+  const r = await fetch(`${SB}/rest/v1/rpc/organizador_efectivo`, {
+    method: "POST", headers: H, body: JSON.stringify({ p_uid: uid }),
+  }).catch(() => null);
+  if (!r || !r.ok) return null;
+  const v = await r.json().catch(() => null);
+  return typeof v === "string" ? v : null;
+}
+
+
 async function rest(ruta: string, init: RequestInit = {}) {
   const r = await fetch(`${SB}/rest/v1/${ruta}`, { ...init, headers: { ...H, ...(init.headers ?? {}) } });
   const t = await r.text();
@@ -125,6 +140,8 @@ async function quienLlama(req: Request): Promise<Guardia> {
      dice y no lo que la base sabe. */
   const yo = await uno(`perfiles?id=eq.${u.id}&select=id,nombre,rol,activo,organizador_id`);
   if (!yo || !yo.activo) return { motivo: "Tu cuenta no está habilitada.", status: 403 };
+  const efectivo = await organizadorEfectivo(u.id);
+  if (efectivo) yo.organizador_id = efectivo;
   if (yo.rol !== "admin") return {
     motivo: "Solo un administrador puede administrar el equipo.", status: 403 };
   return { yo };

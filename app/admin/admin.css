@@ -131,6 +131,20 @@ main{max-width:var(--carril);margin:0 auto;padding:28px 20px 90px}
 .evc-tabs button[aria-selected="true"]{color:var(--txt);border-bottom-color:var(--rojo)}
 .app.en-evento main{padding-top:22px}
 
+/* ─── operando como un cliente ───────────────────────────────────
+   Ámbar lleno y no un aviso tenue: es la única pantalla del panel donde
+   lo que hacés no es en tu cuenta. Queda pegada bajo la barra, y las
+   pestañas del evento bajan su altura para no meterse debajo. */
+#operando{
+  position:sticky;top:58px;z-index:19;
+  display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;
+  padding:8px 16px;background:#D9A441;color:#1A1406;font-size:14px;text-align:center
+}
+#operando b{font-weight:700}
+#operando .btn.plano{border-color:rgba(26,20,6,.35);color:#1A1406;background:rgba(255,255,255,.18)}
+#operando .btn.plano:hover{background:rgba(255,255,255,.32);color:#1A1406}
+.app.con-franja .evc-tabs{top:calc(58px + var(--alto-franja,44px))}
+
 /* Dentro de un evento, cada pantalla ya no necesita su propia flecha de
    volver ni su título: las pestañas dicen dónde estás. Y una cabecera que
    quedó sólo con esas dos cosas se esconde entera para no dejar un hueco. */
