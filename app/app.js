@@ -643,6 +643,60 @@ function pintarTipos() {
     $("#tipos").insertAdjacentHTML("beforeend",
       `<p class="letra-chica">Máximo ${tope} por compra. Para más, hacé otra compra.</p>`);
   }
+  $("#tipos").insertAdjacentHTML("beforeend", listaFases());
+}
+
+/* ── las fases de la venta (0091) ──────────────────────────────────
+   Debajo de las entradas, todas las tandas del evento con su precio. La
+   que vende ahora es la de arriba; esta lista dice lo que la tarjeta no
+   puede: a cuánto sube cuando se acabe —que es el argumento para comprar
+   hoy— y que la tanda barata existió y se agotó, en vez de borrarla como
+   si nunca hubiera estado. Con una sola fase no hay nada que contar.
+
+   "Sold out" en inglés porque así lo pidió el organizador y así se dice en
+   la noche; el resto en castellano. */
+const FASE_TXT = { vigente: "A la venta", agotada: "Sold out", cerrada: "Cerrada" };
+
+function cuandoFase(iso) {
+  const d = new Date(iso);
+  const dia = x => x.toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
+  const hora = d.toLocaleTimeString("es-BO", { hour: "2-digit", minute: "2-digit",
+                                               hour12: false, timeZone: "America/La_Paz" });
+  const hoy = new Date();
+  if (dia(d) === dia(hoy)) return `hoy ${hora}`;
+  if (dia(d) === dia(new Date(hoy.getTime() + 864e5))) return `mañana ${hora}`;
+  return d.toLocaleDateString("es-BO", { day: "numeric", month: "short",
+                                         timeZone: "America/La_Paz" }).replace(".", "");
+}
+
+/* Lo que espera una fase que todavía no abrió. Si tiene fecha futura, esa
+   fecha: antes no abre aunque la anterior se agote. Si no, espera a la
+   anterior, que se agote o que llegue su cierre si lo tiene. */
+function esperaFase(f, previa) {
+  const ahora = Date.now();
+  if (f.desde && Date.parse(f.desde) > ahora) return `Desde ${cuandoFase(f.desde)}`;
+  if (!previa) return "Próximamente";
+  const cierre = previa.hasta && Date.parse(previa.hasta) > ahora
+    ? ` o desde ${cuandoFase(previa.hasta)}` : "";
+  return `Cuando se agote ${previa.nombre}${cierre}`;
+}
+
+function listaFases() {
+  const F = Array.isArray(D.fases) ? D.fases : [];
+  if (F.length < 2) return "";
+  return `<section class="fases-venta" aria-label="Fases de venta">
+    <h3>Fases de venta</h3>
+    <ol>${F.map((f, i) => {
+      const precio = Number(f.precio) === 0 ? "Gratis"
+        : `${f.varios ? "desde " : ""}${bs(f.precio)}`;
+      const estado = FASE_TXT[f.estado] || esperaFase(f, F[i - 1]);
+      return `<li data-estado="${esc(f.estado)}">
+        <span class="fv-nombre">${esc(f.nombre)}</span>
+        <span class="fv-precio">${f.estado === "agotada" ? `<s>${esc(precio)}</s>` : esc(precio)}</span>
+        <span class="fv-estado">${esc(estado)}</span>
+      </li>`;
+    }).join("")}</ol>
+  </section>`;
 }
 
 function tarjetaTipo(t, tope, usadas) {

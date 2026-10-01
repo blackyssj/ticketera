@@ -178,6 +178,14 @@ Deno.serve(async (req) => {
             { day: "numeric", month: "long", timeZone: "America/La_Paz" })
         : "" },
       tipos,
+      /* Todas las fases públicas, en orden (0091): la página muestra la que
+         vende, las agotadas como "sold out" y las próximas con su precio,
+         para que se vea a cuánto sube cuando se acabe la de hoy. Qué
+         estado tiene cada una lo decide la base, con el mismo criterio
+         que fase_vigente(). */
+      fases: (d.fases ?? []).map((x: Record<string, unknown>) => ({
+        nombre: String(x.nombre ?? ""), precio: Number(x.precio), varios: !!x.varios,
+        estado: String(x.estado ?? ""), desde: x.desde ?? null, hasta: x.hasta ?? null })),
     });
   } catch (err) {
     return json({ ok: false, motivo: String((err as Error).message ?? err) }, 500);

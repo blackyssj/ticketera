@@ -325,6 +325,28 @@ input{font:inherit}
 .tipo-cupo.poco{color:var(--alerta)}
 .tipo-cupo.agotado{color:var(--tinta-40)}
 
+/* ─── fases de la venta (0091) ───
+   Una lista, no tarjetas: no se compra desde acá, se lee. Separada de las
+   entradas por una línea y en letra de dato, para que nadie la confunda
+   con algo que se agrega al carrito. La que vende lleva un punto en tinta
+   —no en el acento: un acento claro, como el crema de LÜMEN, sobre este
+   fondo crema no se ve—; la agotada queda tachada y apagada pero entera. */
+.fases-venta{margin-top:4px;padding-top:16px;border-top:1.5px solid var(--tinta-16)}
+.fases-venta h3{font-family:var(--dato);font-size:11.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--tinta-60);margin-bottom:6px}
+.fases-venta ol{list-style:none;margin:0;padding:0}
+.fases-venta li{display:grid;grid-template-columns:1fr auto;gap:3px 16px;align-items:baseline;padding:11px 0;border-bottom:1px dashed var(--tinta-16)}
+.fases-venta li:last-child{border-bottom:0}
+.fv-nombre{font-family:var(--display);font-size:20px;line-height:1.05;text-transform:uppercase}
+.fv-precio{font-family:var(--dato);font-size:16px;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.fv-estado{grid-column:1 / -1;font-family:var(--dato);font-size:11.5px;letter-spacing:.03em;color:var(--tinta-60)}
+.fases-venta li[data-estado="vigente"] .fv-estado{display:inline-flex;align-items:center;gap:8px;color:var(--tinta);font-weight:500}
+.fases-venta li[data-estado="vigente"] .fv-estado::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--tinta);box-shadow:0 0 0 3px var(--tinta-16)}
+.fases-venta li[data-estado="agotada"] .fv-nombre,
+.fases-venta li[data-estado="agotada"] .fv-precio,
+.fases-venta li[data-estado="cerrada"] .fv-nombre,
+.fases-venta li[data-estado="cerrada"] .fv-precio{color:var(--tinta-40)}
+.fases-venta li[data-estado="agotada"] .fv-estado{justify-self:start;padding:2px 8px;border:1px solid var(--tinta);border-radius:999px;color:var(--tinta);font-weight:500;letter-spacing:.08em;text-transform:uppercase;font-size:10.5px}
+
 .stepper{display:flex;align-items:center;border:1.5px solid var(--tinta);border-radius:3px;overflow:hidden;flex:0 0 auto}
 .stepper button{width:34px;height:34px;font-family:var(--dato);font-size:17px;line-height:1;color:var(--tinta);transition:background .14s ease}
 .stepper button:hover:not(:disabled){background:var(--tinta);color:var(--espuma)}
