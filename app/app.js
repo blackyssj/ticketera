@@ -529,6 +529,8 @@ function pintarHero() {
   pintarUbicacion();
   document.title = `${e.marca_1} ${e.marca_2} — ${VOCAB.titulo}`;
   $("#faseChip").innerHTML = `<i></i>${esc(D.fase.nombre)} · ${esc(D.fase.hasta_txt)}`;
+  // Sin fase abierta (0092) no hay nombre que poner en la pastilla.
+  $("#faseChip").hidden = !D.fase.nombre;
   /* La nota se arma con las partes que el organizador realmente cobra. Con
      el fijo y el piso en cero, "8% + 0 Bs por compra, mínimo 0 Bs" es la
      misma frase de siempre diciendo nada dos veces, y una letra chica que
@@ -625,7 +627,7 @@ function pintarTipos() {
   const tope = D.evento.tope_entradas_orden;
   const usadas = Object.values(S.cant).reduce((a, b) => a + b, 0);
 
-  $("#tipos").innerHTML = GRUPOS.map(g => {
+  $("#tipos").innerHTML = avisoSinVenta() + GRUPOS.map(g => {
     const suyos = D.tipos.filter(t => (t.categoria || "entrada") === g.cat);
     if (!suyos.length) return "";
     // El título del grupo se calla cuando no separa nada — con mesas y nada
@@ -655,7 +657,8 @@ function pintarTipos() {
 
    "Sold out" en inglés porque así lo pidió el organizador y así se dice en
    la noche; el resto en castellano. */
-const FASE_TXT = { vigente: "A la venta", agotada: "Sold out", cerrada: "Cerrada" };
+const FASE_TXT = { vigente: "A la venta", agotada: "Sold out", cerrada: "Cerrada",
+                   retenida: "Últimas en proceso de pago" };
 
 function cuandoFase(iso) {
   const d = new Date(iso);
@@ -669,16 +672,42 @@ function cuandoFase(iso) {
                                          timeZone: "America/La_Paz" }).replace(".", "");
 }
 
-/* Lo que espera una fase que todavía no abrió. Si tiene fecha futura, esa
-   fecha: antes no abre aunque la anterior se agote. Si no, espera a la
-   anterior, que se agote o que llegue su cierre si lo tiene. */
-function esperaFase(f, previa) {
+/* Lo que espera una fase que todavía no abrió, con las mismas reglas que
+   fase_vigente(): abre cuando llegó su fecha Y la de antes que sigue viva
+   (la que vende, o una próxima) se agotó o cerró. Las dos condiciones,
+   porque cualquiera sola miente: "Desde 14 oct" promete una suba que no
+   pasa si First todavía tiene lugar, y "cuando se agote First" promete
+   una que no pasa si se agota el 5. */
+function esperaFase(f, i, F) {
   const ahora = Date.now();
-  if (f.desde && Date.parse(f.desde) > ahora) return `Desde ${cuandoFase(f.desde)}`;
-  if (!previa) return "Próximamente";
-  const cierre = previa.hasta && Date.parse(previa.hasta) > ahora
-    ? ` o desde ${cuandoFase(previa.hasta)}` : "";
-  return `Cuando se agote ${previa.nombre}${cierre}`;
+  const antes = F.slice(0, i).reverse()
+    .find(x => x.estado !== "agotada" && x.estado !== "cerrada");
+  const fecha = f.desde && Date.parse(f.desde) > ahora ? cuandoFase(f.desde) : null;
+  if (!antes) return fecha ? `Desde ${fecha}` : "Próximamente";
+  if (fecha) return `Desde ${fecha}, si ya se agotó ${antes.nombre}`;
+  const cierre = antes.hasta && Date.parse(antes.hasta) > ahora
+    ? ` o desde ${cuandoFase(antes.hasta)}` : "";
+  return `Cuando se agote ${antes.nombre}${cierre}`;
+}
+
+/* Sin fase abierta (0092) la página no da error: dice qué pasa y deja la
+   lista de fases debajo. Si algo abre más adelante por fecha, cuándo; si
+   lo que tapa son compras a medio pagar, que puede volver; si no, agotado. */
+function avisoSinVenta() {
+  if (!D.sin_venta) return "";
+  const F = Array.isArray(D.fases) ? D.fases : [];
+  const ahora = Date.now();
+  const abre = F.filter(f => f.estado === "proxima" && f.desde && Date.parse(f.desde) > ahora)
+                .sort((a, b) => Date.parse(a.desde) - Date.parse(b.desde))[0];
+  const [titulo, bajada] = abre
+    ? [`La venta abre ${cuandoFase(abre.desde)}`, `Primera tanda: ${abre.nombre}.`]
+    : F.some(f => f.estado === "retenida")
+      ? ["Se están pagando las últimas", "Si alguna compra no se completa, vuelve a la venta en unos minutos."]
+      : ["Agotado", "No quedan entradas a la venta."];
+  return `<article class="tipo sin-venta">
+    <h3 class="tipo-nombre">${esc(titulo)}</h3>
+    <p class="tipo-desc">${esc(bajada)}</p>
+  </article>`;
 }
 
 function listaFases() {
@@ -689,7 +718,7 @@ function listaFases() {
     <ol>${F.map((f, i) => {
       const precio = Number(f.precio) === 0 ? "Gratis"
         : `${f.varios ? "desde " : ""}${bs(f.precio)}`;
-      const estado = FASE_TXT[f.estado] || esperaFase(f, F[i - 1]);
+      const estado = FASE_TXT[f.estado] || esperaFase(f, i, F);
       return `<li data-estado="${esc(f.estado)}">
         <span class="fv-nombre">${esc(f.nombre)}</span>
         <span class="fv-precio">${f.estado === "agotada" ? `<s>${esc(precio)}</s>` : esc(precio)}</span>
@@ -975,6 +1004,23 @@ async function pagar() {
     S.orden = await API.crearOrden(items, { ...S.comprador },
                                    $("#fTc").checked ? TC_VERSION : undefined);
 
+    /* El precio que se cobra lo decide la base al crear la orden, con la
+       fase de ESE momento. Si la tanda que el comprador estaba mirando se
+       agotó mientras llenaba sus datos —la Welcome de LÜMEN se fue en
+       minutos—, la orden nace al precio de la siguiente y la pasarela le
+       cobraría más de lo que vio. Se frena acá, se recarga el evento y se
+       le dice el precio nuevo antes de mandarlo a pagar. La orden queda
+       pendiente y vence sola a los diez minutos. */
+    const visto = cotizar().total;
+    if (!S.orden.gratis && Math.abs(Number(S.orden.total) - visto) > 0.5) {
+      const nuevo = Number(S.orden.total);
+      S.orden = null;
+      await recargarEvento().catch(() => null);
+      pagoFallo(`Mientras elegías cambió el precio: ahora el total es ${bs(nuevo)} ` +
+                `en vez de ${bs(visto)}. Revisá tu compra antes de pagar.`, "entradas");
+      return;
+    }
+
     /* Evento gratis: la orden ya nació emitida del lado del servidor, así que
        no hay pasarela que abrir ni pago que verificar. Se salta derecho a la
        entrada. Un paso de cobro por Bs 0 no es sólo feo: la pasarela lo
@@ -1072,6 +1118,19 @@ async function verificarPago() {
 }
 
 /* Un solo lugar donde se dibuja un fallo, para que digan todos lo mismo. */
+/* Vuelve a pedir el evento y repinta lo que depende de la fase: precios,
+   cupos, pastilla y lista. Las cantidades elegidas se conservan para los
+   tipos que siguen a la venta. */
+async function recargarEvento() {
+  const r = await API.evento();
+  if (!r || !r.ok) return;
+  const antes = S.cant;
+  D = r;
+  S.cant = {};
+  D.tipos.forEach(t => S.cant[t.id] = Math.min(antes[t.id] || 0, t.cupo));
+  pintarHero(); pintarCierre(); pintarTipos(); pintarRail();
+}
+
 function pagoFallo(motivo, volverA) {
   pagoDice(`<h3>No se pudo completar</h3><p>${esc(motivo)}</p>
     <button type="button" class="btn plano" id="btnReintentar">${volverA ? "Volver a intentar" : "Verificar de nuevo"}</button>`);

@@ -345,6 +345,11 @@ input{font:inherit}
 .fases-venta li[data-estado="agotada"] .fv-precio,
 .fases-venta li[data-estado="cerrada"] .fv-nombre,
 .fases-venta li[data-estado="cerrada"] .fv-precio{color:var(--tinta-40)}
+.fases-venta li[data-estado="retenida"] .fv-nombre,
+.fases-venta li[data-estado="retenida"] .fv-precio{color:var(--tinta-60)}
+/* Sin nada a la venta ahora (0092): la tarjeta que ocupa el lugar de las
+   entradas no tiene precio ni stepper, solo dice qué pasa. */
+.tipo.sin-venta{grid-template-columns:1fr;border-style:dashed}
 .fases-venta li[data-estado="agotada"] .fv-estado{justify-self:start;padding:2px 8px;border:1px solid var(--tinta);border-radius:999px;color:var(--tinta);font-weight:500;letter-spacing:.08em;text-transform:uppercase;font-size:10.5px}
 
 .stepper{display:flex;align-items:center;border:1.5px solid var(--tinta);border-radius:3px;overflow:hidden;flex:0 0 auto}

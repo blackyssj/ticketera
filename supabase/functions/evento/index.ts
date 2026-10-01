@@ -183,6 +183,10 @@ Deno.serve(async (req) => {
          para que se vea a cuánto sube cuando se acabe la de hoy. Qué
          estado tiene cada una lo decide la base, con el mismo criterio
          que fase_vigente(). */
+      /* true = el evento existe y tiene fases, pero ahora no se vende nada
+         (todavía no abrió, o se agotó y la próxima abre por fecha). La
+         página se muestra igual, sin tarjetas de compra (0092). */
+      sin_venta: d.sin_venta === true,
       fases: (d.fases ?? []).map((x: Record<string, unknown>) => ({
         nombre: String(x.nombre ?? ""), precio: Number(x.precio), varios: !!x.varios,
         estado: String(x.estado ?? ""), desde: x.desde ?? null, hasta: x.hasta ?? null })),
