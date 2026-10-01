@@ -60,6 +60,19 @@ function partesFecha(fecha: string) {
 const POCAS_PCT = 0.10;
 const POCAS_ABS = 40;
 
+function cuandoAbre(iso: string): string {
+  const tz = "America/La_Paz";
+  const d = new Date(iso);
+  const dia = (x: Date) => x.toLocaleDateString("en-CA", { timeZone: tz });
+  const hora = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz });
+  const hoy = new Date();
+  if (dia(d) === dia(hoy)) return `hoy ${hora}`;
+  if (dia(d) === dia(new Date(hoy.getTime() + 864e5))) return `mañana ${hora}`;
+  const [, m, dd] = dia(d).split("-");
+  const MES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+  return `${Number(dd)} ${MES[Number(m) - 1]} · ${hora}`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   try {
@@ -101,7 +114,15 @@ Deno.serve(async (req) => {
          organizador que pidió esconder el cupo (muestra_cupo en false) pidió
          esconder eso. "Agotado" sí sale: es un estado, no una cuenta, y
          mandar a alguien a una página que no vende es peor que avisarle. */
-      const venta = desde === null ? "agotado"
+      /* Sin fase abierta (0093): si algo abre más tarde es "pronto", con la
+         hora y el precio de lo que abre; si no, agotado. La tarjeta se
+         muestra igual: el link del relacionador lleva a la vidriera y una
+         vidriera vacía dos horas antes de abrir es una venta perdida. */
+      const sinVenta = vivos.length === 0;
+      const abre = sinVenta && e.abre ? String(e.abre) : null;
+      if (abre && e.precio_proximo != null) desde = Number(e.precio_proximo);
+      const venta = abre ? "pronto"
+        : desde === null ? "agotado"
         : (o.muestra_cupo !== false && hayCupo && dispTotal <= POCAS_ABS && dispTotal <= cupoTotal * POCAS_PCT) ? "ultimas"
         : "abierta";
       const p = partesFecha(e.fecha);
@@ -135,6 +156,8 @@ Deno.serve(async (req) => {
           ? [e.color_fondo, e.color_acento] : null,
         desde,
         venta,
+        // Cuándo abre, si todavía no vende: "hoy 19:30", "mañana 10:00", "14 oct · 19:30".
+        abre_txt: abre ? cuandoAbre(abre) : null,
       };
     });
 

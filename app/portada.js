@@ -187,7 +187,9 @@ function pedirCartelera() {
    `prioridad` la traen las primeras de la página: son las que decide el
    navegador antes de saber qué hay más abajo. */
 function afiche(e, prioridad) {
-  const s = SELLOS[e.venta];
+  /* "pronto" lleva la hora adentro, así que no vive en SELLOS. */
+  const s = e.venta === "pronto" && e.abre_txt
+    ? { clase: "sello-pronto", txt: `Abre ${e.abre_txt}` } : SELLOS[e.venta];
   const sello = s ? `<span class="sello ${s.clase}">${esc(s.txt)}</span>` : "";
 
   /* El día en grande es el ancla gráfica del papel. Es un dato, no un

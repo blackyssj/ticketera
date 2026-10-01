@@ -399,6 +399,9 @@ img{max-width:100%;display:block}
 }
 .sello-pocas{background:var(--fluor);color:var(--tinta)}
 .sello-agotado{background:var(--tinta);color:var(--hueso);border:1px solid var(--hueso-40)}
+/* Todavía no abre: el mismo fluor que «Últimas», porque también es un aviso
+   de que hay que estar atento, no un estado apagado. */
+.sello-pronto{background:var(--fluor);color:var(--tinta)}
 .agotado .afiche img{filter:grayscale(.85) brightness(.5)}
 .agotado .papel{opacity:.55}
 
