@@ -837,6 +837,12 @@ async function pantallaEntradas(eventoId) {
     : { data: [] };
   const P = new Map((precios.data || [])
     .map(p => [`${p.fase_id}|${p.tipo_id}`, p]));
+  /* Las fases que terminan por cantidad: todos sus precios tienen cupo.
+     Son las únicas que fase_vigente() (0060) deja atrás al agotarse. */
+  const limitadas = new Set(F.filter(f => {
+    const ps = (precios.data || []).filter(p => p.fase_id === f.id);
+    return ps.length > 0 && ps.every(p => p.cupo != null);
+  }).map(f => f.id));
 
   $("#main").innerHTML = `
     <div class="cab-seccion">
@@ -851,7 +857,7 @@ async function pantallaEntradas(eventoId) {
     <div class="grilla-envoltorio">
       <table class="grilla">
         <thead><tr><th>Tipo</th>
-          ${F.map(f => cabezaFase(f, vigente, proxima, F)).join("")}
+          ${F.map(f => cabezaFase(f, vigente, proxima, F, limitadas)).join("")}
           <th class="col-accion"><button class="btn plano chico" id="btnFase">Crear fase</button></th>
         </tr></thead>
         <tbody>
@@ -859,9 +865,14 @@ async function pantallaEntradas(eventoId) {
             <th>${esc(t.nombre)}<em>${esc(t.descripcion || "")}</em>
               <div class="tipo-pie">
                 ${marcaCartelera(t)}
-                <button type="button" class="btn plano chico peligrosa tipo-borrar"
-                        data-borrar-tipo="${esc(t.id)}"
-                        data-nombre="${esc(t.nombre)}">Borrar</button>
+                <span class="tipo-acciones">
+                  <button type="button" class="btn plano chico"
+                          data-renombrar-tipo="${esc(t.id)}"
+                          data-nombre="${esc(t.nombre)}">Renombrar</button>
+                  <button type="button" class="btn plano chico peligrosa"
+                          data-borrar-tipo="${esc(t.id)}"
+                          data-nombre="${esc(t.nombre)}">Borrar</button>
+                </span>
               </div></th>
             ${F.map(f => {
               const p = P.get(`${f.id}|${t.id}`);
@@ -906,6 +917,9 @@ async function pantallaEntradas(eventoId) {
 
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
   $("#btnTipo").onclick = () => nuevoTipo(eventoId);
+  document.querySelectorAll("#main [data-renombrar-tipo]").forEach(b => {
+    b.onclick = () => renombrarTipo(eventoId, b.dataset.renombrarTipo, b.dataset.nombre);
+  });
   document.querySelectorAll("#main [data-borrar-tipo]").forEach(b => {
     b.onclick = () => borrarTipo(eventoId, b.dataset.borrarTipo, b.dataset.nombre);
   });
@@ -1132,7 +1146,7 @@ function proximaFase(F) {
    dentro de su ventana que igual no vende, porque otra de `orden` menor
    también lo está. Las otras cuatro se pueden deducir de las fechas;
    ésta no. */
-function estadoFase(f, F, vigenteId, proximaId) {
+function estadoFase(f, F, vigenteId, proximaId, limitadas) {
   const ahora = Date.now();
   const abrio = !f.desde || Date.parse(f.desde) <= ahora;
   const cerro = f.hasta && Date.parse(f.hasta) <= ahora;
@@ -1145,11 +1159,26 @@ function estadoFase(f, F, vigenteId, proximaId) {
      "tapada" sin decir por quién obliga a mirar las cinco columnas y
      comparar fechas a ojo, que es exactamente lo que nadie hace. */
   const gana = F.find(x => x.id === vigenteId);
+  /* Salvo que esté en la cola de una venta por cantidad: «Welcome 50 u.»,
+     después «First 200 u.», todas abiertas desde el mismo día. Eso no es
+     un error, es justo cómo se arma (0060), y pintarlo en rojo hace que el
+     organizador «arregle» las fechas y rompa el escalonado. Va en dorado y
+     nombra la que tiene que agotarse antes — la inmediata anterior, no la
+     vigente: «Second» espera a «First», aunque hoy venda «Welcome».
+     Si en el medio hay una fase sin tope, esa no se agota nunca y la de
+     atrás sí está tapada de verdad: sigue en rojo. */
+  if (gana && limitadas && f.orden > gana.orden) {
+    const antes = F.filter(x => x.activo && x.orden >= gana.orden && x.orden < f.orden &&
+        (!x.desde || Date.parse(x.desde) <= ahora) && !(x.hasta && Date.parse(x.hasta) <= ahora))
+      .sort((a, b) => a.orden - b.orden);
+    if (antes.length && antes.every(x => limitadas.has(x.id)))
+      return { cls: "dorada", txt: `abre al agotarse «${antes[antes.length - 1].nombre}»` };
+  }
   return { cls: "roja", txt: gana ? `tapada por «${gana.nombre}»` : "no vende" };
 }
 
-function cabezaFase(f, vigenteId, proximaId, F) {
-  const e = estadoFase(f, F || [], vigenteId, proximaId);
+function cabezaFase(f, vigenteId, proximaId, F, limitadas) {
+  const e = estadoFase(f, F || [], vigenteId, proximaId, limitadas);
   return `<th class="th-fase">
     <span class="fase-titulo">${esc(f.nombre)}</span>
     <em>${esc(ventana(f))}</em>
@@ -1202,6 +1231,29 @@ async function nuevoTipo(eventoId) {
     avisar(error.code === "23505" ? "Ya existe un tipo con ese nombre." : error.message);
     return;
   }
+  pantallaEntradas(eventoId);
+}
+
+/* Renombrar un tipo. Sin esto, la única forma de corregir un nombre era
+   borrar el tipo y crearlo de nuevo, que se lleva los precios de todas las
+   fases y queda trabado apenas vendió una entrada — justo cuando el nombre
+   ya se ve en la página pública y más urge arreglarlo. Cambiar el nombre no
+   toca precios ni ventas: las entradas ya emitidas apuntan al tipo, no a
+   su nombre.
+
+   El .select() de vuelta porque un update que RLS filtra contesta sin
+   error y sin filas, y eso no es «guardado». */
+async function renombrarTipo(eventoId, id, actual) {
+  const nombre = (prompt("Nuevo nombre del tipo de entrada", actual) || "").trim();
+  if (!nombre || nombre === actual) return;
+  const { data, error } = await sb.from("tipo_entrada")
+    .update({ nombre }).eq("id", id).select("id");
+  if (error) {
+    avisar(error.code === "23505" ? "Ya existe un tipo con ese nombre." : sinCodigo(error.message));
+    return;
+  }
+  if (!data || !data.length) { avisar("No se pudo guardar: la base no lo permitió."); return; }
+  avisar(`Ahora se llama «${nombre}».`);
   pantallaEntradas(eventoId);
 }
 

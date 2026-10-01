@@ -1821,4 +1821,7 @@ body[data-filtro="1"] .puerta-visor::before{
   margin-top:13px;padding-top:11px;border-top:1px solid var(--linea);
 }
 .tipo-pie .zona-cartelera{margin-top:0;padding-top:0;border-top:0}
-.tipo-borrar{margin-left:auto}
+/* «Renombrar» y «Borrar» van juntos a la derecha, y «Borrar» último,
+   contra el borde. Agrupados para que en el celular, cuando el renglón no
+   alcanza, bajen los dos juntos y no quede «Borrar» solo a la izquierda. */
+.tipo-acciones{margin-left:auto;display:flex;gap:8px}
