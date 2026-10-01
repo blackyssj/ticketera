@@ -1780,3 +1780,16 @@ body[data-filtro="1"] .puerta-visor::before{
    lo necesita el campo. */
 .equipo-cuenta{font-family:var(--dato);font-size:12px;color:var(--txt-3);white-space:nowrap}
 @media (max-width:620px){ .equipo-cuenta{display:none} }
+
+/* ── lo que falta para armar los precios ──
+   Entre el título y la grilla, que es donde el ojo ya está buscando qué
+   hacer. En color de aviso y no de error: no hay nada roto, falta un paso.
+   Pierde el aire de abajo porque lo que sigue es la grilla a la que se
+   refiere, y separarlas las desconecta. */
+.falta-armar{
+  margin:0 0 14px;padding:14px 16px;
+  border:1px solid var(--aviso);border-left-width:3px;border-radius:var(--r-chico);
+  background:var(--aviso-bg);color:var(--txt);
+  font-size:14px;line-height:1.6;max-width:720px;
+}
+.falta-armar b{color:var(--aviso)}
