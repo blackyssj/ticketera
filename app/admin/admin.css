@@ -1793,3 +1793,10 @@ body[data-filtro="1"] .puerta-visor::before{
   font-size:14px;line-height:1.6;max-width:720px;
 }
 .falta-armar b{color:var(--aviso)}
+
+/* El borrar de cada tipo. Discreto y al final de su celda: se usa una vez
+   —cuando el tipo se creó por error— y conviven con él los controles que
+   sí se tocan seguido. Aparece en rojo solo al pasarle el mouse, para que
+   no compita con el tilde de cartelera. */
+.tipo-borrar{margin-top:8px;opacity:.55}
+.tipo-borrar:hover{opacity:1;color:var(--peligro);border-color:var(--peligro)}
