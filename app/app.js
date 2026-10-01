@@ -299,6 +299,9 @@ function apiSupabase() {
       const tok = window.Cuenta ? await window.Cuenta.token().catch(() => null) : null;
       const r = await fn("crear-orden", { organizador: CFG.ORGANIZADOR, evento: CFG.EVENTO,
                                           items, comprador, r: REL, tc,
+                                          // lo que el comprador vio: si la base congela
+                                          // otro total, la orden no se crea (crear-orden)
+                                          total_visto: cotizar().total,
                                           client_key: crypto.randomUUID() },
                          tok ? { Authorization: `Bearer ${tok}` } : undefined);
       return { id: r.orden, subtotal: r.subtotal, fee: r.fee, total: r.total,
@@ -1065,6 +1068,12 @@ async function pagar() {
     if (r.url) { location.href = r.url; return; }   // pasarela real: se va y vuelve
     pasarelaSimulada();
   } catch (err) {
+    // El precio cambió y la orden no se creó: se recarga y se vuelve a elegir.
+    if (/cambió el precio/.test(err.message)) {
+      await recargarEvento().catch(() => null);
+      pagoFallo(err.message, "entradas");
+      return;
+    }
     pagoFallo(err.message, "datos");
   }
 }

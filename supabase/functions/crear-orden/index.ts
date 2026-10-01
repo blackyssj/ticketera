@@ -137,6 +137,25 @@ Deno.serve(async (req) => {
       return json({ ok: false, motivo: traducir(String((err as Error).message)) }, 409);
     }
 
+    /* El comprador vio un total y la base acaba de congelar otro: la tanda
+       que miraba se agotó mientras llenaba sus datos. No se le cobra lo
+       que no vio. La orden se da por vencida en el acto —si quedara
+       pendiente apartaría el cupo diez minutos, y en la apertura de LÜMEN
+       esas reservas fantasma fueron las que hicieron saltar la fase— y la
+       página recarga el evento con el precio nuevo. Solo para órdenes
+       nuevas: una repetida por client_key ya era del comprador. */
+    const visto = Number(b.total_visto);
+    if (data?.ok && data.orden && !data.repetida && Number.isFinite(visto) &&
+        Math.abs(Number(data.total) - visto) > 0.5) {
+      await rest(`ordenes?id=eq.${data.orden}&estado=eq.pendiente`, {
+        method: "PATCH", headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ estado: "vencida" }),
+      }).catch((err) => console.error(`no se pudo vencer la orden ${data.orden}: ${err}`));
+      return json({ ok: false, precio_cambio: true, total: Number(data.total),
+                    motivo: `Mientras elegías cambió el precio: ahora el total es ${Number(data.total)} Bs ` +
+                            `en vez de ${visto} Bs. Revisá tu compra antes de pagar.` }, 409);
+    }
+
     /* El vínculo con la cuenta, si la hay. Va acá y no después del camino
        gratis para que una entrada de Bs 0 también quede guardada. Sólo si
        la orden todavía no tiene dueño: crear_orden es idempotente por
