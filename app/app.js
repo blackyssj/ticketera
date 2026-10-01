@@ -690,6 +690,15 @@ function esperaFase(f, i, F) {
    lista de fases debajo. Si algo abre más adelante por fecha, cuándo; si
    lo que tapa son compras a medio pagar, que puede volver; si no, agotado. */
 function avisoSinVenta() {
+  /* Fase abierta pero con todo lo que queda apartado por compras a medio
+     pagar (0094: la fase ya no salta a la siguiente por reservas). No es
+     "agotado": en minutos se paga o se libera. */
+  if (!D.sin_venta && D.tipos.length && D.tipos.every(t => t.cupo === 0)) {
+    return `<article class="tipo sin-venta">
+      <h3 class="tipo-nombre">Se están pagando las últimas</h3>
+      <p class="tipo-desc">Si alguna compra no se completa, vuelve a la venta en unos minutos. Recargá la página.</p>
+    </article>`;
+  }
   if (!D.sin_venta) return "";
   const F = Array.isArray(D.fases) ? D.fases : [];
   const ahora = Date.now();
