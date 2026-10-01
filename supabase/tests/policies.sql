@@ -1,3 +1,8 @@
+-- Las cuentas de prueba usan @prueba.test y no @ticketera.local: el correo
+-- de auth es único en TODO el sistema, y los clientes crean usuarios reales
+-- con nombres como «rrpp» o «staff» desde Equipo. Con el mismo dominio, la
+-- suite chocaba contra la cuenta de un cliente y no corría (01/10/2026).
+-- .test es un dominio reservado: ninguna cuenta real puede llamarse así.
 -- Un rrpp NO puede tocar precios. Se prueba con la sesión simulada que usa
 -- PostgREST: rol `authenticated` más el claim del usuario.
 begin;
@@ -5,7 +10,7 @@ begin;
 insert into organizadores (id, slug, nombre) values
   ('cccccccc-0000-4000-8000-000000000001', 'prueba-rol', 'Prueba');
 insert into auth.users (id, email) values
-  ('dddddddd-0000-4000-8000-000000000001', 'rrpp@ticketera.local');
+  ('dddddddd-0000-4000-8000-000000000001', 'rrpp@prueba.test');
 insert into perfiles (id, organizador_id, nombre, rol) values
   ('dddddddd-0000-4000-8000-000000000001', 'cccccccc-0000-4000-8000-000000000001', 'Un Rrpp', 'rrpp');
 insert into eventos (id, organizador_id, slug, nombre, fecha) values
@@ -53,7 +58,7 @@ declare v_ev    uuid := 'eeeeeeee-0000-4000-8000-000000000001';
         v_fase  uuid; v_r jsonb;
 begin
   insert into auth.users (id, email) values
-    (v_staff, 'staff@ticketera.local');
+    (v_staff, 'staff@prueba.test');
   insert into perfiles (id, organizador_id, nombre, rol) values
     (v_staff, 'cccccccc-0000-4000-8000-000000000001', 'Un Staff', 'staff');
 
@@ -201,8 +206,8 @@ begin;
 insert into organizadores (id, slug, nombre) values
   ('01700017-0017-4017-8017-000000000001', 'prueba-0017', 'Prueba 0017');
 insert into auth.users (id, email) values
-  ('01700017-0017-4017-8017-000000000002', 'staff-0017@ticketera.local'),
-  ('01700017-0017-4017-8017-000000000003', 'rrpp-0017@ticketera.local');
+  ('01700017-0017-4017-8017-000000000002', 'staff-0017@prueba.test'),
+  ('01700017-0017-4017-8017-000000000003', 'rrpp-0017@prueba.test');
 insert into perfiles (id, organizador_id, nombre, rol) values
   ('01700017-0017-4017-8017-000000000002', '01700017-0017-4017-8017-000000000001', 'Staff 0017', 'staff'),
   ('01700017-0017-4017-8017-000000000003', '01700017-0017-4017-8017-000000000001', 'Rrpp 0017', 'rrpp');
@@ -374,7 +379,7 @@ begin
   insert into organizadores (id, slug, nombre) values
     (v_org, 'prueba-0024', 'Prueba 0024');
   insert into auth.users (id, email) values
-    (v_rrpp, 'rrpp-0024@ticketera.local');
+    (v_rrpp, 'rrpp-0024@prueba.test');
   insert into perfiles (id, organizador_id, nombre, rol) values
     (v_rrpp, v_org, 'Rrpp 0024', 'rrpp');
   insert into eventos (id, organizador_id, slug, nombre, fecha) values
@@ -438,7 +443,7 @@ begin
   insert into organizadores (id, slug, nombre)
   values ('cccccccc-0000-4000-8000-000000000009', 'otro-org', 'Otro');
   insert into auth.users (id, email) values
-    ('dddddddd-0000-4000-8000-000000000009', 'ajeno@ticketera.local');
+    ('dddddddd-0000-4000-8000-000000000009', 'ajeno@prueba.test');
   insert into perfiles (id, organizador_id, nombre, rol, slug)
   values ('dddddddd-0000-4000-8000-000000000009',
           'cccccccc-0000-4000-8000-000000000009', 'Ajeno', 'rrpp', 'nico')
@@ -503,11 +508,11 @@ begin
     (v_org,  'prueba-0026',  'Prueba 0026'),
     (v_org2, 'prueba-0026b', 'Prueba 0026 otro');
   insert into auth.users (id, email) values
-    (v_a,     'rrpp-a-0026@ticketera.local'),
-    (v_b,     'rrpp-b-0026@ticketera.local'),
-    (v_staff, 'staff-0026@ticketera.local'),
-    (v_sin,   'rrpp-sin-0026@ticketera.local'),
-    (v_c,     'rrpp-c-0026@ticketera.local');
+    (v_a,     'rrpp-a-0026@prueba.test'),
+    (v_b,     'rrpp-b-0026@prueba.test'),
+    (v_staff, 'staff-0026@prueba.test'),
+    (v_sin,   'rrpp-sin-0026@prueba.test'),
+    (v_c,     'rrpp-c-0026@prueba.test');
   insert into perfiles (id, organizador_id, nombre, rol, slug, comision_entrada) values
     (v_a,     v_org,  'Ana',    'rrpp',  'ana',    null),
     (v_b,     v_org,  'Beto',   'rrpp',  'beto',   20),   -- acuerdo propio
@@ -737,7 +742,7 @@ begin
   insert into organizadores (id, slug, nombre) values
     (v_org,  'prueba-0031',  'Prueba 0031'),
     (v_org2, 'prueba-0031b', 'Prueba 0031 otro');
-  insert into auth.users (id, email) values (v_port, 'portero-0031@ticketera.local');
+  insert into auth.users (id, email) values (v_port, 'portero-0031@prueba.test');
 
   -- Acá falla todo antes de la migración: perfiles_rol_check todavía no
   -- conoce 'portero'.
@@ -882,9 +887,9 @@ begin
     (v_org,  'prueba-0032',  'Prueba 0032'),
     (v_org2, 'prueba-0032b', 'Prueba 0032 otro');
   insert into auth.users (id, email) values
-    (v_port,  'portero-0032@ticketera.local'),
-    (v_staff, 'staff-0032@ticketera.local'),
-    (v_rrpp,  'rrpp-0032@ticketera.local');
+    (v_port,  'portero-0032@prueba.test'),
+    (v_staff, 'staff-0032@prueba.test'),
+    (v_rrpp,  'rrpp-0032@prueba.test');
   insert into perfiles (id, organizador_id, nombre, rol) values
     (v_port,  v_org, 'Portero 0032', 'portero'),
     (v_staff, v_org, 'Staff 0032',   'staff'),
@@ -1076,10 +1081,10 @@ begin
     (v_org,  'prueba-0029',  'Prueba 0029'),
     (v_org2, 'prueba-0029b', 'Prueba 0029 otro');
   insert into auth.users (id, email) values
-    (v_a,     'rrpp-a-0029@ticketera.local'),
-    (v_b,     'rrpp-b-0029@ticketera.local'),
-    (v_staff, 'staff-0029@ticketera.local'),
-    (v_otro,  'staff-otro-0029@ticketera.local');
+    (v_a,     'rrpp-a-0029@prueba.test'),
+    (v_b,     'rrpp-b-0029@prueba.test'),
+    (v_staff, 'staff-0029@prueba.test'),
+    (v_otro,  'staff-otro-0029@prueba.test');
   insert into perfiles (id, organizador_id, nombre, rol, slug) values
     (v_a,     v_org,  'Ana',        'rrpp',  'ana-0029'),
     (v_b,     v_org,  'Beto',       'rrpp',  'beto-0029'),
@@ -1368,10 +1373,10 @@ begin
     (v_org,  'prueba-0033',  'Prueba 0033',       0.1000, 0, 0),
     (v_org2, 'prueba-0033b', 'Prueba 0033 otro',  0.1000, 0, 0);
   insert into auth.users (id, email) values
-    (v_staff,  'staff-0033@ticketera.local'),
-    (v_a,      'rrpp-a-0033@ticketera.local'),
-    (v_b,      'rrpp-b-0033@ticketera.local'),
-    (v_staff2, 'staff2-0033@ticketera.local');
+    (v_staff,  'staff-0033@prueba.test'),
+    (v_a,      'rrpp-a-0033@prueba.test'),
+    (v_b,      'rrpp-b-0033@prueba.test'),
+    (v_staff2, 'staff2-0033@prueba.test');
   insert into perfiles (id, organizador_id, nombre, rol, slug) values
     (v_staff,  v_org,  'Staff 0033', 'staff', null),
     (v_a,      v_org,  'Ana 0033',   'rrpp',  'ana-0033'),
@@ -1809,11 +1814,11 @@ begin
     (v_org,  'prueba-0034',  'Prueba 0034'),
     (v_org2, 'prueba-0034b', 'Prueba 0034 otro');
   insert into auth.users (id, email) values
-    (v_p1,    'portero1-0034@ticketera.local'),
-    (v_p2,    'portero2-0034@ticketera.local'),
-    (v_staff, 'staff-0034@ticketera.local'),
-    (v_rrpp,  'rrpp-0034@ticketera.local'),
-    (v_pb,    'porterob-0034@ticketera.local');
+    (v_p1,    'portero1-0034@prueba.test'),
+    (v_p2,    'portero2-0034@prueba.test'),
+    (v_staff, 'staff-0034@prueba.test'),
+    (v_rrpp,  'rrpp-0034@prueba.test'),
+    (v_pb,    'porterob-0034@prueba.test');
   insert into perfiles (id, organizador_id, nombre, rol) values
     (v_p1,    v_org,  'Portero Uno',  'portero'),
     (v_p2,    v_org,  'Portero Dos',  'portero'),
@@ -2160,9 +2165,9 @@ begin
     (v_org,  'prueba-0038',  'Prueba 0038',      0.1000, 0, 0),
     (v_org2, 'prueba-0038b', 'Prueba 0038 otro', 0.1000, 0, 0);
   insert into auth.users (id, email) values
-    (v_admin,  'admin-0038@ticketera.local'),
-    (v_rrpp,   'rrpp-0038@ticketera.local'),
-    (v_admin2, 'admin2-0038@ticketera.local');
+    (v_admin,  'admin-0038@prueba.test'),
+    (v_rrpp,   'rrpp-0038@prueba.test'),
+    (v_admin2, 'admin2-0038@prueba.test');
   insert into perfiles (id, organizador_id, nombre, rol, slug) values
     (v_admin,  v_org,  'Admin 0038',   'admin', null),
     (v_rrpp,   v_org,  'Rrpp 0038',    'rrpp',  'rrpp-0038'),
@@ -2901,11 +2906,11 @@ begin
     (v_org,  'prueba-0040',  'Prueba 0040',      0.1000, 0, 0),
     (v_org2, 'prueba-0040b', 'Prueba 0040 otro', 0.1000, 0, 0);
   insert into auth.users (id, email) values
-    (v_admin,  'admin-0040@ticketera.local'),
-    (v_rrpp,   'rrpp-0040@ticketera.local'),
-    (v_admin2, 'admin2-0040@ticketera.local'),
-    (v_por1,   'portero1-0040@ticketera.local'),
-    (v_por2,   'portero2-0040@ticketera.local');
+    (v_admin,  'admin-0040@prueba.test'),
+    (v_rrpp,   'rrpp-0040@prueba.test'),
+    (v_admin2, 'admin2-0040@prueba.test'),
+    (v_por1,   'portero1-0040@prueba.test'),
+    (v_por2,   'portero2-0040@prueba.test');
   insert into perfiles (id, organizador_id, nombre, rol, slug) values
     (v_admin,  v_org,  'Admin 0040',    'admin',   null),
     (v_rrpp,   v_org,  'Rrpp 0040',     'rrpp',    'rrpp-0040'),
@@ -3199,11 +3204,11 @@ begin
     (v_org,  'prueba-0042',  'Prueba 0042'),
     (v_org2, 'prueba-0042b', 'Prueba 0042 otro');
   insert into auth.users (id, email) values
-    (v_p1,    'portero1-0042@ticketera.local'),
-    (v_p2,    'portero2-0042@ticketera.local'),
-    (v_staff, 'staff-0042@ticketera.local'),
-    (v_rrpp,  'rrpp-0042@ticketera.local'),
-    (v_adm2,  'admin-0042b@ticketera.local');
+    (v_p1,    'portero1-0042@prueba.test'),
+    (v_p2,    'portero2-0042@prueba.test'),
+    (v_staff, 'staff-0042@prueba.test'),
+    (v_rrpp,  'rrpp-0042@prueba.test'),
+    (v_adm2,  'admin-0042b@prueba.test');
   insert into perfiles (id, organizador_id, nombre, rol) values
     (v_p1,    v_org,  'Portero Uno', 'portero'),
     (v_p2,    v_org,  'Portero Dos', 'portero'),
@@ -3421,9 +3426,9 @@ begin
     (v_org,  'prueba-0043',  'Prueba 0043'),
     (v_org2, 'prueba-0043b', 'Prueba 0043 otro');
   insert into auth.users (id, email) values
-    (v_staff, 'staff-0043@ticketera.local'),
-    (v_rrpp,  'rrpp-0043@ticketera.local'),
-    (v_adm2,  'admin-0043b@ticketera.local');
+    (v_staff, 'staff-0043@prueba.test'),
+    (v_rrpp,  'rrpp-0043@prueba.test'),
+    (v_adm2,  'admin-0043b@prueba.test');
   insert into perfiles (id, organizador_id, nombre, rol) values
     (v_staff, v_org,  'Staff 0043',  'staff'),
     (v_rrpp,  v_org,  'Rrpp 0043',   'rrpp'),
