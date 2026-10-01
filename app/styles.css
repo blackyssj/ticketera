@@ -563,11 +563,14 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;text-decorat
 .btn.chico{padding:10px 16px;font-size:15px}
 
 /* ─── botones ─── */
-.btn{padding:13px 20px;border-radius:3px;font-family:var(--display);font-size:19px;text-transform:uppercase;letter-spacing:.04em;transition:background .16s ease,transform .1s ease,color .16s ease}
+/* El apretón es un .97 que entra con la curva que frena, no un pixel
+   hacia abajo: un pixel en un botón a lo ancho del teléfono no se ve, y el
+   botón de pagar es el que más tiene que sentirse apretado. */
+.btn{padding:13px 20px;border-radius:3px;font-family:var(--display);font-size:19px;text-transform:uppercase;letter-spacing:.04em;transition:background .16s ease,transform .16s cubic-bezier(.23,1,.32,1),color .16s ease}
 .btn.ancho{width:100%}
 .btn.primario{background:var(--rojo);color:var(--sobre-accion)}
 .btn.primario:hover:not(:disabled){background:var(--rojo-claro)}
-.btn.primario:active:not(:disabled){transform:translateY(1px)}
+.btn.primario:active:not(:disabled){transform:scale(.97)}
 .btn.primario:disabled{background:var(--noche-3);color:var(--humo-2);cursor:not-allowed}
 .btn.plano{border:1.5px solid var(--linea);color:var(--humo)}
 .btn.plano:hover{border-color:var(--humo);color:var(--espuma)}
@@ -625,9 +628,15 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;text-decorat
   z-index:200;max-width:calc(100vw - 32px);
   background:var(--espuma);color:var(--tinta);padding:12px 17px;border-radius:3px;
   font-size:14px;box-shadow:0 12px 40px rgba(0,0,0,.5);
-  transition:transform .3s cubic-bezier(.2,.9,.3,1.1);
+  /* Sin rebote y desde cerca: un aviso que rebota pide una atención que no
+     le toca en medio de una compra. Sale más rápido de lo que entra. */
+  transform:translate(-50%,14px) scale(.96);opacity:0;pointer-events:none;
+  transition:transform .2s ease-in,opacity .2s ease-in;
 }
-.toast[data-on="1"]{transform:translate(-50%,0)}
+.toast[data-on="1"]{
+  transform:translate(-50%,0);opacity:1;pointer-events:auto;
+  transition:transform .4s cubic-bezier(.23,1,.32,1),opacity .25s cubic-bezier(.23,1,.32,1);
+}
 
 /* ══ móvil: el rail baja a hoja inferior ══ */
 @media (max-width:900px){

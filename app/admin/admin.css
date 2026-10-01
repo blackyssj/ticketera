@@ -51,6 +51,14 @@
   --r:10px;
   --r-chico:7px;
   --carril:1120px;
+
+  /* Las curvas del movimiento. Las de serie del navegador (`ease`,
+     `ease-out`) arrancan tibias: lo que aparece tarda en reaccionar y se
+     siente lento aunque dure lo mismo. Éstas salen rápido y frenan largo,
+     que es lo que hace que algo se sienta como respuesta al dedo. */
+  --sale:cubic-bezier(.23,1,.32,1);       /* entra o responde: rápido y frena */
+  --cruza:cubic-bezier(.77,0,.175,1);     /* va de un lugar a otro que ya está en pantalla */
+  --entra:cubic-bezier(.32,.72,0,1);      /* lo que se desliza, como la marca de pestaña */
 }
 
 *{box-sizing:border-box}
@@ -85,20 +93,39 @@ input{font:inherit}
 }
 
 /* ─── barra ─── */
+/* La barra deja ver, apenas, lo que pasa por debajo al scrollear: es lo
+   que dice que hay más página sin agregar una sombra. Sin soporte de
+   `backdrop-filter` queda la superficie lisa de siempre. */
 .cab{
   display:flex;align-items:center;gap:16px;padding:0 20px;height:58px;
   background:var(--sup);border-bottom:1px solid var(--linea);
   position:sticky;top:0;z-index:20;
 }
+@supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)){
+  .cab{
+    background:rgba(26,26,31,.82);
+    -webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%);
+  }
+}
 .marca{font-family:var(--display);font-size:17px;font-weight:700;letter-spacing:-.01em}
-.tabs{display:flex;gap:3px}
+/* La pastilla roja de la pestaña elegida es UNA sola, debajo de los
+   botones, y se corre de uno a otro (ver moverIndicador en admin.js). Los
+   botones quedan transparentes y por encima. Sin JS o antes de medir, la
+   pastilla no tiene ancho y el botón elegido se pinta solo, como antes. */
+.tabs{display:flex;gap:3px;position:relative;isolation:isolate}
+.tabs::before{
+  content:"";position:absolute;z-index:-1;left:0;top:0;
+  height:var(--ind-h,0);width:var(--ind-w,0);border-radius:999px;background:var(--rojo);
+  transform:translate(var(--ind-x,0),var(--ind-y,0));
+}
+.tabs[data-ind]::before{transition:transform .32s var(--entra),width .32s var(--entra)}
 .tabs button{
   padding:7px 14px;border-radius:999px;
   font-family:var(--dato);font-size:12px;letter-spacing:.04em;color:var(--txt-3);
-  transition:background .15s ease,color .15s ease;
+  transition:background .15s ease,color .2s ease;
 }
-.tabs button:hover{background:var(--sup-2);color:var(--txt-2)}
 .tabs button[aria-current]{background:var(--rojo);color:#fff}
+.tabs[style*="--ind-w"] button[aria-current]{background:transparent}
 .yo{margin-left:auto;font-family:var(--dato);font-size:12px;color:var(--txt-3)}
 
 main{max-width:var(--carril);margin:0 auto;padding:28px 20px 90px}
@@ -127,8 +154,16 @@ main{max-width:var(--carril);margin:0 auto;padding:28px 20px 90px}
   padding:12px 14px;white-space:nowrap;color:var(--txt-2);font-weight:500;font-size:14px;
   border-bottom:2px solid transparent;margin-bottom:-1px;
 }
-.evc-tabs button:hover{color:var(--txt)}
+.evc-tabs button{transition:color .2s ease}
 .evc-tabs button[aria-selected="true"]{color:var(--txt);border-bottom-color:var(--rojo)}
+/* Igual que la pastilla de arriba: una sola línea que viaja. Medida, el
+   borde propio del botón se apaga para que no haya dos rojas a la vez. */
+.evc-tabs::after{
+  content:"";position:absolute;left:0;bottom:0;height:2px;border-radius:2px 2px 0 0;
+  width:var(--ind-w,0);background:var(--rojo);transform:translateX(var(--ind-x,0));
+}
+.evc-tabs[data-ind]::after{transition:transform .32s var(--entra),width .32s var(--entra)}
+.evc-tabs[style*="--ind-w"] button[aria-selected="true"]{border-bottom-color:transparent}
 .app.en-evento main{padding-top:22px}
 
 /* ─── operando como un cliente ───────────────────────────────────
@@ -825,20 +860,36 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 /* ─── botones ───
    El primario lleva sombra de su propio color: eso es lo que le da peso y lo
    separa de un rectángulo pintado. */
+/* El apretón: .97 y no .985. A .985 un botón de 120px se encoge menos de
+   un pixel por lado y no se ve; a .97 el dedo siente que el botón cedió.
+   Entra en 160ms con la curva que frena: si tardara más, el clic rápido
+   suelta el botón antes de que llegue a hundirse. */
 .btn{
   padding:12px 20px;border-radius:var(--r-chico);
   font-family:var(--display);font-size:18px;
-  transition:background .15s ease,box-shadow .15s ease,transform .08s ease,color .15s ease;
+  transition:background .15s ease,box-shadow .15s ease,transform .16s var(--sale),color .15s ease,border-color .15s ease;
 }
 .btn.ancho{width:100%}
 .btn.chico{font-size:13px;padding:8px 13px;letter-spacing:.06em}
-.btn.primario{background:var(--rojo);color:#fff}
-.btn.primario:hover:not(:disabled){background:var(--rojo-claro)}
-.btn.primario:active:not(:disabled){transform:scale(.985)}
+.btn.primario{
+  background:var(--rojo);color:#fff;
+  /* Un filo de luz arriba: el primario se lee como algo que sobresale de
+     la superficie y no como un rectángulo pintado sobre ella. */
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 1px 2px rgba(0,0,0,.3);
+}
+.btn.primario:active:not(:disabled){transform:scale(.97)}
 .btn.primario:disabled{background:var(--sup-3);color:var(--txt-3);box-shadow:none;cursor:not-allowed}
 .btn.plano{border:1px solid var(--linea-2);color:var(--txt-2)}
-.btn.plano:hover{border-color:var(--txt-3);color:var(--txt);background:var(--sup-2)}
-.btn.plano:active{transform:scale(.985)}
+.btn.plano:active:not(:disabled){transform:scale(.97)}
+/* El hover sólo donde hay un puntero que flota. En un teléfono el :hover
+   se queda pegado después del toque, y el botón que se acaba de apretar
+   sigue pareciendo "encima" hasta que se toca otra cosa. */
+@media (hover:hover) and (pointer:fine){
+  .btn.primario:hover:not(:disabled){background:var(--rojo-claro)}
+  .btn.plano:hover:not(:disabled){border-color:var(--txt-3);color:var(--txt);background:var(--sup-2)}
+  .tabs button:not([aria-current]):hover{background:var(--sup-2);color:var(--txt-2)}
+  .evc-tabs button:hover{color:var(--txt)}
+}
 /* Lo que no se deshace se ve distinto ANTES de apretarlo. No es rojo lleno
    —eso sería el botón más pesado de la pantalla, al lado de "Link"— es
    el mismo botón plano con el texto en el color del peligro: se distingue
@@ -853,11 +904,20 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
   z-index:100;max-width:calc(100vw - 32px);
   background:var(--sup-3);color:var(--txt);
   border:1px solid var(--linea-2);
-  padding:13px 18px;border-radius:var(--r-chico);font-size:14px;
-  box-shadow:0 8px 24px rgba(0,0,0,.35);
-  transition:transform .28s cubic-bezier(.2,.9,.3,1.1);
+  padding:13px 18px;border-radius:var(--r);font-size:14px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 10px 30px -6px rgba(0,0,0,.55);
+  /* Cerrado está apenas debajo de su lugar y transparente, no 160% más
+     abajo: viajar una pantalla entera para un aviso de una línea es
+     movimiento que no dice nada. Y sin el rebote de antes — un aviso que
+     rebota pide atención que no le corresponde. La salida es más corta que
+     la entrada: lo que se va ya fue leído. */
+  transform:translate(-50%,14px) scale(.96);opacity:0;pointer-events:none;
+  transition:transform .2s ease-in,opacity .2s ease-in;
 }
-.toast[data-on="1"]{transform:translate(-50%,0)}
+.toast[data-on="1"]{
+  transform:translate(-50%,0);opacity:1;pointer-events:auto;
+  transition:transform .4s var(--sale),opacity .25s var(--sale);
+}
 
 @media (max-width:760px){
   .form-evento{grid-template-columns:1fr}
@@ -879,6 +939,10 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 }
 @media (prefers-reduced-motion:reduce){
   *{transition-duration:.001ms !important}
+  /* Lo que entra con fundido aparece y ya: el movimiento se va, el cambio
+     de estado queda. El latido de "cargando" se queda quieto. */
+  #main[data-nav] > *,#main[data-nav] .lista > .fila,
+  .fila-detalle > td > *,.caja,.cargando,.cifra-grande .avance i{animation:none !important}
 }
 
 
@@ -1825,3 +1889,186 @@ body[data-filtro="1"] .puerta-visor::before{
    contra el borde. Agrupados para que en el celular, cuando el renglón no
    alcanza, bajen los dos juntos y no quede «Borrar» solo a la izquierda. */
 .tipo-acciones{margin-left:auto;display:flex;gap:8px}
+
+/* ══ el movimiento y la profundidad ═══════════════════════════════
+   Repaso de 01/10/2026. Nada de acá cambia qué hay en una pantalla ni
+   dónde está: cambia cómo se siente tocarla. Tres reglas, y cada regla de
+   abajo cumple alguna:
+
+   1. Lo que aparece viene de cerca. Cuatro a ocho pixeles y un fundido,
+      nunca desde escala cero: en el mundo nada se materializa de un punto.
+   2. Corto. Entre 160 y 320ms. El panel se usa con prisa, y una animación
+      que hay que esperar es una animación que estorba.
+   3. Lo frecuente no se anima. Guardar, tildar, escribir: ver
+      marcarNavegacion() en admin.js.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ─── la superficie ───
+   Un filo de luz de un pixel arriba de cada tarjeta. Es la pila de
+   superficies del encabezado llevada un paso más: el borde dice dónde
+   termina la tarjeta, el filo dice que está ENCIMA del fondo. */
+.fila,.tarjeta,.cifra-grande,.alerta,.publicar,.grilla-envoltorio,.caja,
+.tabla-scroll,.puerta-conteo,.rev-tarjeta{
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
+}
+.alerta.hecha,.persona.inactiva{box-shadow:none}
+
+/* El campo se aclara un punto al pasarle por encima: avisa que se puede
+   escribir antes del clic, no después. */
+@media (hover:hover) and (pointer:fine){
+  input:not(:focus):not(:disabled):hover,select:not(:focus):not(:disabled):hover{
+    border-color:rgba(236,236,238,.24);
+  }
+}
+select{transition:border-color .15s ease,box-shadow .15s ease}
+
+/* ─── la fila de un evento ───
+   Es la única fila del panel que lleva a otra pantalla, y hasta ahora se
+   veía igual que las que no llevan a ningún lado. La flecha lo dice, y se
+   corre dos pixeles al pasar por encima: el gesto de "por acá". */
+.fila[data-ev]::after{
+  content:"›";flex:0 0 auto;margin-left:4px;
+  font-size:20px;line-height:1;color:var(--txt-3);
+  transition:transform .2s var(--sale),color .2s ease;
+}
+@media (hover:hover) and (pointer:fine){
+  .fila[data-ev]:hover::after{transform:translateX(2px);color:var(--txt-2)}
+}
+.fila{transition:background .15s ease,border-color .15s ease,transform .16s var(--sale)}
+.fila:not(.quieta):active{transform:scale(.99)}
+
+/* ─── la pantalla que llega ───
+   Sólo cuando se llegó navegando (#main[data-nav], lo pone admin.js). Los
+   bloques entran escalonados 30ms: alcanza para que el ojo lea de arriba
+   abajo, no tanto como para que haya que esperar al último. */
+@keyframes llega{from{opacity:0;transform:translateY(6px)}}
+#main[data-nav] > *{animation:llega .26s var(--sale) both}
+#main[data-nav] > :nth-child(2){animation-delay:.03s}
+#main[data-nav] > :nth-child(3){animation-delay:.06s}
+#main[data-nav] > :nth-child(4){animation-delay:.09s}
+#main[data-nav] > :nth-child(n+5){animation-delay:.12s}
+/* Las filas de la lista de eventos, de a una. Tope en la octava: con
+   cuarenta eventos, la última no puede llegar un segundo después. */
+#main[data-nav] .lista > .fila{animation:llega .26s var(--sale) both}
+#main[data-nav] .lista > .fila:nth-child(2){animation-delay:.025s}
+#main[data-nav] .lista > .fila:nth-child(3){animation-delay:.05s}
+#main[data-nav] .lista > .fila:nth-child(4){animation-delay:.075s}
+#main[data-nav] .lista > .fila:nth-child(5){animation-delay:.1s}
+#main[data-nav] .lista > .fila:nth-child(6){animation-delay:.125s}
+#main[data-nav] .lista > .fila:nth-child(7){animation-delay:.15s}
+#main[data-nav] .lista > .fila:nth-child(n+8){animation-delay:.175s}
+
+/* ─── esperando ───
+   El "Cargando…" late en vez de quedarse quieto: un texto inmóvil es
+   indistinguible de una pantalla colgada, y lo que el que espera necesita
+   saber es que algo sigue andando. */
+@keyframes late{50%{opacity:.45}}
+.cargando{animation:late 1.4s ease-in-out infinite}
+
+/* ─── lo que se abre abajo de una fila ───
+   La anulación, el link de una compra, las manillas. Bajan cuatro pixeles
+   desde la fila que los abrió: el movimiento dice de dónde salieron, que
+   en una tabla de cincuenta compras es justo lo que hay que confirmar. */
+@keyframes baja{from{opacity:0;transform:translateY(-4px)}}
+.fila-detalle > td > *{animation:baja .22s var(--sale) both}
+
+/* ─── la barra de avance ───
+   Se llena al aparecer en vez de estar llena de entrada: "38 de 55" leído
+   como algo que se llenó se entiende como progreso, no como un dibujo. Con
+   transform y no con width, que no obliga a recalcular la página. */
+@keyframes llena{from{transform:scaleX(0)}}
+.cifra-grande .avance i{transform-origin:left;animation:llena .7s var(--sale) .1s both}
+
+/* ─── entrar ───
+   La caja sube ocho pixeles al cargar la página: es lo primero que se ve
+   del panel y aparece armada, no de golpe. */
+@keyframes caja-llega{from{opacity:0;transform:translateY(8px) scale(.99)}}
+.caja{animation:caja-llega .4s var(--sale) both}
+.caja h1{letter-spacing:-.025em}
+
+/* ─── el interruptor de la puerta ───
+   Con la curva del resto: la bolita llega rápido y se asienta, en vez de
+   moverse a velocidad pareja como un mecanismo. */
+.puerta-filtro{transition:background .2s ease,border-color .2s ease,transform .16s var(--sale)}
+.puerta-filtro:active{transform:scale(.99)}
+.puerta-filtro-luz::after{transition:transform .26s var(--sale),background .2s ease}
+
+/* ─── la pastilla "a la venta" ───
+   Un punto adelante, como una luz encendida. Es el estado que más importa
+   de la lista —ese evento está vendiendo ahora— y el punto se encuentra en
+   una columna de veinte sin leer las palabras. */
+.pastilla.verde::before{
+  content:"";display:inline-block;width:6px;height:6px;margin:0 6px 1px 0;
+  border-radius:50%;background:currentColor;vertical-align:middle;
+  box-shadow:0 0 0 2px rgba(76,175,125,.2);
+}
+
+/* ─── por fase ───
+   Entre «Por producto» y los dos desgloses chicos, con aire arriba y
+   abajo: es otra pregunta, y pegada a la tabla de productos se leía como
+   la continuación de esa. */
+.bloque-fases{margin:30px 0 26px}
+/* La ventana y lo que se llevó cada tipo van en dos renglones apagados
+   abajo del nombre: se leen cuando se buscan, el nombre se lee siempre. */
+.tabla-fases td em+em{margin-top:2px}
+.tabla-fases td .pastilla{display:inline-block}
+.tabla-fases td.n i{font-style:normal;color:var(--txt-3);font-size:12px}
+/* El cupo como barra además de cifra: «38 de 55» es una cuenta, la barra
+   se lee de reojo. Misma barra que «Ya entraron» del tablero. */
+.fase-avance{
+  display:block;width:84px;height:4px;margin:6px 0 0 auto;
+  border-radius:999px;background:var(--sup-3);overflow:hidden;
+}
+.fase-avance i{
+  display:block;height:100%;border-radius:999px;background:var(--ok);
+  transform-origin:left;animation:llena .7s var(--sale) .1s both;
+}
+.tabla-fases tfoot td{
+  border-top:1px solid var(--linea-2);background:var(--sup-2);
+  font-family:var(--dato);font-size:13px;color:var(--txt-2);
+}
+.tabla-fases tfoot td.n{color:var(--txt)}
+.tabla-fases tfoot td em{
+  display:block;margin-top:3px;font-style:normal;font-size:10.5px;color:var(--txt-3);
+}
+@media (max-width:760px){
+  .fase-avance{margin-left:0}
+  /* En la ficha del teléfono el pie es una ficha más, y sus dos celdas
+     vacías dejarían huecos con rótulo y sin número. */
+  .tabla-fases tfoot td:empty{display:none}
+}
+@media (prefers-reduced-motion:reduce){ .fase-avance i{animation:none} }
+
+/* ─── por fase: los grupos ───
+   El renglón de la fase va en la superficie de arriba y con línea fuerte
+   encima: es el que corta la tabla en grupos. Los tipos van debajo
+   corridos a la derecha y en el gris del medio, para que se lean como
+   PARTE de la fase y no como una fase más. */
+.tabla-fases .fase-cab td{background:var(--sup-2);border-top:1px solid var(--linea-2)}
+.tabla-fases tbody:first-of-type .fase-cab td{border-top:0}
+.tabla-fases .fase-cab .pastilla{margin-left:8px;vertical-align:2px;font-size:10px;padding:3px 8px}
+.tabla-fases .fase-tipo td:first-child{padding-left:32px}
+.tabla-fases .tipo-nombre{font-size:14px;color:var(--txt)}
+.tabla-fases .fase-tipo td.n{color:var(--txt-2)}
+.tabla-fases .fase-tipo.apagada td,.tabla-fases .fase-grupo.apagada td{color:var(--txt-3)}
+.tabla-fases tbody tr:hover td{background:inherit}
+.tabla-fases .fase-cab:hover td{background:var(--sup-2)}
+.tabla-fases .fase-tipo:hover td{background:var(--sup-2)}
+
+@media (max-width:760px){
+  /* Cada fase es UNA ficha con sus tipos adentro. La receta general de
+     .ficha-tabla haría una ficha por renglón, y los tipos quedarían sueltos
+     sin decir de qué fase son. */
+  .tabla-fases tbody.fase-grupo{
+    display:block;margin-bottom:10px;overflow:hidden;
+    background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
+  }
+  .tabla-fases tbody.fase-grupo tr{
+    margin:0;border:0;border-radius:0;background:transparent;
+    border-top:1px solid var(--linea);
+  }
+  .tabla-fases tbody.fase-grupo tr.fase-cab{border-top:0;background:var(--sup-2)}
+  .tabla-fases .fase-cab td{background:transparent;border-top:0}
+  .tabla-fases .fase-tipo td:first-child{padding-left:0}
+  .tabla-fases td.vacia{display:none}
+}
