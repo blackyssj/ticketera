@@ -706,12 +706,32 @@ function avisoSinVenta() {
   </article>`;
 }
 
+/* No todas: la anterior (si la hubo, como sold out), la de ahora y la
+   siguiente. Es lo que el comprador necesita para decidir —qué se perdió,
+   qué compra hoy y a cuánto sube— sin mostrarle toda la escalera de
+   precios, que el organizador prefiere no anunciar de una.
+   "La de ahora" es la que vende; si no vende ninguna, la próxima en abrir;
+   y si ya no queda ninguna por abrir, la última. */
+function fasesAMostrar(F) {
+  let k = F.findIndex(f => f.estado === "vigente");
+  if (k < 0) k = F.findIndex(f => f.estado === "proxima");
+  if (k < 0) k = F.length - 1;
+  const ver = [];
+  const previa = F[k - 1];
+  if (previa && ["agotada", "retenida", "cerrada"].includes(previa.estado)) ver.push(k - 1);
+  ver.push(k);
+  if (F[k + 1]) ver.push(k + 1);
+  return ver;
+}
+
 function listaFases() {
   const F = Array.isArray(D.fases) ? D.fases : [];
-  if (F.length < 2) return "";
+  const ver = fasesAMostrar(F);
+  if (ver.length < 2) return "";
   return `<section class="fases-venta" aria-label="Fases de venta">
     <h3>Fases de venta</h3>
-    <ol>${F.map((f, i) => {
+    <ol>${ver.map(i => {
+      const f = F[i];
       const precio = Number(f.precio) === 0 ? "Gratis"
         : `${f.varios ? "desde " : ""}${bs(f.precio)}`;
       const estado = FASE_TXT[f.estado] || esperaFase(f, i, F);
