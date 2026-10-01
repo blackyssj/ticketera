@@ -800,7 +800,10 @@ async function pantallaEntradas(eventoId) {
         <tbody>
           ${T.map(t => `<tr data-tipo="${t.id}">
             <th>${esc(t.nombre)}<em>${esc(t.descripcion || "")}</em>
-              ${marcaCartelera(t)}</th>
+              ${marcaCartelera(t)}
+              <button type="button" class="btn plano chico tipo-borrar"
+                      data-borrar-tipo="${esc(t.id)}"
+                      data-nombre="${esc(t.nombre)}">Borrar</button></th>
             ${F.map(f => {
               const p = P.get(`${f.id}|${t.id}`);
               /* El nombre de la fase viaja repetido en cada celda porque en
@@ -844,6 +847,9 @@ async function pantallaEntradas(eventoId) {
 
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
   $("#btnTipo").onclick = () => nuevoTipo(eventoId);
+  document.querySelectorAll("#main [data-borrar-tipo]").forEach(b => {
+    b.onclick = () => borrarTipo(eventoId, b.dataset.borrarTipo, b.dataset.nombre);
+  });
   /* El formulario se abre con la foto de fases que ya tiene la pantalla:
      el chequeo de solapamiento necesita a las OTRAS fases para poder
      nombrarlas, y volver a pedirlas al guardar dejaría la advertencia
@@ -1137,6 +1143,28 @@ async function nuevoTipo(eventoId) {
     avisar(error.code === "23505" ? "Ya existe un tipo con ese nombre." : error.message);
     return;
   }
+  pantallaEntradas(eventoId);
+}
+
+/* Borrar un tipo. Hermano de borrarFase() y por los mismos motivos: la
+   guardia de verdad está en la base —borrar_tipo (0089) se niega si vendió
+   algo— y esto solo pregunta antes, con el nombre a la vista.
+
+   El aviso dice que se van los precios de todas las fases porque la grilla
+   no los muestra como algo del tipo: están repartidos en su fila, y al
+   borrarla se van con ella sin que nadie los haya visto desaparecer. */
+async function borrarTipo(eventoId, id, nombre) {
+  if (!confirm(`¿Borrar «${nombre}»?\n\n` +
+      `Se van también los precios que le cargaste en cada fase.\n\n` +
+      `Si ya vendió algo, no se va a borrar.`)) return;
+
+  const { data, error } = await sb.rpc("borrar_tipo", { p_tipo: id });
+  if (error) { avisar(sinCodigo(error.message)); return; }
+  if (!data || !data.ok) {
+    avisar("No se borró nada. Recargá y fijate cómo quedó.");
+    return;
+  }
+  avisar(data.motivo);
   pantallaEntradas(eventoId);
 }
 
