@@ -3015,13 +3015,13 @@ function filaCompraFila(c) {
   return `<tr data-orden="${esc(c.orden_id)}">
     <td><span class="prod-nombre">${esc(c.comprador || "Sin nombre")}</span>
       <em>${esc(fmtFH(c.fecha))}</em></td>
-    <td class="dato">${esc(c.telefono || "—")}${c.email ? `<em>${esc(c.email)}</em>` : ""}</td>
+    <td class="dato">${esc(c.telefono || "—")}${c.email ? `<em title="${esc(c.email)}">${esc(c.email)}</em>` : ""}</td>
     <td class="detalle">${esc(c.detalle || "—")}</td>
     <td class="n" data-rot="Manillas">${num(c.manillas)}${c.manillas_usadas
         ? `<em>${num(c.manillas_usadas)} usadas</em>` : ""}</td>
     <td class="n" data-rot="Pagó">${bs(c.pagado)}</td>
     <td class="dato">${esc(c.rrpp_nombre || (c.canal === "rrpp" ? "sin nombre" : "Público"))}</td>
-    <td class="col-accion">${accionesCompra(c)}</td>
+    <td class="col-accion"><div class="acc-compra">${accionesCompra(c)}</div></td>
   </tr>`;
 }
 

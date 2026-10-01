@@ -683,8 +683,15 @@ select{
 select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--rojo-suave)}
 .cab-bloque select{margin-left:auto}
 
-.tabla-compras .col-accion{white-space:nowrap;text-align:right}
-.tabla-compras .col-accion .btn+.btn{margin-left:6px}
+/* Siete columnas y tres botones no entraban en el ancho del panel: la
+   tabla se iba de costado y «Manillas» y «Anular» quedaban cortados del
+   otro lado de un scroll que nadie ve. Los botones se acomodan en dos
+   renglones dentro de un ancho fijo, y el correo —el dato más largo, que
+   hay quien lo tiene de cuarenta letras— se corta con puntos suspensivos
+   y se lee entero pasando el mouse. */
+.tabla-compras .col-accion{text-align:right}
+.acc-compra{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;width:180px;margin-left:auto}
+.tabla-compras td.dato em{max-width:24ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* El plano de mesas y la ficha vivían acá: .planta, .lienzo, .chapa,
    .leyenda, .pip, .ficha* y .chica-aviso. Se fueron con la pantalla —esta
@@ -1635,7 +1642,9 @@ body[data-filtro="1"] .puerta-visor::before{
      un renglón propio agrega 52px por ficha en una lista de doce— y lo que
      lo protege no es la distancia sino que abre un formulario con motivo
      obligatorio, no una anulación de un toque. */
-  .tabla-compras>tbody>tr>td.col-accion>.btn{flex:1 1 auto;margin-left:0}
+  .acc-compra{display:contents}
+  .tabla-compras>tbody>tr>td.col-accion .btn{flex:1 1 auto;margin-left:0}
+  .tabla-compras td.dato em{max-width:none}
 
   /* Lo que se despliega —el link, las manillas, la anulación— se pega a
      la ficha que lo abrió en vez de flotar como una tarjeta suelta. */
