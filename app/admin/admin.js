@@ -715,6 +715,31 @@ function cablearImagen(ev, def) {
 /* La grilla es fases × tipos porque el precio vive en el cruce. Con dos
    listas separadas el organizador no ve que "General" cuesta distinto en
    cada fase, y eso es justamente lo que está vendiendo. */
+/* ── lo que falta, dicho antes de que lo adivine ──
+   Sin fases, la grilla dibuja las filas de cada tipo SIN UNA SOLA CELDA: el
+   organizador ve sus entradas colgando al lado de un vacío, sin un campo
+   para llenar y sin nada que diga qué falta. Pasó con un evento de verdad
+   y la lectura fue "esta pantalla está rota", que es la lectura correcta.
+
+   No se esconde la grilla aunque esté vacía: el botón «+ Fase» vive en su
+   encabezado, así que esconderla deja al organizador sin la única puerta
+   que necesita justo en el momento en que la necesita. */
+function estadoVacio(T, F) {
+  if (F.length && T.length) return "";
+  const falta = !F.length && !T.length
+    ? `Acá armás <b>qué</b> se vende y <b>a qué precio</b>. Empezá por una fase
+       —«Preventa», «General», la que uses— y después agregá los tipos de entrada.`
+    : !F.length
+      ? `Ya tenés ${T.length === 1 ? "un tipo de entrada" : `${T.length} tipos de entrada`},
+         pero <b>ninguna fase</b>. El precio vive en el cruce de los dos, así que
+         hasta que no crees una fase no hay dónde escribirlo: por eso las filas de
+         abajo están sin casillas. Tocá <b>+ Fase</b>.`
+      : `Ya tenés ${F.length === 1 ? "una fase" : `${F.length} fases`}, pero
+         <b>ningún tipo de entrada</b>. Tocá <b>+ Tipo de entrada</b> para agregar
+         la primera —«General», «VIP»— y ahí aparecen las casillas de precio.`;
+  return `<p class="falta-armar">${falta}</p>`;
+}
+
 async function pantallaEntradas(eventoId) {
   $("#main").innerHTML = `<p class="cargando">Cargando…</p>`;
 
@@ -761,6 +786,11 @@ async function pantallaEntradas(eventoId) {
       <button class="btn plano chico" id="btnVolver">← ${esc(ev.data.nombre)}</button>
       <h2>Entradas y precios</h2>
     </div>
+    <p class="ayuda explica bajo-titulo"><b>Tipo</b> es QUÉ se vende —General, VIP—.
+       <b>Fase</b> es CUÁNDO —Preventa, Fase 1—. El precio no vive en ninguno de
+       los dos: va en el cruce, para que la misma General cueste distinto según
+       cuándo la compren.</p>
+    ${estadoVacio(T, F)}
     <div class="grilla-envoltorio">
       <table class="grilla">
         <thead><tr><th>Tipo</th>
