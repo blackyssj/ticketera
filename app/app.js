@@ -657,8 +657,12 @@ function pintarTipos() {
 
    "Sold out" en inglés porque así lo pidió el organizador y así se dice en
    la noche; el resto en castellano. */
-const FASE_TXT = { vigente: "A la venta", agotada: "Sold out", cerrada: "Cerrada",
-                   retenida: "Últimas en proceso de pago" };
+/* Retenida (cupo tomado por compras a medio pagar) también dice "Sold
+   out": el organizador pidió una sola palabra para lo que ya no se puede
+   comprar. Si alguna reserva vence, la fase vuelve a la venta y la lista
+   se corrige sola en la próxima visita. */
+const FASE_TXT = { vigente: "A la venta", agotada: "Sold out", retenida: "Sold out",
+                   cerrada: "Cerrada" };
 
 function cuandoFase(iso) {
   const d = new Date(iso);
@@ -672,22 +676,14 @@ function cuandoFase(iso) {
                                          timeZone: "America/La_Paz" }).replace(".", "");
 }
 
-/* Lo que espera una fase que todavía no abrió, con las mismas reglas que
-   fase_vigente(): abre cuando llegó su fecha Y la de antes que sigue viva
-   (la que vende, o una próxima) se agotó o cerró. Las dos condiciones,
-   porque cualquiera sola miente: "Desde 14 oct" promete una suba que no
-   pasa si First todavía tiene lugar, y "cuando se agote First" promete
-   una que no pasa si se agota el 5. */
+/* Lo que espera una fase que todavía no abrió, en una línea corta: el
+   organizador pidió que no se lea como letra chica. Si nada se vende
+   todavía y tiene fecha, la fecha; si hay una fase antes que sigue viva,
+   que abre cuando esa se agote. */
 function esperaFase(f, i, F) {
-  const ahora = Date.now();
-  const antes = F.slice(0, i).reverse()
-    .find(x => x.estado !== "agotada" && x.estado !== "cerrada");
-  const fecha = f.desde && Date.parse(f.desde) > ahora ? cuandoFase(f.desde) : null;
-  if (!antes) return fecha ? `Desde ${fecha}` : "Próximamente";
-  if (fecha) return `Desde ${fecha}, si ya se agotó ${antes.nombre}`;
-  const cierre = antes.hasta && Date.parse(antes.hasta) > ahora
-    ? ` o desde ${cuandoFase(antes.hasta)}` : "";
-  return `Cuando se agote ${antes.nombre}${cierre}`;
+  const antes = F.slice(0, i).some(x => x.estado === "vigente" || x.estado === "proxima");
+  if (antes) return "Disponible al agotarse la anterior";
+  return f.desde && Date.parse(f.desde) > Date.now() ? `Desde ${cuandoFase(f.desde)}` : "Próximamente";
 }
 
 /* Sin fase abierta (0092) la página no da error: dice qué pasa y deja la
@@ -721,7 +717,7 @@ function listaFases() {
       const estado = FASE_TXT[f.estado] || esperaFase(f, i, F);
       return `<li data-estado="${esc(f.estado)}">
         <span class="fv-nombre">${esc(f.nombre)}</span>
-        <span class="fv-precio">${f.estado === "agotada" ? `<s>${esc(precio)}</s>` : esc(precio)}</span>
+        <span class="fv-precio">${FASE_TXT[f.estado] === "Sold out" ? `<s>${esc(precio)}</s>` : esc(precio)}</span>
         <span class="fv-estado">${esc(estado)}</span>
       </li>`;
     }).join("")}</ol>

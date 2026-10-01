@@ -343,14 +343,15 @@ input{font:inherit}
 .fases-venta li[data-estado="vigente"] .fv-estado::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--tinta);box-shadow:0 0 0 3px var(--tinta-16)}
 .fases-venta li[data-estado="agotada"] .fv-nombre,
 .fases-venta li[data-estado="agotada"] .fv-precio,
+.fases-venta li[data-estado="retenida"] .fv-nombre,
+.fases-venta li[data-estado="retenida"] .fv-precio,
 .fases-venta li[data-estado="cerrada"] .fv-nombre,
 .fases-venta li[data-estado="cerrada"] .fv-precio{color:var(--tinta-40)}
-.fases-venta li[data-estado="retenida"] .fv-nombre,
-.fases-venta li[data-estado="retenida"] .fv-precio{color:var(--tinta-60)}
 /* Sin nada a la venta ahora (0092): la tarjeta que ocupa el lugar de las
    entradas no tiene precio ni stepper, solo dice qué pasa. */
 .tipo.sin-venta{grid-template-columns:1fr;border-style:dashed}
-.fases-venta li[data-estado="agotada"] .fv-estado{justify-self:start;padding:2px 8px;border:1px solid var(--tinta);border-radius:999px;color:var(--tinta);font-weight:500;letter-spacing:.08em;text-transform:uppercase;font-size:10.5px}
+.fases-venta li[data-estado="agotada"] .fv-estado,
+.fases-venta li[data-estado="retenida"] .fv-estado{justify-self:start;padding:2px 8px;border:1px solid var(--tinta);border-radius:999px;color:var(--tinta);font-weight:500;letter-spacing:.08em;text-transform:uppercase;font-size:10.5px}
 
 .stepper{display:flex;align-items:center;border:1.5px solid var(--tinta);border-radius:3px;overflow:hidden;flex:0 0 auto}
 .stepper button{width:34px;height:34px;font-family:var(--dato);font-size:17px;line-height:1;color:var(--tinta);transition:background .14s ease}
