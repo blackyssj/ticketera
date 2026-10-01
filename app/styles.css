@@ -350,6 +350,9 @@ input{font:inherit}
 /* Sin nada a la venta ahora (0092): la tarjeta que ocupa el lugar de las
    entradas no tiene precio ni stepper, solo dice qué pasa. */
 .tipo.sin-venta{grid-template-columns:1fr;border-style:dashed}
+/* "Next" va en pastilla como "Sold out", pero en el color de la marca:
+   es lo que viene, no lo que se perdió. */
+.fases-venta li[data-next="1"] .fv-estado{justify-self:start;padding:2px 8px;border-radius:999px;background:var(--rojo);color:var(--sobre-accion);font-weight:500;letter-spacing:.08em;text-transform:uppercase;font-size:10.5px}
 .fases-venta li[data-estado="agotada"] .fv-estado,
 .fases-venta li[data-estado="retenida"] .fv-estado{justify-self:start;padding:2px 8px;border:1px solid var(--tinta);border-radius:999px;color:var(--tinta);font-weight:500;letter-spacing:.08em;text-transform:uppercase;font-size:10.5px}
 

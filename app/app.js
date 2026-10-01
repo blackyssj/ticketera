@@ -676,13 +676,13 @@ function cuandoFase(iso) {
                                          timeZone: "America/La_Paz" }).replace(".", "");
 }
 
-/* Lo que espera una fase que todavía no abrió, en una línea corta: el
-   organizador pidió que no se lea como letra chica. Si nada se vende
-   todavía y tiene fecha, la fecha; si hay una fase antes que sigue viva,
-   que abre cuando esa se agote. */
+/* Lo que espera una fase que todavía no abrió, en una palabra: el
+   organizador pidió que no se lea como letra chica. "Next" —en inglés,
+   como "Sold out"— para la que viene detrás de una que sigue viva; si nada
+   se vende todavía y tiene fecha, la fecha. */
 function esperaFase(f, i, F) {
   const antes = F.slice(0, i).some(x => x.estado === "vigente" || x.estado === "proxima");
-  if (antes) return "Disponible al agotarse la anterior";
+  if (antes) return "Next";
   return f.desde && Date.parse(f.desde) > Date.now() ? `Desde ${cuandoFase(f.desde)}` : "Próximamente";
 }
 
@@ -735,7 +735,7 @@ function listaFases() {
       const precio = Number(f.precio) === 0 ? "Gratis"
         : `${f.varios ? "desde " : ""}${bs(f.precio)}`;
       const estado = FASE_TXT[f.estado] || esperaFase(f, i, F);
-      return `<li data-estado="${esc(f.estado)}">
+      return `<li data-estado="${esc(f.estado)}"${estado === "Next" ? ' data-next="1"' : ""}>
         <span class="fv-nombre">${esc(f.nombre)}</span>
         <span class="fv-precio">${FASE_TXT[f.estado] === "Sold out" ? `<s>${esc(precio)}</s>` : esc(precio)}</span>
         <span class="fv-estado">${esc(estado)}</span>
