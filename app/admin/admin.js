@@ -3258,7 +3258,7 @@ function pintarCompradores(error) {
   const z = $("#zonaCompradores");
   if (!z) return;
   z.innerHTML = `
-    <div class="cab-bloque">
+    <div class="cab-bloque sep">
       <h3 class="titulo-bloque">Compradores</h3>
       ${SALON.compras.length ? `<input id="buscaComprador" class="buscador" type="search"
          autocomplete="off" placeholder="Buscar por nombre o teléfono"

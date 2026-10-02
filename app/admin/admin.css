@@ -724,8 +724,19 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
    renglones dentro de un ancho fijo, y el correo —el dato más largo, que
    hay quien lo tiene de cuarenta letras— se corta con puntos suspensivos
    y se lee entero pasando el mouse. */
-.tabla-compras .col-accion{text-align:right}
-.acc-compra{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;width:180px;margin-left:auto}
+.tabla-compras .col-accion{text-align:right;width:1%;white-space:nowrap}
+/* Los botones en UN renglon y la columna del ancho exacto que necesiten.
+   Con el ancho fijo de 180px pasaba lo contrario de lo buscado: cuando el
+   navegador apretaba las otras columnas, el bloque no entraba en su celda
+   y «Manillas» y «Anular» quedaban tajados contra el borde. Ahora la
+   columna pide lo suyo y son las de texto las que ceden, abajo. */
+.acc-compra{display:flex;flex-wrap:nowrap;justify-content:flex-end;gap:6px;margin-left:auto}
+/* El texto largo cede con puntos suspensivos. Un nombre o un correo de
+   cuarenta letras empujaban la tabla fuera del carril, y lo primero que
+   se caia del otro lado eran los botones. Se lee entero pasando el mouse. */
+.tabla-compras td .prod-nombre{display:block;max-width:20ch;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.tabla-compras td.dato{max-width:20ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tabla-compras td.dato em{max-width:24ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* El plano de mesas y la ficha vivían acá: .planta, .lienzo, .chapa,
