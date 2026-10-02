@@ -16,10 +16,59 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
 let tToast;
 function avisar(txt) {
   const t = $("#toast");
+  /* Un aviso que llega con otro todavía en pantalla da un pulso corto en vez
+     de cambiar el texto en silencio: sin eso, "Guardado." dos veces seguidas
+     se ve igual que una sola y no se sabe si el segundo clic hizo algo. */
+  if (t.dataset.on === "1" && !QUIETO.matches)
+    t.animate([{ transform: "translate(-50%,0) scale(.97)" }, { transform: "translate(-50%,0)" }],
+      { duration: 220, easing: "cubic-bezier(.23,1,.32,1)" });
   t.textContent = txt; t.dataset.on = "1";
   clearTimeout(tToast);
   tToast = setTimeout(() => t.dataset.on = "0", 4000);
 }
+
+/* ══ el movimiento ══════════════════════════════════════════════
+   Pocas cosas se mueven y todas por una razón: confirmar que algo pasó o
+   decir de dónde vino lo que apareció. Lo que se usa cien veces por noche
+   —guardar un precio, tildar la cartelera— no se anima nunca: a la
+   tercera vez una animación ya no informa, demora. */
+const QUIETO = matchMedia("(prefers-reduced-motion: reduce)");
+
+/* La pantalla entra con un fundido corto SOLO cuando se llegó navegando.
+   Las pantallas se repintan enteras con innerHTML también después de
+   guardar, y si la entrada colgara del CSS solo, cada guardado haría
+   parpadear la pantalla. Por eso la marca se pone al navegar y se saca en
+   cuanto la persona toca algo adentro: lo que se repinta por su acción ya
+   no entra animado. */
+function marcarNavegacion() {
+  const m = $("#main");
+  m.dataset.nav = "1";
+  const soltar = () => { delete m.dataset.nav; };
+  m.addEventListener("pointerdown", soltar, { once: true });
+  m.addEventListener("keydown", soltar, { once: true });
+}
+
+/* La marca de la pestaña elegida se DESLIZA de una a otra en vez de saltar:
+   el ojo sigue el movimiento y sabe adónde fue a parar sin buscarla. Es un
+   solo elemento que se corre con transform, no un fondo que se apaga en un
+   botón y se prende en otro. La primera vez se ubica sin viaje: aparecer
+   deslizándose desde la izquierda al cargar sería movimiento sin motivo. */
+function moverIndicador(nav, sel) {
+  if (!nav) return;
+  const b = nav.querySelector(sel);
+  if (!b) { nav.style.removeProperty("--ind-w"); return; }
+  nav.style.setProperty("--ind-x", b.offsetLeft + "px");
+  nav.style.setProperty("--ind-y", b.offsetTop + "px");
+  nav.style.setProperty("--ind-w", b.offsetWidth + "px");
+  nav.style.setProperty("--ind-h", b.offsetHeight + "px");
+  if (!nav.dataset.ind) requestAnimationFrame(() => { nav.dataset.ind = "1"; });
+}
+const indicadorTabs = () => moverIndicador($("#tabs"), "button[aria-current]");
+const indicadorEvento = () => moverIndicador($("#evCab .evc-tabs"), '[aria-selected="true"]');
+addEventListener("resize", () => { indicadorTabs(); indicadorEvento(); });
+/* Las fuentes de Google llegan después del primer pintado y cambian el
+   ancho de cada pestaña: medida antes, la marca queda corta. */
+if (document.fonts) document.fonts.ready.then(() => { indicadorTabs(); indicadorEvento(); });
 
 /* El usuario no tiene correo: se le arma uno sintético, igual que en Puerta.
    Es un identificador, no una casilla — no hay recuperación por correo. */
@@ -79,6 +128,14 @@ $("#formEntrar").addEventListener("submit", async e => {
     arrancarApp();
   } catch (err) {
     $("#eError").textContent = err.message;
+    /* Una sacudida corta, como una cabeza que dice que no: el error ya está
+       escrito, pero se escribe chico y abajo, y el que tipeó rápido está
+       mirando el botón. */
+    if (!QUIETO.matches)
+      $("#formEntrar").animate(
+        [{ transform: "none" }, { transform: "translateX(-7px)" }, { transform: "translateX(6px)" },
+         { transform: "translateX(-3px)" }, { transform: "none" }],
+        { duration: 360, easing: "cubic-bezier(.23,1,.32,1)" });
   } finally {
     $("#btnEntrar").disabled = false;
   }
@@ -151,6 +208,9 @@ function arrancarApp() {
     `<button data-p="${p.id}"${p.id === S.pantalla ? ' aria-current="page"' : ""}>${esc(p.txt)}</button>`
   ).join("");
   if (!mias.some(p => p.id === S.pantalla) && mias.length) S.pantalla = mias[0].id;
+  /* Se olvida la marca anterior: al cambiar de cuenta las pestañas son
+     otras, y la marca no tiene que viajar desde una que ya no está. */
+  delete $("#tabs").dataset.ind;
   mostrar(S.pantalla);
 }
 
@@ -214,6 +274,8 @@ function mostrar(p) {
   S.pantalla = p;
   document.querySelectorAll("#tabs button").forEach(b =>
     b.toggleAttribute("aria-current", b.dataset.p === p));
+  indicadorTabs();
+  marcarNavegacion();
   if (p === "eventos") return pantallaEventos();
   if (p === "misventas") return pantallaMisVentas();
   if (p === "puerta") return window.PUERTA.pantalla();   // vive en puerta.js
@@ -342,6 +404,8 @@ function irPestana(k) {
      a la vista, o parece que no se eligió ninguna. */
   const sel = document.querySelector(`#evCab [data-t="${def[0]}"]`);
   if (sel) sel.scrollIntoView({ block: "nearest", inline: "nearest" });
+  indicadorEvento();
+  marcarNavegacion();
   scrollTo(0, 0);
   return def[2](S.ev.id);
 }
@@ -1634,11 +1698,16 @@ const linkOrden = id => `${location.origin}/orden/?id=${encodeURIComponent(id)}`
 async function conBoton(btn, txt, fn) {
   if (!btn || btn.disabled) return;
   const antes = btn.textContent;
+  /* El ancho se congela mientras dice "Guardando…": si el botón crece o se
+     encoge con el texto, los de al lado saltan justo cuando el dedo todavía
+     está ahí, y el segundo toque cae en otro botón. */
+  const ancho = btn.style.minWidth;
+  btn.style.minWidth = btn.offsetWidth + "px";
   btn.disabled = true;
   btn.textContent = txt;
   try { await fn(); }
   catch (err) { avisar(err.message || String(err)); }
-  finally { btn.disabled = false; btn.textContent = antes; }
+  finally { btn.disabled = false; btn.textContent = antes; btn.style.minWidth = ancho; }
 }
 
 
@@ -2643,7 +2712,13 @@ function turnoTxt(desde, hasta) {
 async function refrescarResumen(eventoId) {
   const z = $("#zonaResumen");
   if (!z) return;
-  const { data, error } = await sb.rpc("resumen_evento", { p_evento: eventoId });
+  const [{ data, error }, porFase] = await Promise.all([
+    sb.rpc("resumen_evento", { p_evento: eventoId }),
+    /* Aparte y en paralelo: si el desglose por fase falla, el tablero se
+       pinta igual y el bloque dice que no pudo. Un desglose de más no
+       puede tumbar las alertas. */
+    ventasPorFase(eventoId).then(data => ({ data }), e => ({ error: e })),
+  ]);
   if (error) { z.innerHTML = `<p class="error">${esc(error.message)}</p>`; return; }
   /* {} en vez de error: resumen_evento() devuelve lo mismo para "no es de
      tu organizador" que para "no existe", a propósito, para que no sirva
@@ -2652,7 +2727,8 @@ async function refrescarResumen(eventoId) {
     z.innerHTML = `<p class="vacio">No hay datos de este evento.</p>`;
     return;
   }
-  z.innerHTML = bloqueCifras(data) + bloqueAlertas(data.alertas) + bloqueDesgloses(data);
+  z.innerHTML = bloqueCifras(data) + bloqueAlertas(data.alertas)
+    + bloqueDesgloses(data, porFase.error ? { error: porFase.error.message } : porFase.data);
   /* La alerta de revisión manual contaba las órdenes desde 0033 y no
      ofrecía nada: el que la leía se enteraba de que había plata cobrada
      sin entrada del otro lado y ahí se terminaba. Este botón es el
@@ -2754,7 +2830,293 @@ function quedanTxt(p) {
   return Number(p.quedan) === 0 ? `<b class="agotado">agotado</b>` : num(p.quedan);
 }
 
-function bloqueDesgloses(r) {
+/* ─── por fase ───
+   La pregunta del día siguiente: cuánto se fue en la preventa, si la Fase 1
+   ya cubrió lo que se esperaba antes de subir el precio. Una fila por fase
+   en el orden en que se venden, y adentro qué tipos se llevó cada una.
+
+   El estado de cada fase lo dice la base (`vigente`, de fase_vigente()) y
+   no un cálculo de acá con las fechas: una fase que terminó por cupo sigue
+   teniendo la fecha abierta, y la pantalla diría «vendiendo» de algo que
+   ya no vende. */
+function estadoFaseVenta(f) {
+  const ahora = Date.now();
+  if (!f.activo) return { txt: "Apagada", cls: "gris" };
+  if (f.vigente) return { txt: "Vendiendo", cls: "verde" };
+  if (f.desde && Date.parse(f.desde) > ahora) return { txt: "Próxima", cls: "gris" };
+  if (f.hasta && Date.parse(f.hasta) <= ahora) return { txt: "Terminó", cls: "gris" };
+  if (f.cupo != null && f.unidades >= f.cupo) return { txt: "Agotada", cls: "dorada" };
+  return { txt: "En espera", cls: "gris" };
+}
+
+function ventanaFaseVenta(f) {
+  if (!f.desde && !f.hasta) return "sin fechas";
+  if (!f.hasta) return `desde ${fechaHoraBO(f.desde)}`;
+  if (!f.desde) return `hasta ${fechaHoraBO(f.hasta)}`;
+  return `${fechaHoraBO(f.desde)} → ${fechaHoraBO(f.hasta)}`;
+}
+
+/* ─── lo vendido, fase por fase ───
+   Se arma acá, con lo que el staff ya puede leer por RLS (0012: fases,
+   precios, tipos, órdenes, ítems y entradas de su organizador), y no con
+   una función nueva en la base: así sale con el front, sin migración.
+
+   Los criterios son los de «Por producto» (resumen_evento, 0038), para que
+   las dos tablas sumen lo mismo:
+   · unidades y recaudado, de orden_items de órdenes PAGADAS y al precio
+     congelado de la compra (precio_unitario), no al de la grilla de hoy;
+   · manillas, de entradas no anuladas, cortesías con fase incluidas;
+   · el cupo de la fase es la suma de sus cupos, y si un precio no tiene
+     tope la fase tampoco: sumar «sin tope» como cero inventaría un agotado.
+
+   Lo que no tiene fase va aparte en `sin_fase` y no se reparte: asignarlo
+   a una fase sería inventar de dónde vino. */
+
+/* PostgREST corta en 1000 sin avisar (ver traerTodo). Acá se pagina sobre
+   un orden estable y se deduplica por la clave de la fila: una venta que
+   entra mientras se lee corre las páginas. Si una página falla, falla todo:
+   un recaudado armado con la mitad de las filas es peor que ninguno.
+   `orden` son las columnas de la clave — fase_precio no tiene `id`, su
+   clave es (fase_id, tipo_id). */
+async function leerTodas(armar, orden = ["id"], tope = 1000) {
+  const filas = [], vistos = new Set();
+  const claveFila = f => orden.map(c => f[c]).join("|");
+  for (let off = 0, vueltas = 0; ; off += tope) {
+    let q = armar();
+    orden.forEach(c => { q = q.order(c); });
+    const { data, error } = await q.range(off, off + tope - 1);
+    if (error) throw new Error(sinCodigo(error.message));
+    (data || []).forEach(f => {
+      const k = claveFila(f);
+      if (!vistos.has(k)) { vistos.add(k); filas.push(f); }
+    });
+    if (!data || data.length < tope) return filas;
+    if (++vueltas > 60) throw new Error("son demasiadas filas para armarlo de una vez.");
+  }
+}
+
+async function ventasPorFase(eventoId) {
+  const [fases, tipos, vig, items, entradas] = await Promise.all([
+    leerTodas(() => sb.from("evento_fase")
+      .select("id,nombre,desde,hasta,activo,orden").eq("evento_id", eventoId)),
+    leerTodas(() => sb.from("tipo_entrada")
+      .select("id,nombre,activo,manillas,orden").eq("evento_id", eventoId)),
+    sb.rpc("fase_vigente", { p_evento: eventoId }),
+    /* `!inner` para que el filtro por la orden recorte los ítems, y no que
+       sólo vacíe la columna embebida dejando pasar los de órdenes impagas. */
+    leerTodas(() => sb.from("orden_items")
+      .select("id,fase_id,tipo_id,cantidad,precio_unitario,orden_id,ordenes!inner(estado,evento_id)")
+      .eq("ordenes.evento_id", eventoId).eq("ordenes.estado", "pagada")
+      .not("tipo_id", "is", null)),
+    leerTodas(() => sb.from("entradas")
+      .select("id,fase_id,tipo_id,estado").eq("evento_id", eventoId)),
+  ]);
+  if (vig.error) throw new Error(sinCodigo(vig.error.message));
+  const idsFase = fases.map(f => f.id);
+  const precios = idsFase.length
+    ? await leerTodas(() => sb.from("fase_precio")
+        .select("fase_id,tipo_id,precio,cupo").in("fase_id", idsFase), ["fase_id", "tipo_id"])
+    : [];
+
+  const clave = (f, t) => f + "|" + t;
+  const venta = new Map(), ordenesFase = new Map(), man = new Map();
+  items.forEach(i => {
+    const k = clave(i.fase_id, i.tipo_id);
+    const v = venta.get(k) || { unidades: 0, recaudado: 0 };
+    v.unidades += Number(i.cantidad);
+    v.recaudado += Number(i.cantidad) * Number(i.precio_unitario);
+    venta.set(k, v);
+    if (!ordenesFase.has(i.fase_id)) ordenesFase.set(i.fase_id, new Set());
+    ordenesFase.get(i.fase_id).add(i.orden_id);
+  });
+  let sinFase = 0, sinFaseUsadas = 0;
+  entradas.forEach(e => {
+    if (!e.fase_id) {
+      if (e.estado !== "anulada") sinFase++;
+      if (e.estado === "usada") sinFaseUsadas++;
+      return;
+    }
+    const k = clave(e.fase_id, e.tipo_id);
+    const m = man.get(k) || { manillas: 0, usadas: 0, anuladas: 0 };
+    if (e.estado === "anulada") m.anuladas++; else m.manillas++;
+    if (e.estado === "usada") m.usadas++;
+    man.set(k, m);
+  });
+  const precioDe = new Map(precios.map(p => [clave(p.fase_id, p.tipo_id), p]));
+  const porOrden = (a, b) => (a.orden - b.orden) || String(a.nombre).localeCompare(b.nombre);
+  const T = tipos.slice().sort(porOrden);
+  const redondo = n => Math.round(n * 100) / 100;
+  const desdeMs = f => f.desde ? Date.parse(f.desde) : Infinity;
+
+  return {
+    vigente: vig.data || null,
+    fases: fases.slice()
+      .sort((a, b) => (a.orden - b.orden) || (desdeMs(a) - desdeMs(b))
+                      || String(a.nombre).localeCompare(b.nombre))
+      .map(f => {
+        const ps = precios.filter(p => p.fase_id === f.id);
+        /* Un tipo entra en la fase si tiene precio en ella O si vendió en
+           ella: el de precio y cero ventas se ve en cero (no se vendió), y
+           el que vendió y después quedó sin precio sigue con lo que vendió,
+           o la fase sumaría menos que sus partes. */
+        const filasTipo = T.map(t => {
+          const k = clave(f.id, t.id), p = precioDe.get(k);
+          const v = venta.get(k), m = man.get(k);
+          if (!p && !v && !m) return null;
+          return {
+            tipo_id: t.id, nombre: t.nombre, activo: t.activo,
+            manillas_por_unidad: t.manillas,
+            precio: p ? Number(p.precio) : null,
+            cupo: p && p.cupo != null ? Number(p.cupo) : null,
+            unidades: v ? v.unidades : 0, recaudado: v ? redondo(v.recaudado) : 0,
+            manillas: m ? m.manillas : 0, manillas_usadas: m ? m.usadas : 0,
+          };
+        }).filter(Boolean);
+        /* Las manillas de la fase se suman de TODAS sus entradas y no sólo
+           de los tipos listados: una cortesía con fase y sin tipo cuenta. */
+        const mf = [...man.entries()].filter(([k]) => k.startsWith(f.id + "|")).map(([, m]) => m);
+        const suma = (arr, c) => arr.reduce((a, x) => a + Number(x[c] || 0), 0);
+        return {
+          fase_id: f.id, nombre: f.nombre, desde: f.desde, hasta: f.hasta, activo: f.activo,
+          vigente: f.id === vig.data,
+          cupo: !ps.length || ps.some(p => p.cupo == null)
+            ? null : ps.reduce((a, p) => a + Number(p.cupo), 0),
+          precios: ps.length,
+          ordenes: ordenesFase.has(f.id) ? ordenesFase.get(f.id).size : 0,
+          unidades: suma(filasTipo, "unidades"),
+          recaudado: redondo(suma(filasTipo, "recaudado")),
+          manillas: suma(mf, "manillas"), manillas_usadas: suma(mf, "usadas"),
+          manillas_anuladas: suma(mf, "anuladas"),
+          tipos: filasTipo,
+        };
+      }),
+    sin_fase: { manillas: sinFase, manillas_usadas: sinFaseUsadas },
+  };
+}
+
+/* El cupo de un cruce o de una fase: la cuenta y la barra. Sin tope no hay
+   barra, porque una barra contra el infinito siempre está vacía y se lee
+   como «no se vendió nada». */
+function cupoCelda(unidades, cupo) {
+  if (cupo == null) return `<i>sin tope</i>`;
+  const lleno = Math.min(100, 100 * Number(unidades || 0) / Number(cupo));
+  return `${num(unidades)}<i> de ${num(cupo)}</i>
+    <span class="fase-avance"><i style="width:${lleno}%"></i></span>`;
+}
+
+/* Una tabla agrupada y no una fila por fase: la pregunta real es «cuántas
+   VIP se fueron en la preventa y a cuánto», y eso se venía contando a
+   mano. Cada fase abre con su renglón de subtotal —nombre, estado, cuánto
+   se llevó— y debajo van sus tipos, uno por renglón, con el mismo juego
+   de columnas. Así la fase se lee de un vistazo y el cruce está ahí abajo
+   sin abrir nada. Un <tbody> por fase: en el teléfono cada grupo queda
+   junto, como una ficha con sus renglones adentro. */
+function bloqueFases(v) {
+  if (v && v.error) return `<section class="bloque-fases">
+    <h3 class="titulo-bloque">Por fase</h3>
+    <p class="error">No se pudo armar el detalle por fase: ${esc(v.error)}</p></section>`;
+  if (!v || !v.fases || !v.fases.length) return "";
+  const F = v.fases;
+  const total = F.reduce((a, f) => a + Number(f.recaudado || 0), 0);
+  const unidades = F.reduce((a, f) => a + Number(f.unidades || 0), 0);
+  const manillas = F.reduce((a, f) => a + Number(f.manillas || 0), 0);
+  const sinFase = v.sin_fase && Number(v.sin_fase.manillas) ? v.sin_fase : null;
+
+  /* Lo que se pagó de verdad, si no coincide con la grilla de hoy: es la
+     única forma de que alguien que editó un precio con la fase vendiendo
+     entienda por qué el recaudado no da precio × unidades. */
+  const precioCelda = t => {
+    const u = Number(t.unidades || 0);
+    const pagado = u ? Number(t.recaudado) / u : null;
+    const difiere = pagado != null && t.precio != null && Math.abs(pagado - Number(t.precio)) >= 0.01;
+    return `<td class="n" data-rot="Precio">${t.precio == null ? `<i>—</i>` : bs(t.precio)}${difiere
+      ? `<em>se pagó ${bs(pagado.toFixed(2))} prom.</em>` : ""}</td>`;
+  };
+  const notasTipo = t => [
+    t.manillas_por_unidad > 1 ? `${num(t.manillas_por_unidad)} manillas por unidad` : "",
+    t.activo ? "" : "inactivo",
+    t.precio == null && Number(t.unidades) ? "ya no tiene precio en esta fase" : "",
+  ].filter(Boolean).join(" · ");
+  /* Si el evento tiene un solo tipo en todas sus fases, nombrarlo no dice
+     nada. Si tiene varios y esta fase vende uno solo, sí: «Fase VIP» puede
+     ser sólo VIP, y eso es lo que hay que poder leer. */
+  const variosTipos = new Set(F.flatMap(f => (f.tipos || []).map(t => t.tipo_id))).size > 1;
+
+  const filaTipo = t => {
+    const u = Number(t.unidades || 0);
+    const notas = notasTipo(t);
+    return `
+      <tr class="fase-tipo${!u && t.precio == null ? " apagada" : ""}">
+        <td><span class="tipo-nombre">${esc(t.nombre)}</span>${notas ? `<em>${esc(notas)}</em>` : ""}</td>
+        ${precioCelda(t)}
+        <td class="n" data-rot="Unidades">${num(u)}</td>
+        <td class="n" data-rot="Manillas">${num(t.manillas)}</td>
+        <td class="n" data-rot="Cupo">${cupoCelda(u, t.cupo)}</td>
+        <td class="n" data-rot="Recaudado">${bs(t.recaudado)}</td>
+        <td class="n vacia"></td>
+      </tr>`;
+  };
+
+  return `<section class="bloque-fases">
+  <h3 class="titulo-bloque">Por fase</h3>
+  <p class="ayuda explica bajo-titulo">Cada fase con lo que vendió de cada tipo. El
+    recaudado es al precio que pagó cada comprador, aunque después se haya cambiado
+    la grilla. El cupo se cuenta en unidades, igual que en la venta.</p>
+  <div class="grilla-envoltorio">
+    <table class="tabla ficha-tabla tabla-fases">
+      <thead><tr>
+        <th>Fase / tipo</th><th class="n">Precio</th><th class="n">Unidades</th>
+        <th class="n">Manillas</th><th class="n">Cupo</th><th class="n">Recaudado</th>
+        <th class="n">Del total</th>
+      </tr></thead>
+      ${F.map(f => {
+        const est = estadoFaseVenta(f);
+        const parte = total ? (100 * Number(f.recaudado) / total) : 0;
+        /* El gris es para lo que no aportó nada: apagada o sin precios, Y
+           sin ventas. Una fase que se apagó después de vender sigue diciendo
+           «Apagada» en la pastilla, pero sus números se leen enteros: en
+           LÜMEN una así tenía el 28% de lo recaudado, y en gris pasaba por
+           un renglón de relleno. */
+        const apagada = (!f.activo || !f.precios) && !Number(f.unidades);
+        const tipos = f.tipos || [];
+        /* Un solo tipo en la fase: su renglón repetiría el de la fase número
+           por número. Se pliega adentro — el precio sube al renglón de la
+           fase y los renglones de tipo aparecen recién desde dos. */
+        const solo = tipos.length === 1 ? tipos[0] : null;
+        const notaSolo = solo ? [variosTipos ? solo.nombre : "", notasTipo(solo)]
+          .filter(Boolean).join(" · ") : "";
+        return `<tbody class="fase-grupo${apagada ? " apagada" : ""}${solo ? " un-tipo" : ""}">
+        <tr class="fase-cab">
+          <td><span class="prod-nombre">${esc(f.nombre)}</span>
+            <span class="pastilla ${est.cls}">${est.txt}</span>
+            <em>${esc(ventanaFaseVenta(f))}</em>${notaSolo ? `<em>${esc(notaSolo)}</em>` : ""}</td>
+          ${solo ? precioCelda(solo) : `<td class="n vacia"></td>`}
+          <td class="n" data-rot="Unidades">${num(f.unidades)}${Number(f.ordenes)
+              ? `<em>${num(f.ordenes)} ${Number(f.ordenes) === 1 ? "orden" : "órdenes"}</em>` : ""}</td>
+          <td class="n" data-rot="Manillas">${num(f.manillas)}${Number(f.manillas_anuladas)
+              ? `<em>${num(f.manillas_anuladas)} anuladas</em>` : ""}</td>
+          <td class="n" data-rot="Cupo">${cupoCelda(f.unidades, f.cupo)}</td>
+          <td class="n" data-rot="Recaudado">${bs(f.recaudado)}</td>
+          <td class="n" data-rot="Del total">${pct(parte.toFixed(1))}</td>
+        </tr>
+        ${solo ? "" : tipos.length ? tipos.map(filaTipo).join("")
+          : `<tr class="fase-tipo"><td colspan="7" class="sin-nada">Esta fase no tiene precios cargados.</td></tr>`}
+      </tbody>`;
+      }).join("")}
+      <tfoot><tr>
+        <td>Total${sinFase ? `<em>+ ${manillasTxt(sinFase.manillas)} sin fase (cortesías u otras)</em>` : ""}</td>
+        <td class="n vacia"></td>
+        <td class="n" data-rot="Unidades">${num(unidades)}</td>
+        <td class="n" data-rot="Manillas">${num(manillas)}</td>
+        <td class="n vacia"></td>
+        <td class="n" data-rot="Recaudado">${bs(total)}</td>
+        <td class="n" data-rot="Del total">${total ? "100%" : "—"}</td>
+      </tr></tfoot>
+    </table>
+  </div></section>`;
+}
+
+function bloqueDesgloses(r, porFase) {
   return `
   <h3 class="titulo-bloque">Por producto</h3>
   <p class="ayuda explica bajo-titulo">Las unidades son lo que compró el cliente y miden el cupo;
@@ -2782,6 +3144,8 @@ function bloqueDesgloses(r) {
         </tr>`).join("")}</tbody>
     </table>
   </div>
+
+  ${bloqueFases(porFase)}
 
   <div class="dos-tablas">
     <div>
