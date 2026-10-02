@@ -170,6 +170,8 @@ Deno.serve(async (req) => {
         color_fondo: e.color_fondo ?? null,
         color_acento: e.color_acento ?? null,
         logo_url: e.logo_url ?? null,
+        // El flyer va en el hero si lo hay (0097); la entrada usa arte_url.
+        flyer_url: e.flyer_url ?? null,
       },
       // `hasta` en crudo para que el front diga "cierra en 3 días" sólo
       // cuando hay un cierre de verdad; `hasta_txt` sigue para el chip.

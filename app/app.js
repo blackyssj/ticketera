@@ -504,12 +504,14 @@ function pintarHero() {
     : e.datos;
   $("#heroDatos").innerHTML = datos
     .map(([k, v]) => `<span>${esc(k)} <b>${esc(v)}</b></span>`).join("");
-  /* El afiche, chico y al costado (evento.html). El mismo que usa el ticket
-     —la fase manda sobre el evento, igual que en ticket.js— así queda en
-     caché y al final las entradas se dibujan al toque. Sin arte, no hay
+  /* El afiche, chico y al costado (evento.html). Manda el flyer si el
+     evento lo tiene (0097): es la cara del evento, la misma de la cartelera
+     y de WhatsApp. El arte es el modelo de la entrada —con el hueco para el
+     QR— y queda para el ticket; sin flyer, el hero muestra el arte (la fase
+     manda sobre el evento, igual que en ticket.js). Sin ninguno, no hay
      afiche; si el archivo no responde, tampoco: un ícono de imagen rota en
      el hero es peor que nada. */
-  const arte = (D.fase && D.fase.arte_url) || e.arte_url;
+  const arte = e.flyer_url || (D.fase && D.fase.arte_url) || e.arte_url;
   const afiche = $("#heroArte");
   if (arte) {
     afiche.alt = `Afiche de ${e.marca_1} ${e.marca_2 || ""}`.trim();
