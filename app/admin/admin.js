@@ -3072,9 +3072,12 @@ function bloqueFases(v) {
       ${F.map(f => {
         const est = estadoFaseVenta(f);
         const parte = total ? (100 * Number(f.recaudado) / total) : 0;
-        /* Sin precios cargados la fase no vendió ni puede vender: se apaga
-           como el tipo inactivo de «Por producto», no se esconde. */
-        const apagada = !f.activo || (!f.precios && !Number(f.unidades));
+        /* El gris es para lo que no aportó nada: apagada o sin precios, Y
+           sin ventas. Una fase que se apagó después de vender sigue diciendo
+           «Apagada» en la pastilla, pero sus números se leen enteros: en
+           LÜMEN una así tenía el 28% de lo recaudado, y en gris pasaba por
+           un renglón de relleno. */
+        const apagada = (!f.activo || !f.precios) && !Number(f.unidades);
         const tipos = f.tipos || [];
         /* Un solo tipo en la fase: su renglón repetiría el de la fase número
            por número. Se pliega adentro — el precio sube al renglón de la
