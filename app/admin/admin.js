@@ -2844,8 +2844,15 @@ function estadoFaseVenta(f) {
   if (!f.activo) return { txt: "Apagada", cls: "gris" };
   if (f.vigente) return { txt: "Vendiendo", cls: "verde" };
   if (f.desde && Date.parse(f.desde) > ahora) return { txt: "Próxima", cls: "gris" };
-  if (f.hasta && Date.parse(f.hasta) <= ahora) return { txt: "Terminó", cls: "gris" };
+  /* El cupo se mira ANTES que la fecha de fin, porque las dos cosas son
+     ciertas a la vez muy seguido: una fase se agota y ahí mismo se le pone
+     fecha de fin para abrir la siguiente. Con la fecha primero, los 200 de
+     200 se anunciaban como «Terminó» —que suena a que la cerraron— y se
+     perdía el único dato que el organizador quiere ver de un vistazo: que
+     se vendió entera. La ventana no se esconde: sigue escrita abajo del
+     nombre. */
   if (f.cupo != null && f.unidades >= f.cupo) return { txt: "Agotada", cls: "dorada" };
+  if (f.hasta && Date.parse(f.hasta) <= ahora) return { txt: "Terminó", cls: "gris" };
   return { txt: "En espera", cls: "gris" };
 }
 
