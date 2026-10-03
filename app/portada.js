@@ -17,10 +17,13 @@
 
      1 evento  → una entrada sola a tamaño de afiche. Sin grilla: una
                  cuadrícula de un elemento se lee como una que no cargó.
-     2 a 4     → la más próxima grande y el resto en la grilla. Salvo en
-                 la vidriera de un cliente (/<organizador>), donde van
-                 todas en renglones chicos con botón: ahí lo que hay que
-                 ver de un vistazo es que hay más de una fecha.
+     2 a 5     → todas en la grilla, al mismo tamaño. Ninguna sube a
+                 afiche: con dos o tres clientes en venta, agrandar al
+                 más próximo dejaba a los demás chicos y abajo, y la
+                 fecha no hace a un evento más importante que otro. En
+                 la vidriera de un cliente (/<organizador>) van en
+                 renglones chicos con botón: ahí lo que hay que ver de
+                 un vistazo es que hay más de una fecha.
      5 o más   → carrusel con las cinco más próximas y la grilla completa
                  debajo. Recién ahí "lo destacado" separa algo de algo.
 
@@ -756,6 +759,24 @@ function vestirVidriera(eventos) {
   $("#rotuloTxt").textContent = "Sus fechas";
 }
 
+/* Lo de arriba: el afiche del único evento, o el carrusel de la cartelera
+   larga. Con dos a cinco eventos no se llama y #proximos queda oculto. */
+function pintarArriba(arriba, solo) {
+  const rail = $("#rail");
+  rail.innerHTML = arriba.map(destacado).join("");
+  rail.classList.toggle("solo", arriba.length === 1);
+  /* Con un solo evento en venta, "Lo próximo" no separa nada de nada: no hay
+     un "después" con el que contraste. Es un renglón que hay que leer y
+     descartar, y en el teléfono son 40px que le come al afiche justo en la
+     primera pantalla — que es donde casi todos llegan, por WhatsApp. Se
+     calla, no se borra: el h2 sigue en el árbol para quien navega la página
+     por encabezados. */
+  $("#proximosRotulo").classList.toggle("muda", solo);
+  vigilarImagenes(rail);
+  $("#proximos").hidden = false;
+  cablearRail(arriba.length);
+}
+
 async function pintar() {
   const grilla = $("#grilla");
   let r = null, motivo = "";
@@ -820,32 +841,25 @@ async function pintar() {
   }
 
   /* Cuánto se destaca depende de cuánto hay, porque destacar la mitad de la
-     cartelera no es destacar nada. Hasta cinco eventos sube uno solo —el más
-     próximo— y el resto va a la grilla. De seis para arriba se arma el
-     carrusel, y nunca con más de un tercio de lo que está en venta (tope
+     cartelera no es destacar nada. Con un solo evento, ése va a tamaño de
+     afiche y no hay grilla. De dos a cinco no sube ninguno: van todos a la
+     grilla con la misma tarjeta. Antes subía el más próximo, y con dos
+     clientes en venta el otro quedaba chico y abajo, como si fuera de
+     segunda (LÜMEN debajo de Nocturne, 03/10). De seis para arriba se arma
+     el carrusel, y nunca con más de un tercio de lo que está en venta (tope
      cinco): el carrusel es una vidriera, no el catálogo.
 
-     Ahí sí la grilla repite todo, incluido lo que ya salió arriba. No es un
+     Ahí la grilla repite todo, incluido lo que ya salió arriba. No es un
      descuido: son dos cosas distintas y se leen distinto. Arriba está lo que
      pasa primero; abajo está todo, que es lo que hace que se pueda ir a
      buscar un evento puntual sin tener que pasar el carrusel. */
   const muchos = eventos.length >= MUCHOS;
-  const arriba = eventos.slice(0, muchos ? Math.min(5, Math.ceil(eventos.length / 3)) : 1);
-  const abajo  = muchos ? eventos : eventos.slice(1);
+  const solo   = eventos.length === 1;
+  const arriba = muchos ? eventos.slice(0, Math.min(5, Math.ceil(eventos.length / 3)))
+               : solo   ? eventos : [];
+  const abajo  = solo ? [] : eventos;
 
-  const rail = $("#rail");
-  rail.innerHTML = arriba.map(destacado).join("");
-  rail.classList.toggle("solo", arriba.length === 1);
-  /* Con un solo evento en venta, "Lo próximo" no separa nada de nada: no hay
-     un "después" con el que contraste. Es un renglón que hay que leer y
-     descartar, y en el teléfono son 40px que le come al afiche justo en la
-     primera pantalla — que es donde casi todos llegan, por WhatsApp. Se
-     calla, no se borra: el h2 sigue en el árbol para quien navega la página
-     por encabezados. */
-  $("#proximosRotulo").classList.toggle("muda", eventos.length === 1);
-  vigilarImagenes(rail);
-  $("#proximos").hidden = false;
-  cablearRail(arriba.length);
+  if (arriba.length) pintarArriba(arriba, solo);
 
   if (!abajo.length) {
     /* Un solo evento: la grilla entera se va. Una cuadrícula con un elemento
@@ -856,9 +870,11 @@ async function pintar() {
   }
 
   /* En la vidriera de un cliente el rótulo no compara con nada: son sus
-     fechas y punto. vestirVidriera() ya lo puso; acá no se pisa. */
-  if (!ORG) $("#rotuloTxt").textContent = muchos ? "Toda la cartelera" : "También a la venta";
+     fechas y punto. vestirVidriera() ya lo puso; acá no se pisa. Sin nada
+     arriba, la grilla es la cartelera entera y el rótulo del HTML vale. */
+  if (!ORG && muchos) $("#rotuloTxt").textContent = "Toda la cartelera";
   contar(abajo.length);
+
   /* Con la cartelera larga, en el teléfono la grilla pasa a dos columnas.
      Con una sola, veinte eventos son doce mil píxeles de scroll: no se
      recorre, se sufre. Se usa el mismo umbral que decide el carrusel porque
