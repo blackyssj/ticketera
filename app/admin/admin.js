@@ -5033,7 +5033,13 @@ async function pantallaPlataforma() {
   const mordida = Number(t.nuestro) > 0
     ? Math.round(Number(t.costo_pasarela) / Number(t.nuestro) * 100) : 0;
 
-  const cuentas = evs.map(e => ({ e, c: cuentaEvento(e, pctPas) }));
+  /* Sólo lo que está a la venta. eventos_plataforma() trae también los
+     cerrados y cualquier evento con una venta real, porque las tablas de
+     giros de más abajo los necesitan: un evento cerrado puede tener plata
+     por girar. Pero esta cuenta responde «cómo venimos con lo que se está
+     vendiendo», y una prueba vieja o una fecha ya liquidada la ensucian. */
+  const cuentas = evs.filter(e => e.estado === "publicado")
+    .map(e => ({ e, c: cuentaEvento(e, pctPas) }));
   const suma = k => cuentas.reduce((a, x) => a + x.c[k], 0);
   const G = { paso: suma("paso"), organizador: suma("organizador"), comision: suma("comision"),
               pasarela: suma("pasarela"), devuelto: suma("devuelto"), ganancia: suma("ganancia") };
@@ -5045,7 +5051,7 @@ async function pantallaPlataforma() {
     <section class="tarjeta plat-cuadre ventas-gral">
       <div>
         <h3 class="ok">${bs(G.ganancia)}</h3>
-        <p class="ayuda">Nuestra ganancia en todos los eventos: de los ${bs(G.paso)}
+        <p class="ayuda">Nuestra ganancia en los ${cuentas.length} eventos a la venta: de los ${bs(G.paso)}
           que pasaron por la pasarela, ${bs(G.organizador)} son de los organizadores,
           ${bs(G.pasarela)} se los lleva la pasarela${G.devuelto
             ? ` y ${bs(G.devuelto)} se devolvieron a compradores` : ""}.</p>
