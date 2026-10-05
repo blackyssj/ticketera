@@ -5058,6 +5058,25 @@ async function pantallaPlataforma() {
   const elegidos = new Set(leerElegidos().filter(id => publicados.some(e => e.id === id)));
   const enCuenta = elegidos.size ? publicados.filter(e => elegidos.has(e.id)) : publicados;
   const cuentas = enCuenta.map(e => ({ e, c: cuentaEvento(e, pctPas) }));
+  /* La comisión NO es la misma para todos: la negocia cada organizador
+     (LÜMEN 5%, Latina 6%, Nocturne 4%). La cuenta no la necesita —usa lo
+     que cada compra cobró de verdad— pero se muestra al lado de lo que
+     salió de las ventas: si no coinciden, la tarifa cargada no es la que
+     se está cobrando, y eso se ve acá antes que en una liquidación. */
+  const tarifaDe = new Map(cl.map(c => [c.slug, c]));
+  const celdaComision = (e, c) => {
+    const t = tarifaDe.get(e.org_slug);
+    const pactada = t ? Number(t.fee_pct) : null;
+    /* Sumada, la comisión es un % del precio del organizador; descontada,
+       sale de adentro de lo que paga el comprador. Se compara contra la
+       base que corresponde a cada modo. */
+    const base = t && t.modo === "adentro" ? c.organizador + c.comision : c.organizador;
+    const real = base > 0 ? c.comision / base : null;
+    const difiere = pactada != null && real != null && Math.abs(real - pactada) > 0.005;
+    return `<td class="num${difiere ? " plat-falta" : ""}">${bs(c.comision)}<em class="ayuda">${
+      pactada != null ? `${(pactada * 100).toFixed(pactada * 100 % 1 ? 1 : 0)}% pactado` : ""}${
+      difiere ? ` · sale ${(real * 100).toFixed(1)}%` : ""}</em></td>`;
+  };
   const suma = k => cuentas.reduce((a, x) => a + x.c[k], 0);
   const G = { paso: suma("paso"), organizador: suma("organizador"), comision: suma("comision"),
               pasarela: suma("pasarela"), devuelto: suma("devuelto"), ganancia: suma("ganancia") };
@@ -5096,12 +5115,15 @@ async function pantallaPlataforma() {
 
     ${cuentas.length ? `
     <h3 class="titulo-bloque">Ventas y ganancia por evento</h3>
-    <p class="ayuda bajo-titulo">Cada organizador se lleva su precio; la pasarela, su
-      ${(pctPas * 100).toFixed(2)}% de todo lo que pasó por ella; lo que sobra es nuestro.</p>
+    <p class="ayuda bajo-titulo">Cada organizador se lleva su precio; el comprador paga
+      además la comisión pactada con ese organizador; la pasarela se lleva su
+      ${(pctPas * 100).toFixed(2)}% de todo lo que pasó por ella, igual para todos; lo que
+      sobra es nuestro. Los montos son los que se cobraron de verdad, compra por compra.</p>
     <div class="tabla-scroll">
       <table class="tabla">
         <thead><tr><th>Evento</th><th class="num">Entradas</th>
           <th class="num">Pasó por la pasarela</th><th class="num">Organizador</th>
+          <th class="num">Comisión</th>
           <th class="num">Pasarela</th><th class="num">Devoluciones</th>
           <th class="num">Nuestra ganancia</th></tr></thead>
         <tbody>${cuentas.map(({ e, c }) => `<tr>
@@ -5111,6 +5133,7 @@ async function pantallaPlataforma() {
             <td class="num">${Number(e.entradas)}</td>
             <td class="num">${bs(c.paso)}</td>
             <td class="num">${bs(c.organizador)}</td>
+            ${celdaComision(e, c)}
             <td class="num tenue">−${bs(c.pasarela)}</td>
             <td class="num tenue">${c.devuelto ? "−" + bs(c.devuelto) : "—"}</td>
             <td class="num ok">${bs(c.ganancia)}</td>
@@ -5118,6 +5141,7 @@ async function pantallaPlataforma() {
         <tfoot><tr><td><b>Total</b></td>
           <td class="num">${cuentas.reduce((a, x) => a + Number(x.e.entradas), 0)}</td>
           <td class="num">${bs(G.paso)}</td><td class="num">${bs(G.organizador)}</td>
+          <td class="num">${bs(G.comision)}</td>
           <td class="num tenue">−${bs(G.pasarela)}</td>
           <td class="num tenue">${G.devuelto ? "−" + bs(G.devuelto) : "—"}</td>
           <td class="num ok">${bs(G.ganancia)}</td></tr></tfoot>
