@@ -4960,6 +4960,51 @@ async function cambiarActivo(id) {
    algo que no registramos o giramos de más. Las dos son urgentes y
    ninguna se ve desde la pantalla de un cliente. Por eso el número se
    muestra grande y solo, no escondido en una fila de una tabla. */
+/* ── plata que pasó por la pasarela y la base no registra ──
+   Lo que entró de verdad y lo que se devolvió por fuera del sistema. La
+   base guarda lo que DEBIÓ cobrarse; cuando una compra se corrige a mano
+   después de pagada, la diferencia deja de existir para la base, pero la
+   pasarela la cobró igual y cobró su comisión sobre ella.
+
+   LÜMEN · Halloween Ritual: el 01/10 entre 19:31 y 19:37, 39 entradas se
+   vendieron en SECOND OFFERING a 160 Bs cuando correspondía FIRST a 120.
+   Las 25 órdenes se corrigieron a 120 en la base (el fee quedó en 8, que
+   es como se las reconoce) y a cada comprador se le devuelven 42 Bs:
+   40 de precio y 2 de comisión. Por la pasarela pasaron 39 × 168; la
+   base dice 39 × 128. La pasarela no sabe de la devolución y cobra su
+   1,5% sobre los 168, así que ese costo lo absorbe TICKETAZO.
+
+   Vive acá y no en la base porque hoy no hay quién migre. Es un parche
+   con fecha: el lugar correcto es una tabla de ajustes en la base, que
+   lean esta pantalla y el cuadre de la wallet por igual. Hasta entonces,
+   cualquier corrección a mano de una compra pagada tiene que anotarse
+   acá o los números de abajo mienten. */
+const AJUSTES_PASARELA = {
+  "601921f2-6d02-4cb2-865a-40bd08897a38": {
+    extra: 39 * 40,      // lo cobrado de más que la base ya no muestra
+    devuelto: 39 * 42,   // lo que se le devuelve a los compradores
+    nota: "39 entradas cobradas a 160 en vez de 120; se devuelven 42 Bs c/u",
+  },
+};
+
+/* La cuenta de cada evento, con la regla que se usa para hablar de plata
+   con el organizador: él se lleva su precio sí o sí, la pasarela su
+   porcentaje de TODO lo que pasó por ella, y lo que sobra es nuestro.
+   Ejemplo de 100 Bs: pasan 105, la pasarela se lleva 1,575, el
+   organizador 100 y nos quedan 3,425. */
+function cuentaEvento(e, pct) {
+  const aj = AJUSTES_PASARELA[e.id] || { extra: 0, devuelto: 0 };
+  const paso = Number(e.cobrado || 0) + aj.extra;
+  const organizador = Number(e.del_cliente || 0);
+  const pasarela = Math.round(paso * pct * 100) / 100;
+  const devuelto = aj.devuelto;
+  return {
+    paso, organizador, comision: Number(e.nuestro || 0), pasarela, devuelto,
+    ganancia: Math.round((paso - organizador - pasarela - devuelto) * 100) / 100,
+    nota: aj.nota || "",
+  };
+}
+
 async function pantallaPlataforma() {
   $("#main").innerHTML = `<p class="cargando">Cargando el tablero…</p>`;
   const [rp, rg, re, rr] = await Promise.all([
@@ -4988,9 +5033,61 @@ async function pantallaPlataforma() {
   const mordida = Number(t.nuestro) > 0
     ? Math.round(Number(t.costo_pasarela) / Number(t.nuestro) * 100) : 0;
 
+  const cuentas = evs.map(e => ({ e, c: cuentaEvento(e, pctPas) }));
+  const suma = k => cuentas.reduce((a, x) => a + x.c[k], 0);
+  const G = { paso: suma("paso"), organizador: suma("organizador"), comision: suma("comision"),
+              pasarela: suma("pasarela"), devuelto: suma("devuelto"), ganancia: suma("ganancia") };
+
   $("#main").innerHTML = `
     <div class="cab-seccion"><h2>Plataforma</h2>
       <span class="conteo">${cl.length} ${cl.length === 1 ? "cliente" : "clientes"}</span></div>
+
+    <section class="tarjeta plat-cuadre ventas-gral">
+      <div>
+        <h3 class="ok">${bs(G.ganancia)}</h3>
+        <p class="ayuda">Nuestra ganancia en todos los eventos: de los ${bs(G.paso)}
+          que pasaron por la pasarela, ${bs(G.organizador)} son de los organizadores,
+          ${bs(G.pasarela)} se los lleva la pasarela${G.devuelto
+            ? ` y ${bs(G.devuelto)} se devolvieron a compradores` : ""}.</p>
+      </div>
+      <dl class="plat-cifras">
+        <div><dt>Pasó por la pasarela</dt><dd>${bs(G.paso)}</dd></div>
+        <div class="tenue"><dt>Para los organizadores</dt><dd>−${bs(G.organizador)}</dd></div>
+        <div class="tenue"><dt>Pasarela (${(pctPas * 100).toFixed(2)}% de lo que pasó)</dt><dd>−${bs(G.pasarela)}</dd></div>
+        ${G.devuelto ? `<div class="tenue"><dt>Devoluciones</dt><dd>−${bs(G.devuelto)}</dd></div>` : ""}
+        <div><dt>Nos queda</dt><dd class="ok">${bs(G.ganancia)}</dd></div>
+      </dl>
+    </section>
+
+    ${cuentas.length ? `
+    <h3 class="titulo-bloque">Ventas y ganancia por evento</h3>
+    <p class="ayuda bajo-titulo">Cada organizador se lleva su precio; la pasarela, su
+      ${(pctPas * 100).toFixed(2)}% de todo lo que pasó por ella; lo que sobra es nuestro.</p>
+    <div class="tabla-scroll">
+      <table class="tabla">
+        <thead><tr><th>Evento</th><th class="num">Entradas</th>
+          <th class="num">Pasó por la pasarela</th><th class="num">Organizador</th>
+          <th class="num">Pasarela</th><th class="num">Devoluciones</th>
+          <th class="num">Nuestra ganancia</th></tr></thead>
+        <tbody>${cuentas.map(({ e, c }) => `<tr>
+            <td><b>${esc(e.evento)}</b>
+              <em class="ayuda">${esc(e.organizador)} · ${esc(fechaBO(e.fecha + "T12:00:00Z"))}${
+                c.nota ? ` · ${esc(c.nota)}` : ""}</em></td>
+            <td class="num">${Number(e.entradas)}</td>
+            <td class="num">${bs(c.paso)}</td>
+            <td class="num">${bs(c.organizador)}</td>
+            <td class="num tenue">−${bs(c.pasarela)}</td>
+            <td class="num tenue">${c.devuelto ? "−" + bs(c.devuelto) : "—"}</td>
+            <td class="num ok">${bs(c.ganancia)}</td>
+          </tr>`).join("")}</tbody>
+        <tfoot><tr><td><b>Total</b></td>
+          <td class="num">${cuentas.reduce((a, x) => a + Number(x.e.entradas), 0)}</td>
+          <td class="num">${bs(G.paso)}</td><td class="num">${bs(G.organizador)}</td>
+          <td class="num tenue">−${bs(G.pasarela)}</td>
+          <td class="num tenue">${G.devuelto ? "−" + bs(G.devuelto) : "—"}</td>
+          <td class="num ok">${bs(G.ganancia)}</td></tr></tfoot>
+      </table>
+    </div>` : ""}
 
     <section class="tarjeta plat-cuadre">
       <div>
