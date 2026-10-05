@@ -5005,6 +5005,16 @@ function cuentaEvento(e, pct) {
   };
 }
 
+/* «plataforma:» y no «puerta:»: limpiarPuerta() borra todo lo que empieza
+   con «puerta:» al salir, y esto se tiene que quedar entre sesiones. */
+const LLAVE_ELEGIDOS = "plataforma:eventos-en-cuenta";
+function leerElegidos() {
+  try { return JSON.parse(localStorage.getItem(LLAVE_ELEGIDOS)) || []; } catch { return []; }
+}
+function guardarElegidos(ids) {
+  try { localStorage.setItem(LLAVE_ELEGIDOS, JSON.stringify(ids)); } catch {}
+}
+
 async function pantallaPlataforma() {
   $("#main").innerHTML = `<p class="cargando">Cargando el tablero…</p>`;
   const [rp, rg, re, rr] = await Promise.all([
@@ -5038,8 +5048,16 @@ async function pantallaPlataforma() {
      giros de más abajo los necesitan: un evento cerrado puede tener plata
      por girar. Pero esta cuenta responde «cómo venimos con lo que se está
      vendiendo», y una prueba vieja o una fecha ya liquidada la ensucian. */
-  const cuentas = evs.filter(e => e.estado === "publicado")
-    .map(e => ({ e, c: cuentaEvento(e, pctPas) }));
+  const publicados = evs.filter(e => e.estado === "publicado");
+  /* Cuáles entran en la cuenta lo elige el operador, tildándolos. Hay
+     eventos viejos que siguen publicados en la base y cerrarlos es tocar
+     datos de clientes; esto no toca nada. Se guarda en este navegador y
+     no en la base: es una forma de mirar, no un dato del negocio. Sin
+     elección guardada —o si ninguno de los guardados sigue publicado—
+     entran todos los publicados. */
+  const elegidos = new Set(leerElegidos().filter(id => publicados.some(e => e.id === id)));
+  const enCuenta = elegidos.size ? publicados.filter(e => elegidos.has(e.id)) : publicados;
+  const cuentas = enCuenta.map(e => ({ e, c: cuentaEvento(e, pctPas) }));
   const suma = k => cuentas.reduce((a, x) => a + x.c[k], 0);
   const G = { paso: suma("paso"), organizador: suma("organizador"), comision: suma("comision"),
               pasarela: suma("pasarela"), devuelto: suma("devuelto"), ganancia: suma("ganancia") };
@@ -5064,6 +5082,17 @@ async function pantallaPlataforma() {
         <div><dt>Nos queda</dt><dd class="ok">${bs(G.ganancia)}</dd></div>
       </dl>
     </section>
+
+    ${publicados.length > 1 ? `
+    <details class="tarjeta elegir-eventos"${elegidos.size ? "" : " open"}>
+      <summary>Eventos en la cuenta: <b>${cuentas.length} de ${publicados.length}</b> publicados</summary>
+      <p class="ayuda">Tildá los que están vendiendo de verdad. Se recuerda en este navegador.</p>
+      <div class="elegir-lista">${publicados.map(e => `
+        <label class="check"><input type="checkbox" data-cuenta="${esc(e.id)}"${
+          !elegidos.size || elegidos.has(e.id) ? " checked" : ""}>
+          <span><b>${esc(e.evento)}</b> · ${esc(e.organizador)} · ${esc(fechaBO(e.fecha + "T12:00:00Z"))}</span></label>`).join("")}
+      </div>
+    </details>` : ""}
 
     ${cuentas.length ? `
     <h3 class="titulo-bloque">Ventas y ganancia por evento</h3>
@@ -5245,6 +5274,10 @@ async function pantallaPlataforma() {
      la única pantalla desde donde se mueve plata de un cliente sin tener su
      panel delante, así que el destino tiene que estar a la vista antes de
      apretar y no después. */
+  document.querySelectorAll("[data-cuenta]").forEach(c => c.onchange = () => {
+    guardarElegidos([...document.querySelectorAll("[data-cuenta]:checked")].map(x => x.dataset.cuenta));
+    pantallaPlataforma();
+  });
   document.querySelectorAll("[data-operar]").forEach(b => {
     b.onclick = () => operarComo(b.dataset.operar, b);
   });

@@ -2092,3 +2092,16 @@ select{transition:border-color .15s ease,box-shadow .15s ease}
   .tabla-fases .fase-tipo td:first-child{padding-left:0}
   .tabla-fases td.vacia{display:none}
 }
+
+/* ─── qué eventos entran en la cuenta de Plataforma ───
+   Plegable: se tilda una vez y después estorba. Abierto sólo mientras no
+   hay nada elegido, que es cuando hace falta. */
+.elegir-eventos{padding:14px 18px;margin-bottom:18px}
+.elegir-eventos summary{cursor:pointer;font-size:14px;color:var(--txt-2)}
+.elegir-eventos summary b{color:var(--txt)}
+.elegir-eventos .ayuda{display:block;margin:8px 0 10px}
+.elegir-lista{display:grid;gap:4px}
+.elegir-lista .check{flex-direction:row;align-items:center;gap:10px;min-height:36px;cursor:pointer}
+.elegir-lista .check input{width:18px;height:18px;margin:0;accent-color:var(--rojo)}
+.elegir-lista .check span{font-family:var(--texto);font-size:13.5px;letter-spacing:0;text-transform:none;color:var(--txt-2)}
+.elegir-lista .check span b{color:var(--txt);font-weight:600}
