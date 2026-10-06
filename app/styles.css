@@ -173,6 +173,11 @@ input{font:inherit}
    teléfono el hero ya se comía media pantalla, y esto no puede devolvérsela. */
 .hero .carril{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:clamp(16px,3vw,44px);align-items:start}
 .hero .carril > *{grid-column:1}
+/* Sin src todavía (el esqueleto), el afiche guarda su lugar con la
+   proporción del flyer más común (4:5) y el color de los huesos. Con la
+   imagen puesta manda su alto real: es más bajo que las cuatro filas de
+   texto, así que eso no mueve nada. */
+.hero .hero-arte:not([src]){aspect-ratio:4/5;background:rgba(246,241,228,.13);box-shadow:none}
 .hero .hero-arte{
   grid-column:2;grid-row:1 / span 4;align-self:start;
   width:clamp(92px,24vw,230px);height:auto;max-height:min(62vw,410px);
@@ -220,6 +225,13 @@ input{font:inherit}
 .cuerpo .hueso{background:rgba(23,19,16,.09)}
 .bajada .hueso{display:block;margin-top:8px;height:.8em}
 .datos .hueso{height:1em}
+/* El esqueleto mide lo mismo que lo que viene: el renglón del lugar, los
+   datos en dos renglones y el espacio de las entradas (un tipo más las
+   fases). Medido en un teléfono de 412px con LÜMEN, Nocturne y Latina; antes
+   la página bajaba 116px al llegar el evento. */
+.hero .eyebrow:has(> .hueso){min-height:17px}
+.hero .datos:has(> .hueso){min-height:42px}
+.panel[aria-busy="true"] .tipos{min-height:340px}
 .tipo.esqueleto{display:flex;flex-direction:column;align-items:flex-start;gap:10px;min-height:104px;justify-content:center}
 .tipo.esqueleto .hueso:last-child{margin-top:4px}
 

@@ -203,6 +203,12 @@ img{max-width:100%;display:block}
    quedan 260 y antes gastaba 315. De ahí salen estos paddings y no de una
    escala: en escritorio sobra pantalla y el aire vuelve casi entero. */
 .hero{padding:clamp(18px,4.6vw,54px) 0 clamp(16px,3vw,30px)}
+/* La vidriera de un cliente no muestra el eslogan de TICKETAZO mientras
+   llega su nombre (index.html pone la clase, portada.js la saca). Queda un
+   solo renglón reservado, que es lo que ocupa el nombre: así el bloque no
+   se encoge cuando aparece. */
+.vidriera-cargando .hero .titulo,.vidriera-cargando .hero .bajada{visibility:hidden}
+.vidriera-cargando .hero .titulo .l + .l{display:none}
 /* Los tres renglones están cortados a mano, así que el cuerpo se ata al
    ancho de la ventana y no a un piso fijo: con un piso, abajo de 400px el
    renglón más largo se parte y el título pasa a cuatro líneas mal cortadas.
@@ -513,6 +519,12 @@ img{max-width:100%;display:block}
    Contadas, la tarjeta mide lo mismo haya dos o haya veinte. */
 .cartelera{padding-bottom:clamp(56px,9vw,96px)}
 .grilla{display:grid;gap:30px 22px;grid-template-columns:1fr}
+/* Mientras llega la cartelera la grilla está vacía y el pie subía a la mitad
+   de la primera pantalla, para irse de un salto cuando aparecían los eventos
+   (CLS 0,23 medido en un teléfono con 4G). Con el alto reservado el pie
+   espera abajo; cuando la grilla se llena, lo que cambia queda fuera de la
+   pantalla. */
+.grilla[aria-busy="true"]{min-height:100vh}
 @media (min-width:540px){ .grilla{grid-template-columns:repeat(2,1fr)} }
 @media (min-width:840px){ .grilla{grid-template-columns:repeat(3,1fr)} }
 @media (min-width:1120px){ .grilla{grid-template-columns:repeat(4,1fr)} }

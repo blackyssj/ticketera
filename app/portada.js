@@ -170,9 +170,14 @@ function pedirCartelera() {
   if (DEMO) {
     return Promise.resolve({ ok: true, eventos: window.DEMO_CARTELERA || [] });
   }
-  return fetch(`${CFG.SUPABASE_URL}/functions/v1/eventos`, {
-    headers: { Authorization: `Bearer ${CFG.SUPABASE_ANON_KEY}` },
-  }).then(r => r.json());
+  /* El pedido que index.html disparó desde el <head>, se consume una sola
+     vez: un "Reintentar" vuelve a pedir. Si se cortó en el camino, se pide de
+     nuevo en vez de dar la cartelera por perdida. GET sin cabeceras: la
+     función no las pide y con ellas el navegador manda antes un OPTIONS. */
+  const pedir = () => fetch(`${CFG.SUPABASE_URL}/functions/v1/eventos`).then(r => r.json());
+  const temprano = window.__cartelera;
+  window.__cartelera = null;
+  return temprano ? temprano.then(r => r.json(), pedir) : pedir();
 }
 
 /* ── el afiche ──
@@ -288,7 +293,7 @@ function cuandoTxt(e) {
 function tarjeta(e, i) {
   const conFlyer = !!e.flyer_url;
   return `<a class="evento${e.venta === "agotado" ? " agotado" : ""}" href="${esc(e.url)}">
-    ${afiche(e, i < 2)}
+    ${afiche(e, i === 0)}
     ${perf}
     <div class="talon">
       <div class="cuando"><span>${cuandoTxt(e)}<i class="hora"> · ${esc(e.hora)}</i></span></div>
@@ -369,7 +374,7 @@ function destacado(e, i) {
 function fecha(e, i) {
   const ya = cerca(e.fecha);
   return `<a class="fecha${e.venta === "agotado" ? " agotado" : ""}" href="${esc(e.url)}">
-    ${afiche(e, i < 3)}
+    ${afiche(e, i < 2)}
     ${perf}
     <div class="talon">
       <span class="cuando">${ya ? `<b class="ya">${esc(ya)}</b>`
@@ -742,21 +747,31 @@ function cablearFiltros(lista, grilla) {
 function vestirVidriera(eventos) {
   const e = eventos[0];
   if (!e) return;
-  const t = $(".hero .titulo");
-  if (t) t.innerHTML = `<span class="l fluor">${esc(e.organizador_nombre)}</span>`;
-  const b = $(".hero .bajada");
-  if (b) b.textContent = eventos.length > 1
-    ? "Elegí tu fecha, pagás con QR y la entrada te llega al toque."
-    : "Pagás con QR y la entrada te llega al toque.";
-  document.title = `${e.organizador_nombre} — entradas`;
-  if (e.papel && e.papel.length === 2) {
-    const r = document.documentElement.style;
-    r.setProperty("--noche", e.papel[0]);
-    r.setProperty("--fluor", e.papel[1]);
-  }
+  const v = { nombre: e.organizador_nombre, n: eventos.length, papel: e.papel };
+  ponerVidriera(v);
+  /* Guardado para la próxima visita: index.html aplica los colores antes de
+     pintar y ponerVidriera el nombre apenas corre este script, sin esperar
+     a la cartelera. Es de este teléfono nada más; si falla, no pasa nada. */
+  try { localStorage.setItem(`vidriera:${ORG}`, JSON.stringify(v)); } catch { /* sin storage */ }
   /* En la vidriera "Lo próximo" y "La cartelera" no separan nada: son las
      fechas de un solo cliente. Se callan, no se borran (ver más abajo). */
   $("#rotuloTxt").textContent = "Sus fechas";
+}
+
+function ponerVidriera(v) {
+  const t = $(".hero .titulo");
+  if (t) t.innerHTML = `<span class="l fluor">${esc(v.nombre)}</span>`;
+  const b = $(".hero .bajada");
+  if (b) b.textContent = v.n > 1
+    ? "Elegí tu fecha, pagás con QR y la entrada te llega al toque."
+    : "Pagás con QR y la entrada te llega al toque.";
+  document.title = `${v.nombre} — entradas`;
+  if (v.papel && v.papel.length === 2) {
+    const r = document.documentElement.style;
+    r.setProperty("--noche", v.papel[0]);
+    r.setProperty("--fluor", v.papel[1]);
+  }
+  document.documentElement.classList.remove("vidriera-cargando");
 }
 
 /* Lo de arriba: el afiche del único evento, o el carrusel de la cartelera
@@ -791,6 +806,7 @@ async function pintar() {
   if (!motivo && (!r || r.ok === false)) motivo = r?.motivo || "La cartelera no respondió.";
 
   if (motivo) {
+    document.documentElement.classList.remove("vidriera-cargando");
     grilla.setAttribute("aria-busy", "false");
     $("#rotuloCuenta").textContent = "";
     grilla.innerHTML = cartel("No se pudo cargar la cartelera", motivo, "Reintentar");
@@ -809,6 +825,8 @@ async function pintar() {
   grilla.setAttribute("aria-busy", "false");
 
   if (ORG) vestirVidriera(eventos);
+  // Sin fechas no hay nombre que poner: queda el título general.
+  document.documentElement.classList.remove("vidriera-cargando");
 
   if (!eventos.length) {
     $("#rotuloCuenta").textContent = "";
@@ -895,5 +913,13 @@ async function pintar() {
 
 cablearSalida();
 abrirPuerta();
+/* La vidriera que ya se visitó se viste con lo guardado, sin esperar a la
+   cartelera: el nombre del cliente aparece en el primer pintado. */
+if (ORG) {
+  try {
+    const v = JSON.parse(localStorage.getItem(`vidriera:${ORG}`) || "null");
+    if (v && v.nombre) ponerVidriera(v);
+  } catch { /* sin storage: espera a la cartelera */ }
+}
 pintar();
 })();

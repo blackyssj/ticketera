@@ -283,7 +283,18 @@ function apiSupabase() {
   const evento = () => {
     const temprano = window.__evento;
     window.__evento = null;
-    const pedir = () => fn("evento", { organizador: CFG.ORGANIZADOR, evento: CFG.EVENTO });
+    /* GET sin cabeceras, igual que el arranque temprano de evento.html: un
+       pedido simple no paga el OPTIONS previo. */
+    const pedir = async () => {
+      let r;
+      try {
+        r = await fetch(`${CFG.SUPABASE_URL}/functions/v1/evento?organizador=` +
+          `${encodeURIComponent(CFG.ORGANIZADOR)}&evento=${encodeURIComponent(CFG.EVENTO)}`);
+      } catch {
+        throw new Error("Sin conexión. Revisá tu internet y volvé a intentar.");
+      }
+      return leer(r);
+    };
     return temprano ? temprano.then(leer, pedir) : pedir();
   };
   return {
@@ -462,7 +473,14 @@ function ponerLogo(e) {
 /* Dónde queda (0086). Con dirección o punto, el bloque aparece; sin nada,
    sigue oculto y la página es la de siempre. El mapa se pide recién acá y
    no en el HTML: un iframe de Google en una página sin punto es un pedido
-   a Google por nada. `loading="lazy"` para que no compita con el afiche. */
+   a Google por nada.
+
+   Y ni siquiera acá: el iframe se crea recién cuando la caja está por entrar
+   en pantalla. `loading="lazy"` no alcanzaba: el navegador lo carga si está
+   a menos de ~1.250px, o sea siempre, y el mapa son ~57 pedidos y 450 KB de
+   JavaScript de Google peleándole la red al afiche y a los precios, para un
+   mapa que la mayoría no mira. La caja tiene su alto fijo (styles.css), así
+   que el iframe llega sin mover nada. */
 function pintarUbicacion() {
   const e = D.evento;
   const punto = e.lat != null && e.lng != null;
@@ -473,8 +491,26 @@ function pintarUbicacion() {
   if (punto) {
     const q = `${e.lat},${e.lng}`;
     const mapa = $("#ubiMapa");
-    mapa.innerHTML = `<iframe src="https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=16&hl=es&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mapa: ${esc(e.lugar || e.direccion || "")}"></iframe>`;
+    const poner = () => {
+      mapa.innerHTML = `<iframe src="https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=16&hl=es&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mapa: ${esc(e.lugar || e.direccion || "")}"></iframe>`;
+    };
     mapa.hidden = false;
+    // pintarUbicacion corre otra vez cuando se recarga el evento: un solo ojo.
+    if (mapa._ojo) mapa._ojo.disconnect();
+    if ("IntersectionObserver" in window) {
+      const ojo = mapa._ojo = new IntersectionObserver(vistas => {
+        if (!vistas.some(v => v.isIntersecting)) return;
+        ojo.disconnect();
+        poner();
+      });
+      /* Recién con la página cargada: aunque la caja asome en la primera
+         pantalla, el mapa no le pelea la red al afiche ni a los precios. */
+      const mirar = () => ojo.observe(mapa);
+      if (document.readyState === "complete") mirar();
+      else window.addEventListener("load", mirar, { once: true });
+    } else {
+      poner();
+    }
     const ir = $("#ubiLlegar");
     ir.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
     ir.hidden = false;
@@ -518,6 +554,9 @@ function pintarHero() {
     afiche.onerror = () => { afiche.hidden = true; };
     afiche.src = arte;
     afiche.hidden = false;
+  } else {
+    // El esqueleto le guarda el lugar (evento.html); sin arte se va.
+    afiche.hidden = true;
   }
   /* Las otras fechas del organizador, si las hay. `fechas` cuenta las
      publicadas y con fase abierta —las que la vidriera de verdad muestra—
@@ -934,7 +973,7 @@ function vencer() {
 }
 
 /* ── navegación ──────────────────────────────────────────────── */
-function irA(paso) {
+function irA(paso, { quieto = false } = {}) {
   // La dirección hace que la transición signifique algo: adelante entra por
   // la derecha, volver entra por la izquierda. Sin eso son todas iguales y
   // el movimiento es decoración.
@@ -955,6 +994,7 @@ function irA(paso) {
   pintarPasos();
   if (paso === "entradas") pintarTipos();
   pintarRail();
+  if (quieto) return;
   const y = $("#pasos").getBoundingClientRect().top + window.scrollY - 70;
   // left explícito: sin él la página se queda donde estaba de costado
   window.scrollTo({ top: Math.max(y, 0), left: 0 });
@@ -1759,10 +1799,14 @@ async function arrancar() {
   armarDudas();
   precargarComprador();
   $("#avisoEdad").hidden = edadMinima() < 18;
-  $("#btnCompartirEvento").hidden = false;
+  $("#btnCompartirEvento").style.visibility = "";
   pintarTipos();
   panelEntradas.removeAttribute("aria-busy");
-  irA("entradas");
+  /* Sin mover la página: irA baja hasta los pasos, y al cargar eso
+     escondía el hero con el afiche —lo que confirma que se llegó al evento
+     correcto— a medio segundo de aparecer. El que llega ve el hero y baja
+     él; los pasos ya quedan a la vista justo debajo. */
+  irA("entradas", { quieto: true });
 }
 arrancar();
 })();

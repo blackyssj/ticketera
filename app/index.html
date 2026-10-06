@@ -51,13 +51,51 @@
      atrás, que es lo único que importa en la primera pantalla— arrancan sin
      esperar el saludo. En 4G eso es medio segundo. -->
 <link rel="preconnect" href="https://mjotxzcddhqqpuhkcetl.supabase.co" crossorigin>
+<!-- Y otro sin crossorigin para los flyers: un <img> común va por la pila de
+     conexiones CON credenciales y no aprovecha la de arriba, que es la del
+     fetch. Sin este, el primer afiche paga su propio saludo TLS. -->
+<link rel="preconnect" href="https://mjotxzcddhqqpuhkcetl.supabase.co">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Azeret+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/portada.css?v=36">
+<link rel="stylesheet" href="/portada.css?v=37">
 <!-- La clase `js` la pone el propio script, en línea y antes de pintar nada:
      de ella cuelga el estado inicial invisible de las tarjetas. Si el script
      no llega a correr, la clase no está, las tarjetas nunca se esconden y la
      cartelera se ve igual — sin animación, pero se ve. -->
-<script>document.documentElement.className="js"</script>
+<script>
+/* Arranque temprano, igual que evento.html con la función `evento`: la
+   cartelera se pide acá, antes de las fuentes, el CSS y los scripts, y la
+   promesa queda en window.__cartelera para que portada.js la consuma. Antes
+   salía recién cuando terminaba portada.js, casi un segundo después del HTML
+   en 4G, y los flyers esperaban atrás. GET sin cabeceras a propósito: así el
+   navegador no manda antes un OPTIONS (otro cuarto de segundo). La URL está
+   repetida de config.js porque config.js todavía no cargó; si cambia el
+   proyecto, cambian los dos. `?demo=1` no pide nada, como en portada.js.
+
+   En la vidriera (/<organizador>, un solo segmento, misma regla que ORG en
+   portada.js) el título de TICKETAZO no se muestra mientras llega el nombre
+   del cliente: el que entra por el link del relacionador veía un segundo el
+   eslogan de otra marca. Si ya pasó antes por acá, sus colores quedaron
+   guardados y se aplican antes de pintar. */
+(function () {
+  var d = document.documentElement;
+  d.className = "js";
+  try {
+    if (new URLSearchParams(location.search).get("demo") !== "1") {
+      window.__cartelera = fetch("https://mjotxzcddhqqpuhkcetl.supabase.co/functions/v1/eventos");
+      window.__cartelera.catch(function () {});
+    }
+    var seg = location.pathname.split("/").filter(Boolean);
+    if (seg.length === 1) {
+      d.className += " vidriera-cargando";
+      var v = JSON.parse(localStorage.getItem("vidriera:" + decodeURIComponent(seg[0]).toLowerCase()) || "null");
+      if (v && v.papel && v.papel.length === 2) {
+        d.style.setProperty("--noche", v.papel[0]);
+        d.style.setProperty("--fluor", v.papel[1]);
+      }
+    }
+  } catch (e) { /* sin storage o path raro: queda como siempre */ }
+})();
+</script>
 </head>
 <body>
 
@@ -213,6 +251,6 @@
 <!-- Sólo se usa con ?demo=1. Son 3 KB y evita una segunda ruta de la
      portada; cargarlo siempre cuesta menos que mantener dos páginas. -->
 <script src="/datos-demo-cartelera.js?v=2"></script>
-<script src="/portada.js?v=42"></script>
+<script src="/portada.js?v=43"></script>
 </body>
 </html>

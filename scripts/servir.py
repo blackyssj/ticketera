@@ -41,6 +41,11 @@ def reglas():
     cfg = json.loads((RAIZ / "vercel.json").read_text(encoding="utf-8"))
     out = []
     for r in cfg.get("rewrites", []):
+        # Las reglas con `has` son para los robots de WhatsApp y compañía (la
+        # tarjeta og), y las que mandan a otro host no se pueden servir desde
+        # disco: el navegador de desarrollo no es ninguno de los dos.
+        if r.get("has") or r["destination"].startswith("http"):
+            continue
         patron = r["source"]
         # `:param` toma un segmento; `(.*)` ya es regex y se deja como está.
         patron = re.sub(r":[A-Za-z_][A-Za-z0-9_]*", "[^/]+", patron)

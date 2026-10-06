@@ -44,23 +44,20 @@
    dos segmentos, y el primero no es una ruta reservada. Si cambia una, cambia
    la otra. `?modo=demo` no pide nada, igual que allá.
 
-   La URL y la anon key están repetidas acá a propósito: config.js todavía no
-   cargó y esperar a que cargue es perder lo que se gana. Son públicas por
-   diseño (ver config.js), pero TIENEN QUE COINCIDIR con config.js — si se
-   cambia el proyecto, se cambian los dos lugares. */
+   La URL está repetida acá a propósito: config.js todavía no cargó y
+   esperar a que cargue es perder lo que se gana. TIENE QUE COINCIDIR con
+   config.js — si se cambia el proyecto, se cambian los dos lugares.
+
+   GET con los datos en la URL y SIN cabeceras: así es un pedido "simple" y
+   el navegador no manda antes un OPTIONS, que desde Bolivia es otro cuarto
+   de segundo. La función acepta las dos formas y devuelve lo mismo. */
 (function () {
   try {
     if (new URLSearchParams(location.search).get("modo") === "demo") return;
     var seg = location.pathname.split("/").filter(Boolean).map(decodeURIComponent);
     if (seg.length < 2 || seg[0] === "admin" || seg[0] === "orden") return;
-    var URL_ = "https://mjotxzcddhqqpuhkcetl.supabase.co";
-    var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qb3R4emNkZGhxcXB1aGtjZXRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4NTk2NzMsImV4cCI6MjEwMzQzNTY3M30.yym969pECvbp_01-vM4d5QCVEvUV_kPUmNhtp51a0g0";
-    window.__evento = fetch(URL_ + "/functions/v1/evento", {
-      method: "POST",
-      headers: { apikey: ANON, Authorization: "Bearer " + ANON,
-                 "Content-Type": "application/json" },
-      body: JSON.stringify({ organizador: seg[0], evento: seg[1] })
-    });
+    window.__evento = fetch("https://mjotxzcddhqqpuhkcetl.supabase.co/functions/v1/evento" +
+      "?organizador=" + encodeURIComponent(seg[0]) + "&evento=" + encodeURIComponent(seg[1]));
     // Nadie escucha todavía: sin esto un fallo de red se loguea como
     // "unhandled rejection" aunque app.js lo vaya a manejar después.
     window.__evento.catch(function () {});
@@ -70,7 +67,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=44">
+<link rel="stylesheet" href="/styles.css?v=45">
 </head>
 <body>
 
@@ -106,12 +103,18 @@
          paso queda en caché para el ticket, que se dibuja sobre esta misma
          imagen: por eso el crossorigin, ticket.js la carga igual y sin él
          el navegador la bajaría dos veces. app.js le pone el src cuando la
-         función trae arte_url; sin arte no aparece. -->
+         función trae arte_url; sin arte no aparece.
+         Nace VISIBLE y sin src, con su lugar guardado (4:5, styles.css): si
+         naciera oculto, el texto del hero ocupaba todo el ancho en el
+         esqueleto y se reacomodaba en una columna más angosta al llegar el
+         afiche — media página saltando justo cuando la persona iba a tocar. -->
     <img class="hero-arte" id="heroArte" alt="" fetchpriority="high" decoding="async"
-         crossorigin="anonymous" hidden>
-    <p class="bajada" id="heroBajada"><span class="hueso" style="width:92%"></span><span class="hueso" style="width:58%"></span></p>
-    <div class="datos" id="heroDatos"><span class="hueso" style="width:96px"></span><span class="hueso" style="width:120px"></span></div>
-    <button type="button" class="hero-compartir" id="btnCompartirEvento" hidden>
+         crossorigin="anonymous" width="800" height="1000">
+    <p class="bajada" id="heroBajada"><span class="hueso" style="width:86%"></span></p>
+    <div class="datos" id="heroDatos"><span class="hueso" style="width:96px"></span><span class="hueso" style="width:120px"></span><span class="hueso" style="width:140px"></span></div>
+    <!-- visibility y no hidden: el botón ocupa su lugar desde el esqueleto y
+         la página no baja 44px cuando aparece. -->
+    <button type="button" class="hero-compartir" id="btnCompartirEvento" style="visibility:hidden">
       <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10V2M5 4.5 8 1.5l3 3"/><path d="M3 8v5.5h10V8"/></svg>
       Compartir evento
     </button>
@@ -147,7 +150,11 @@
   <div class="carril">
 
     <!-- rail de pasos -->
-    <nav class="pasos" id="pasos" aria-label="Pasos de la compra"></nav>
+    <!-- Los pasos ya escritos, iguales a los que pinta app.js (pintarPasos)
+         con el vocabulario de siempre: vacío medía 20px y al llenarse 64, y
+         empujaba las entradas justo debajo. app.js los reescribe al llegar
+         el evento (por si son "Reservas"). -->
+    <nav class="pasos" id="pasos" aria-label="Pasos de la compra"><div class="paso" data-estado="actual" aria-current="step"><span class="n">1</span><span class="t">Entradas</span></div><span class="paso-sep"></span><div class="paso" data-estado="pendiente"><span class="n">2</span><span class="t">Tus datos</span></div><span class="paso-sep"></span><div class="paso" data-estado="pendiente"><span class="n">3</span><span class="t">Pago</span></div><span class="paso-sep"></span><div class="paso" data-estado="pendiente"><span class="n">4</span><span class="t">Tu entrada</span></div></nav>
 
     <div class="tablero">
       <!-- ─── columna de contenido ─── -->
@@ -397,6 +404,6 @@
 <!-- La sesión del comprador. Antes de app.js: crearOrden le pide el token
      y la pantalla "listo" le pide crear/entrar/vincular. -->
 <script src="/cuenta.js?v=4"></script>
-<script src="/app.js?v=49"></script>
+<script src="/app.js?v=50"></script>
 </body>
 </html>
