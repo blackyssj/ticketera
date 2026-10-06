@@ -56,8 +56,9 @@ const H2H_SECRET = Deno.env.get("H2H_API_SECRET") ?? "";
    acuerde de cargar un secret. */
 const AUTO_CLAVE = Deno.env.get("AUTO_CLAVE") ?? "";
 
-/* Cuántos pagos como mucho por corrida. El cron vuelve en quince minutos;
-   lo que no entró en esta tanda sale en la siguiente. Sin tope, una base
+/* Cuántos pagos como mucho por corrida. El cron vuelve al turno siguiente
+   del cliente, dos horas después (0099); lo que no entró en esta tanda sale
+   ahí. Sin tope, una base
    con veinte eventos vencidos deja la función corriendo hasta el timeout y
    los últimos quedan a medio camino. */
 const TOPE_POR_CORRIDA = 10;
@@ -93,6 +94,55 @@ async function rpc(nombre: string, cuerpo: unknown, token?: string) {
 
 type Salida = { cuerpo: Record<string, unknown>; http: number };
 
+/* La glosa es lo que se lee en el extracto de quien recibe. Toda la plata
+   de los clientes cae en la misma cuenta (la de Francisco, que después le
+   paga a cada uno), y con "TICKETAZO c7d3c8cb" no había forma de saber de
+   quién era cada giro sin entrar a la base. Ahora dice cliente y evento:
+   "TICKETAZO LUMEN HALLOWEEN RITUAL".
+
+   Hasta 40 caracteres, en mayúsculas y sin tildes: es lo más largo que ya
+   pasó por el BCP (la glosa del Scrum portal), y el liquidador concilia la
+   respuesta del banco comparando este mismo texto, así que una glosa que
+   el banco recorte o cambie deja el pago colgado sin cerrar. Se corta en
+   un espacio para no dejar palabras a medias. La fecha no va: el extracto
+   ya la trae. Si la consulta falla, la glosa vieja: un nombre lindo no
+   puede frenar un pago. */
+const LARGO_GLOSA = 40;
+function limpiar(s: string) {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase()
+    .replace(/[^A-Z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+function armarGlosa(org: string, evento: string): string {
+  const o = limpiar(org);
+  let e = limpiar(evento);
+  // "Nocturne Halloween Party" de Nocturne, "Latina" de Latina: el nombre
+  // del cliente no se repite.
+  if (e === o) e = "";
+  else if (o && e.startsWith(o + " ")) e = e.slice(o.length + 1);
+  let t = ["TICKETAZO", o, e].filter(Boolean).join(" ");
+  if (t.length > LARGO_GLOSA) {
+    t = t.slice(0, LARGO_GLOSA + 1);
+    t = t.slice(0, t.lastIndexOf(" ")).trim();
+    // "SERENATA A" no: el corte no deja un conector colgando.
+    t = t.replace(/( (A|AL|DE|DEL|EL|LA|LAS|LOS|Y|EN))+$/, "");
+  }
+  return t;
+}
+async function glosa(evento: string): Promise<string> {
+  const vieja = `TICKETAZO ${String(evento).slice(0, 8)}`;
+  try {
+    const r = await fetch(
+      `${SB}/rest/v1/eventos?id=eq.${encodeURIComponent(evento)}&select=nombre,organizadores(nombre)`,
+      { headers: H });
+    if (!r.ok) return vieja;
+    const [e] = await r.json();
+    const org = e?.organizadores?.nombre ?? "";
+    return org ? armarGlosa(org, e?.nombre ?? "") : vieja;
+  } catch {
+    return vieja;
+  }
+}
+
 /* El pedido al liquidador y lo que se anota según cómo conteste. Recibe la
    fila ya creada: quién la creó —una persona o el cron— acá no importa, y
    eso es justamente lo que permite que haya un solo camino. */
@@ -110,7 +160,7 @@ async function enviar(pedido: any, evento: string): Promise<Salida> {
     firstLastName: b.apellido,
     documentType: b.documento_tipo,
     documentNumber: b.documento_numero,
-    firstDetail: `TICKETAZO ${String(evento).slice(0, 8)}`,
+    firstDetail: await glosa(evento),
     /* A dónde avisar cuando el banco termine. Va en cada pedido además de
        estar registrada del lado del liquidador: si algún día alguien toca
        esa configuración, el pago sigue sabiendo a dónde contestar. Tiene
