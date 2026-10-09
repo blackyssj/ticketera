@@ -113,36 +113,108 @@ const ES_UUID = v => /^[0-9a-f-]{36}$/i.test(String(v || ""));
    se pregunta por el id entero en vez de fallar. Que ese camino sea el raro
    y no el normal también achica lo que se puede tantear con él — devuelve
    el nombre del comprador y los códigos de QR. */
+/* Todo pedido con tope. Con una raya de señal un fetch no falla: se queda
+   colgado, y la página quedaba para siempre en "Confirmando tu pago" justo
+   con quien acaba de pagar. */
+async function conTope(url, init = {}, ms = 15000) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try { return await fetch(url, { ...init, signal: ctl.signal }); }
+  finally { clearTimeout(t); }
+}
+
+/* GET sin cabeceras: la función lee ?id= y ?pago_ref=, y así el navegador
+   no manda antes un OPTIONS (un cuarto de segundo desde Bolivia). Un cuerpo
+   que no es JSON —un 502 del gateway— vuelve como ok:false en vez de tirar. */
 function pedir(cuerpo) {
-  return fetch(`${CFG.SUPABASE_URL}/functions/v1/orden`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json",
-               Authorization: `Bearer ${CFG.SUPABASE_ANON_KEY}` },
-    body: JSON.stringify(cuerpo),
-  }).then(res => res.json());
+  const q = cuerpo.orden ? `id=${encodeURIComponent(cuerpo.orden)}`
+                         : `pago_ref=${encodeURIComponent(cuerpo.pago_ref)}`;
+  return conTope(`${CFG.SUPABASE_URL}/functions/v1/orden?${q}`)
+    .then(res => res.json().catch(() => ({ ok: false, red: true,
+      motivo: `El servidor no respondió bien (${res.status}). Probá de nuevo.` })));
+}
+
+/* Una consulta a la pasarela, por estado-orden. Tres respuestas posibles:
+   "pagada"; "no", cuando la respuesta es definitiva (vencida, en revisión
+   manual, no existe: 4xx); y "espera" para todo lo demás — sigue
+   pendiente, se cortó la red, o la pasarela tropezó (5xx). Antes cualquier
+   ok:false cortaba el sondeo, y un tropiezo de la pasarela le decía
+   "todavía sin confirmar" a alguien que ya había pagado. */
+async function consultarPago(orden) {
+  try {
+    const res = await conTope(`${CFG.SUPABASE_URL}/functions/v1/estado-orden`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json",
+                 Authorization: `Bearer ${CFG.SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ orden }),
+    }, 20000);
+    const e = await res.json().catch(() => null);
+    if (e && e.ok && e.estado === "pagada") return "pagada";
+    /* "vencida" NO es definitiva: una orden con QR sólo se vence dentro de
+       emitir_orden, o sea DESPUÉS de que la pasarela dijo "pagado" (pagó
+       pasados los 10 minutos), y el barrido la emite igual en menos de un
+       minuto. Cortar acá le decía "sin confirmar" a alguien que pagó. Llega
+       como 200 o como 409, por eso se mira antes que el código. */
+    if (e && e.estado === "vencida") return "espera";
+    if (e && e.ok && e.estado && e.estado !== "pendiente") return "no";
+    if (res.status >= 400 && res.status < 500) return "no";
+    return "espera";
+  } catch {
+    return "espera";
+  }
 }
 
 /* Volver del banco y leer "todavía sin confirmar" es el momento en que el
-   comprador cree que perdió la plata. El cobro se confirma preguntándole a
-   la pasarela, así que se le pregunta —unas cuantas veces, espaciado— antes
-   de darle esa noticia. */
+   comprador cree que perdió la plata. La primera consulta sale YA —antes
+   esperaba 1,5 s sin preguntar nada— y después espaciado. Si en ~25 s no
+   hay respuesta clara no se rinde: sigue mirando cada 10 s hasta 3 minutos
+   (el barrido del servidor emite cada minuto aunque nadie mire) y le da un
+   botón para mirar ya. */
+const ESPERAS = [0, 1500, 1500, 2500, 4000, 4000, 5000, 6000];
 async function esperarConfirmacion(orden) {
-  for (let i = 0; i < 8; i++) {
-    await new Promise(r => setTimeout(r, i < 3 ? 1500 : 4000));
-    let e;
-    try {
-      const res = await fetch(`${CFG.SUPABASE_URL}/functions/v1/estado-orden`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json",
-                   Authorization: `Bearer ${CFG.SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ orden }),
-      });
-      e = await res.json();
-    } catch { continue; }
-    if (e.ok && e.estado === "pagada") return true;
-    if (e.ok === false) return false;
+  for (const ms of ESPERAS) {
+    if (ms) await new Promise(r => setTimeout(r, ms));
+    const e = await consultarPago(orden);
+    if (e !== "espera") return e === "pagada";
   }
+  decir("Seguimos confirmando",
+        "El banco está tardando. Si ya pagaste no hace falta que hagas nada: " +
+        "esta página sigue mirando sola y tus entradas aparecen acá.");
+  const ahora = mostrarRevisar();
+  const fin = Date.now() + 3 * 60 * 1000;
+  while (Date.now() < fin) {
+    await Promise.race([new Promise(r => setTimeout(r, 10000)), ahora.tocado()]);
+    const e = await consultarPago(orden);
+    if (e !== "espera") { ahora.sacar(); return e === "pagada"; }
+  }
+  ahora.sacar();
   return false;
+}
+
+/* El botón "Ya pagué, revisar ahora": adelanta la próxima consulta. */
+function mostrarRevisar() {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "btn plano"; b.id = "btnRevisar";
+  b.textContent = "Ya pagué, revisar ahora";
+  $("#nota").after(b);
+  let avisar = () => {};
+  b.onclick = () => { b.disabled = true; b.textContent = "Revisando…"; avisar(); };
+  return {
+    tocado: () => new Promise(r => { avisar = () => { r(); setTimeout(() => {
+      b.disabled = false; b.textContent = "Ya pagué, revisar ahora"; }, 1500); }; }),
+    sacar: () => b.remove(),
+  };
+}
+
+/* El arte de la entrada se baja MIENTRAS se confirma el pago: antes recién
+   salía al final y eran 0,6-2 s más mirando "Dibujando…". Con crossOrigin
+   igual que ticket.js (cargarImagen), así se reusa la misma copia. Sólo si
+   la función lo manda (orden pendiente con arte_url). */
+function precargarArte(url) {
+  if (!url) return;
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.src = url;
 }
 
 async function cargar() {
@@ -174,8 +246,23 @@ async function cargar() {
 
   if (r.estado !== "pagada") {
     decir("Confirmando tu pago", "Un momento, estamos verificándolo con el banco.");
+    precargarArte(r.arte_url);
     if (ES_UUID(uuid) && await esperarConfirmacion(uuid)) {
-      r = await pedir({ orden: uuid });
+      try { r = await pedir({ orden: uuid }); }
+      catch { r = { ok: false }; }
+      // Pagada pero el segundo pedido falló: un reintento más antes de
+      // decir nada, porque la entrada ya existe.
+      if (!r.ok) {
+        await new Promise(res => setTimeout(res, 2000));
+        r = await pedir({ orden: uuid }).catch(() => ({ ok: false }));
+      }
+      if (!r.ok) {
+        decir("Pago confirmado",
+              "Tus entradas ya están emitidas, pero se cortó la conexión al " +
+              "mostrarlas. Volvé a abrir este link en un rato; también te llegan por correo.",
+              "error");
+        return;
+      }
     }
     if (!r.ok || r.estado !== "pagada") {
       decir("Todavía sin confirmar",
@@ -497,5 +584,11 @@ addEventListener("keydown", e => {
 });
 addEventListener("resize", () => { if (enPuerta >= 0) pintarPuerta(); });
 
-cargar();
+/* Nada que tire adentro de cargar() puede dejar la página en "Buscando" o
+   "Confirmando" para siempre: termina en un cartel con qué hacer. */
+cargar().catch(() => {
+  decir("No se pudo cargar",
+        "Se cortó la conexión. Volvé a abrir este link en un rato: si pagaste, " +
+        "tus entradas están guardadas y aparecen acá.", "error");
+});
 })();

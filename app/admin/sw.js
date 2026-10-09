@@ -30,7 +30,7 @@
 /* Subir esto cuando cambie la lista de abajo. Cambiar el nombre es lo
    que borra el cache anterior: sin eso, un shell viejo puede sobrevivir
    a un despliegue y nadie entiende por qué el portero ve otra cosa. */
-const CACHE = "puerta-v39";
+const CACHE = "puerta-v40";
 
 /* Rutas absolutas, iguales a las del HTML. Con rutas relativas, lo que se
    guardaba dependía de por dónde había entrado el portero: entrando por
@@ -44,7 +44,7 @@ const SHELL = [
   "/admin/puerta.js?v=34",
   "/admin/csv.js?v=30",
   "/config.js",
-  "/ticket.js?v=26",
+  "/ticket.js?v=27",
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js",
   "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js",
   "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js",
@@ -83,8 +83,64 @@ self.addEventListener("fetch", ev => {
   if (url.hostname.endsWith(".supabase.co")) return;   // la base nunca
 
   if (INMUTABLE.test(req.url)) { ev.respondWith(cacheAntes(req)); return; }
-  if (url.origin === self.location.origin) { ev.respondWith(redAntes(req)); return; }
+  if (url.origin === self.location.origin) {
+    ev.respondWith(VERSIONADO.test(url.search) ? versionado(req, ev) : redConTope(req, ev));
+    return;
+  }
 });
+
+/* ── con señal débil ──────────────────────────────────────────────
+   Antes todo lo nuestro iba a la red y sólo se usaba la copia si el fetch
+   FALLABA. Con una raya de señal no falla: queda colgado, y el portero que
+   recargaba en la fila miraba la pantalla en blanco aunque el panel entero
+   estuviera guardado en el teléfono. Ahora:
+
+   · lo que lleva ?v= (admin.js?v=66…) no cambia nunca para esa versión:
+     si está guardado sale de la copia, sin preguntar.
+   · lo demás (el HTML, config.js) espera a la red como mucho TOPE_RED_MS;
+     si no llegó y hay copia, sale la copia y la red termina de fondo y
+     actualiza lo guardado para la próxima. Sin copia, se espera a la red.
+
+   El HTML y sus ?v= se guardan juntos, así que una copia vieja del HTML
+   pide sus propios archivos viejos, que también están: la puerta abre
+   entera, con la versión anterior. Una versión atrasada funciona; una
+   pantalla en blanco, no. */
+const VERSIONADO = /[?&]v=/;
+const TOPE_RED_MS = 3000;
+
+async function guardada(req) {
+  const cache = await caches.open(CACHE);
+  return (await cache.match(req))
+      || (await cache.match(req, { ignoreSearch: true }))
+      || (req.mode === "navigate" ? await cache.match("/admin/index.html") : undefined);
+}
+
+async function versionado(req, ev) {
+  const cache = await caches.open(CACHE);
+  const hit = await cache.match(req);
+  return hit || redConTope(req, ev);
+}
+
+async function redConTope(req, ev) {
+  const cache = await caches.open(CACHE);
+  const red = fetch(req).then(res => {
+    if (res && res.ok) cache.put(req, res.clone());
+    return res;
+  });
+  red.catch(() => {});   // si gana la copia, el fallo de la red no se grita
+  const tope = new Promise(r => setTimeout(r, TOPE_RED_MS, "tope"));
+  try {
+    const gana = await Promise.race([red, tope]);
+    if (gana !== "tope") return gana;
+    const copia = await guardada(req);
+    if (copia) { ev.waitUntil(red.catch(() => {})); return copia; }
+    return await red;
+  } catch (err) {
+    return (await guardada(req))
+        || new Response("Sin conexión y sin copia guardada.",
+                        { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  }
+}
 
 async function cacheAntes(req) {
   const cache = await caches.open(CACHE);
@@ -98,20 +154,5 @@ async function cacheAntes(req) {
     /* Una fuente que no llega no puede tumbar la pantalla: el navegador
        usa la de sistema y la puerta sigue funcionando. */
     return new Response("", { status: 504, statusText: "sin conexión" });
-  }
-}
-
-async function redAntes(req) {
-  const cache = await caches.open(CACHE);
-  try {
-    const res = await fetch(req);
-    if (res && res.ok) cache.put(req, res.clone());
-    return res;
-  } catch (err) {
-    return (await cache.match(req))
-        || (await cache.match(req, { ignoreSearch: true }))
-        || (req.mode === "navigate" ? await cache.match("/admin/index.html") : undefined)
-        || new Response("Sin conexión y sin copia guardada.",
-                        { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
   }
 }

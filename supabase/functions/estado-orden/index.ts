@@ -54,17 +54,29 @@ async function consultar(pago_ref: string): Promise<{ pagado: boolean; monto: nu
      `correo` en solicitud_pago. Y con `id_transaccion` pero pasándole el
      uuid de la orden contesta "Error al crear la llave", que es otra cosa
      y también falla. Se averiguó probando contra el comercio real. */
-  const r = await fetch(`${V2PRO}/consulta_transaccion_v2.php`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(usuario && pass ? { "Authorization": "Basic " + btoa(`${usuario}:${pass}`) } : {}),
-    },
-    body: JSON.stringify({
-      id_comercio: Deno.env.get("V2PRO_LLAVE"),
-      id_transaccion: pago_ref,
-    }),
-  });
+  /* Con tope de 8 s, por debajo de los 20 s con los que la página de la
+     orden corta y vuelve a preguntar. Sin él, cada consulta cortada del
+     lado del navegador seguía viva acá con su conexión a la pasarela, y la
+     pasarela ya se quedó sin conexiones dos veces (01/10 y 08/10). Cortada
+     cuenta como "todavía no": la próxima consulta, o el barrido, la mira. */
+  let r: Response;
+  try {
+    r = await fetch(`${V2PRO}/consulta_transaccion_v2.php`, {
+      method: "POST",
+      signal: AbortSignal.timeout(8000),
+      headers: {
+        "Content-Type": "application/json",
+        ...(usuario && pass ? { "Authorization": "Basic " + btoa(`${usuario}:${pass}`) } : {}),
+      },
+      body: JSON.stringify({
+        id_comercio: Deno.env.get("V2PRO_LLAVE"),
+        id_transaccion: pago_ref,
+      }),
+    });
+  } catch (err) {
+    console.error(`consulta a la pasarela sin respuesta (${pago_ref.slice(0, 40)}…): ${err}`);
+    return { pagado: false, monto: null };
+  }
   const crudo = await r.text();
   const j = (() => { try { return JSON.parse(crudo); } catch { return {}; } })();
 

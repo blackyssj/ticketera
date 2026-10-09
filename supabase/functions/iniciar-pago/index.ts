@@ -52,13 +52,18 @@ Deno.serve(async (req) => {
     const { orden } = await req.json();
     if (!orden) return json({ ok: false, motivo: "Falta la orden." }, 400);
 
-    const o = await uno(`ordenes?id=eq.${orden}&select=id,estado,total,expira_at,pago_ref,comprador_nombre,comprador_email,organizador_id`);
+    const o = await uno(`ordenes?id=eq.${orden}&select=id,estado,total,expira_at,pago_ref,pago_url,comprador_nombre,comprador_email,organizador_id`);
     if (!o) return json({ ok: false, motivo: "Esa orden no existe." }, 404);
     if (o.estado === "pagada") return json({ ok: true, pago_ref: o.pago_ref, ya_pagada: true });
     if (o.estado !== "pendiente") return json({ ok: false, motivo: "Esa compra ya no está vigente." }, 409);
     if (new Date(o.expira_at) < new Date())
       return json({ ok: false, motivo: "Se venció la reserva. Volvé a elegir." }, 409);
-    if (o.pago_ref) return json({ ok: true, pago_ref: o.pago_ref, repetida: true });
+    /* El front reintenta con la misma orden (misma client_key) cuando se le
+       cortó la respuesta. Si el cobro ya estaba iniciado se devuelve el link
+       guardado (0101): v2pro lo da una sola vez. Sin link guardado (órdenes
+       de antes de 0101) el front no muestra la simulada: pide otra orden. */
+    if (o.pago_ref) return json({ ok: true, pago_ref: o.pago_ref, url: o.pago_url ?? null,
+                                  simulada: PASARELA !== "v2pro", repetida: true });
 
     let pago_ref = "", url: string | null = null;
 
@@ -74,8 +79,14 @@ Deno.serve(async (req) => {
       if (!usuario || !pass)
         return json({ ok: false, motivo: "La pasarela no está configurada." }, 500);
 
-      const r = await fetch(`${V2PRO}/solicitud_pago.php`, {
+      /* Con tope de 40 s, por debajo de los 45 s con los que el front corta
+         y reintenta: así el primer intento no sigue vivo cuando llega el
+         segundo sobre la misma orden. */
+      let r: Response;
+      try {
+      r = await fetch(`${V2PRO}/solicitud_pago.php`, {
         method: "POST",
+        signal: AbortSignal.timeout(40000),
         headers: {
           "Content-Type": "application/json",
           "Authorization": "Basic " + btoa(`${usuario}:${pass}`),
@@ -101,6 +112,10 @@ Deno.serve(async (req) => {
           so_extra1: o.id,
         }),
       });
+      } catch (err) {
+        console.error(`v2pro sin respuesta para ${o.id}: ${err}`);
+        return json({ ok: false, motivo: "La pasarela está tardando demasiado. Probá de nuevo en un momento." }, 504);
+      }
       const crudo = await r.text();
       const j = (() => { try { return JSON.parse(crudo); } catch { return {}; } })();
       pago_ref = j.id_transaccion ?? j.transaccion ?? "";
@@ -117,7 +132,22 @@ Deno.serve(async (req) => {
       pago_ref = "SIM-" + String(o.id).slice(0, 8).toUpperCase();
     }
 
-    await rest(`ordenes?id=eq.${o.id}`, { method: "PATCH", body: JSON.stringify({ pago_ref }) });
+    /* Sólo si nadie lo guardó antes. Con el reintento por la misma orden,
+       dos intentos pueden pedir cobro a la vez; el que termina segundo no
+       pisa al primero —el comprador pudo haber abierto ya ese QR—: devuelve
+       lo guardado. v2pro deduplica por codigoTransaccion, así que en general
+       son la misma transacción; si no, la otra queda huérfana y se loguea. */
+    const guardada = await rest(`ordenes?id=eq.${o.id}&pago_ref=is.null`, {
+      method: "PATCH", headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ pago_ref, pago_url: url }),
+    });
+    if (!guardada?.length) {
+      const ya = await uno(`ordenes?id=eq.${o.id}&select=pago_ref,pago_url`);
+      if (ya?.pago_ref !== pago_ref)
+        console.error(`iniciar-pago: transacción huérfana ${pago_ref.slice(0, 40)}… para ${o.id}`);
+      return json({ ok: true, pago_ref: ya?.pago_ref, url: ya?.pago_url ?? null,
+                    simulada: PASARELA !== "v2pro", repetida: true });
+    }
     return json({ ok: true, pago_ref, url, simulada: PASARELA !== "v2pro" });
   } catch (err) {
     return json({ ok: false, motivo: String((err as Error).message ?? err) }, 500);

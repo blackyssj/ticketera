@@ -8,6 +8,10 @@
 <meta name="theme-color" content="#180E3A">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- La función de la orden y el arte de la entrada: el saludo TLS sale
+     mientras baja lo demás. Dos porque el fetch (sin credenciales) y la
+     imagen del ticket (crossorigin) van por pilas de conexión distintas. -->
+<link rel="preconnect" href="https://mjotxzcddhqqpuhkcetl.supabase.co" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../styles.css?v=45">
 </head>
@@ -114,10 +118,12 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
-<script src="../config.js"></script>
-<script src="../cuenta.js?v=4"></script>
-<script src="../ticket.js?v=26"></script>
-<script src="orden.js?v=29"></script>
+<!-- defer en los cinco: corren en este mismo orden, pero el de jsdelivr ya
+     no frena el pedido de la orden mientras abre su conexión. -->
+<script defer src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<script defer src="../config.js"></script>
+<script defer src="../cuenta.js?v=4"></script>
+<script defer src="../ticket.js?v=27"></script>
+<script defer src="orden.js?v=30"></script>
 </body>
 </html>

@@ -23,12 +23,16 @@ const payload = (evento, t) => `EVT:${evento.id}:${t.code}`;
 /* Carga una imagen y espera a que esté lista. crossOrigin porque el arte
    vive en el storage de Supabase, otro origen: sin esto el canvas queda
    "tainted" y toDataURL tira SecurityError. */
+/* Con tope: una descarga que se cuelga (sin fallar) dejaba la página en
+   "Dibujando…" sin QR. A los 8 s se rinde y dibujarTicket hace la entrada
+   propia, con el mismo QR, que la puerta lee igual. */
 function cargarImagen(url) {
   return new Promise((ok, mal) => {
     const i = new Image();
+    const t = setTimeout(() => mal(new Error("El arte tardó demasiado.")), 8000);
     i.crossOrigin = "anonymous";
-    i.onload = () => ok(i);
-    i.onerror = () => mal(new Error("No se pudo cargar el arte."));
+    i.onload = () => { clearTimeout(t); ok(i); };
+    i.onerror = () => { clearTimeout(t); mal(new Error("No se pudo cargar el arte.")); };
     i.src = url;
   });
 }
@@ -71,13 +75,21 @@ function firma(x, W, H, o) {
    Bowie y BurTown. Mismas proporciones que allá — caja blanca del 52% del
    ancho desde el 29% de la altura — para que un arte hecho para Puerta sirva
    acá sin rehacerlo. */
+/* A lo sumo 1000px de ancho y en JPEG. Al tamaño natural del arte (1080x1800
+   en LÜMEN) y en PNG, cada entrada eran 2-4 MB de texto en la página, cerca
+   de 0,3 s de pantalla congelada por entrada en un teléfono medio y archivos
+   de 2 MB al guardarla. Todo se dibuja en proporción a W y H, así que el QR
+   queda igual de grande en relación al arte: a 1000px su caja mide 520px,
+   de sobra para el lector de la puerta. */
+const ANCHO_MAX = 1000;
 async function sobreArte(t, evento, fase, arte) {
   const img = await cargarImagen(arte);
-  const W = img.naturalWidth, H = img.naturalHeight;
+  const k = Math.min(1, ANCHO_MAX / img.naturalWidth);
+  const W = Math.round(img.naturalWidth * k), H = Math.round(img.naturalHeight * k);
   const c = document.createElement("canvas");
   c.width = W; c.height = H;
   const x = c.getContext("2d");
-  x.drawImage(img, 0, 0);
+  x.drawImage(img, 0, 0, W, H);
 
   const caja = W * 0.52, bx = (W - caja) / 2, by = H * 0.29, rad = caja * 0.07;
   x.fillStyle = "#fff";
@@ -101,7 +113,7 @@ async function sobreArte(t, evento, fase, arte) {
   x.font = `500 ${Math.round(W * 0.042)}px "Inter Tight", sans-serif`;
   x.fillText(t.cliente || "—", W / 2, by + caja + H * 0.055 + W * 0.075);
   firma(x, W, H, { sombra: true });
-  return c.toDataURL("image/png");
+  return c.toDataURL("image/jpeg", 0.92);
 }
 
 async function dibujarTicket(t, evento, fase) {
@@ -256,7 +268,10 @@ function tira(entradas, opciones) {
 async function guardar(entradas) {
   const archivos = await Promise.all(entradas.map(async (e, i) => {
     const b = await (await fetch(e.png)).blob();
-    return new File([b], `entrada-${i + 1}-${e.code}.png`, { type: "image/png" });
+    // Con arte la entrada es JPEG; la propia, PNG. El nombre sigue al tipo.
+    const tipo = b.type || "image/png";
+    const ext = tipo === "image/jpeg" ? "jpg" : "png";
+    return new File([b], `entrada-${i + 1}-${e.code}.${ext}`, { type: tipo });
   }));
 
   if (navigator.canShare && navigator.canShare({ files: archivos })) {

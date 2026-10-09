@@ -41,11 +41,12 @@ const CLAVE = Deno.env.get("BARRIDO_CLAVE") ?? "";
    `id_transaccion` (no `codigo`) y el estado viene en datos.estado (no
    so_estado). Con los otros nombres contesta {"error":"1009"} y la orden
    se queda pendiente para siempre con la plata cobrada. */
-async function consultar(pago_ref: string) {
+async function consultar(pago_ref: string, signal?: AbortSignal) {
   const usuario = Deno.env.get("V2PRO_USUARIO") ?? "";
   const pass    = Deno.env.get("V2PRO_PASS") ?? "";
   const r = await fetch(`${V2PRO}/consulta_transaccion_v2.php`, {
     method: "POST",
+    signal,
     headers: {
       "Content-Type": "application/json",
       ...(usuario && pass ? { "Authorization": "Basic " + btoa(`${usuario}:${pass}`) } : {}),
@@ -91,12 +92,36 @@ Deno.serve(async (req) => {
   try {
     const pendientes: Array<{ id: string; pago_ref: string }> =
       await rpc("pagos_a_confirmar", { p_limite: 20 });
-    let emitidas = 0, revision = 0;
+    let emitidas = 0, revision = 0, revisadas = 0, cortadas = 0;
     const correos: Promise<void>[] = [];
 
-    for (const o of pendientes ?? []) {
-      const { pagado, monto } = await consultar(o.pago_ref);
-      if (!pagado) continue;
+    /* De a CONCURRENCIA consultas a la vez (2 y no más: la pasarela ya se
+       quedó sin conexiones dos veces, 01/10 y 08/10), cada una con tope, y sin largar
+       consultas nuevas pasado PLAZO_MS. Antes iban de a una y sin tope: con
+       v2pro lento la corrida pasaba los 20 s del pg_net, se cortaba —casi la
+       mitad de los minutos— y seguía corriendo pisándose con la del minuto
+       siguiente. Lo que no entró en esta corrida entra en la próxima. */
+    const CONCURRENCIA = 2, TOPE_CONSULTA_MS = 5000, PLAZO_MS = 12000;
+    const inicio = Date.now();
+    /* Mezclada: pagos_a_confirmar trae primero las nuevas y al final la
+       muestra de las viejas, y con la pasarela lenta el plazo cortaba
+       siempre esa muestra. Así lo que no entra se reparte. */
+    const cola = [...(pendientes ?? [])];
+    for (let i = cola.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [cola[i], cola[j]] = [cola[j], cola[i]];
+    }
+
+    const revisar = async (o: { id: string; pago_ref: string }) => {
+      const ctl = new AbortController();
+      const reloj = setTimeout(() => ctl.abort(), TOPE_CONSULTA_MS);
+      let consulta: { pagado: boolean; monto: number | null };
+      try { consulta = await consultar(o.pago_ref, ctl.signal); }
+      catch (e) { cortadas++; console.error(`barrido: consulta de ${o.id} sin respuesta — ${e}`); return; }
+      finally { clearTimeout(reloj); }
+      revisadas++;
+      const { pagado, monto } = consulta;
+      if (!pagado) return;
       /* emitir_orden compara el monto cobrado contra el total y, si no
          coincide, manda la orden a revisión manual en vez de emitir.
          Se le pasa el monto a propósito: emitir por una cifra distinta a
@@ -114,7 +139,15 @@ Deno.serve(async (req) => {
         if (res.repetida === false) correos.push(avisarPorCorreo(o.id));
       }
       else { revision++; console.error(`barrido: ${o.id} no se emitió — ${res?.motivo}`); }
-    }
+    };
+
+    // Una orden que tira (emitir_orden caído) no frena a las otras.
+    await Promise.all(Array.from({ length: CONCURRENCIA }, async () => {
+      while (cola.length && Date.now() - inicio < PLAZO_MS) {
+        const o = cola.shift()!;
+        await revisar(o).catch((e) => { revision++; console.error(`barrido: ${o.id} falló — ${e}`); });
+      }
+    }));
 
     /* Los correos no bloquean la emisión, pero sí tienen que sobrevivir al
        return: si el isolate se apaga con los fetch a medio salir, la orden
@@ -125,8 +158,8 @@ Deno.serve(async (req) => {
     if (rt && typeof rt.waitUntil === "function") rt.waitUntil(Promise.all(correos));
     else await Promise.all(correos);
 
-    return json({ ok: true, revisadas: (pendientes ?? []).length, emitidas, revision,
-                  correos: correos.length });
+    return json({ ok: true, candidatas: (pendientes ?? []).length, revisadas, cortadas,
+                  emitidas, revision, correos: correos.length });
   } catch (err) {
     console.error(`barrido falló: ${String((err as Error).message ?? err)}`);
     return json({ ok: false, motivo: String((err as Error).message ?? err) }, 500);

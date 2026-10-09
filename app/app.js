@@ -214,7 +214,7 @@ function apiDemo() {
     },
     async iniciarPago(orden) {
       await esperar(700);
-      return { pago_ref: "SIM-" + orden.id.slice(0, 8).toUpperCase(), url: null };
+      return { pago_ref: "SIM-" + orden.id.slice(0, 8).toUpperCase(), url: null, simulada: true };
     },
     async estadoOrden() {
       await esperar(900);
@@ -258,8 +258,17 @@ function apiSupabase() {
     if (j.ok === false || !r.ok) throw new Error(j.motivo || `No se pudo completar (${r.status}).`);
     return j;
   };
+  /* Con tope: con una raya de señal el fetch no falla, se queda colgado, y
+     en el paso de pago no hay Atrás ni Seguir — la persona miraba el
+     girador para siempre. Reintentar es seguro: la orden se repite con la
+     misma client_key (claveDeCompra) y no se crea otra. iniciar-pago tiene
+     más margen porque espera a la pasarela, que en una apertura llegó a
+     tardar 30 s. */
+  const TOPE_MS = { "iniciar-pago": 45000 };
   const fn = async (nombre, body, cabecerasExtra) => {
     let r;
+    const ctl = new AbortController();
+    const reloj = setTimeout(() => ctl.abort(), TOPE_MS[nombre] || 25000);
     try {
       r = await fetch(`${CFG.SUPABASE_URL}/functions/v1/${nombre}`, {
         method: "POST",
@@ -267,11 +276,17 @@ function apiSupabase() {
                    apikey: CFG.SUPABASE_ANON_KEY,
                    Authorization: `Bearer ${CFG.SUPABASE_ANON_KEY}`,
                    ...(cabecerasExtra || {}) },
-        body: JSON.stringify(body || {})
+        body: JSON.stringify(body || {}),
+        signal: ctl.signal
       });
-    } catch {
+    } catch (err) {
+      if (err && err.name === "AbortError")
+        throw new Error("La conexión está muy lenta y no llegó la respuesta. " +
+                        "Volvé a intentar: no se te va a cobrar dos veces.");
       // fetch sólo tira cuando no hubo respuesta: sin red, DNS caído, CORS.
       throw new Error("Sin conexión. Revisá tu internet y volvé a intentar.");
+    } finally {
+      clearTimeout(reloj);
     }
     return leer(r);
   };
@@ -313,7 +328,7 @@ function apiSupabase() {
                                           // lo que el comprador vio: si la base congela
                                           // otro total, la orden no se crea (crear-orden)
                                           total_visto: cotizar().total,
-                                          client_key: crypto.randomUUID() },
+                                          client_key: claveDeCompra(items, comprador, tc) },
                          tok ? { Authorization: `Bearer ${tok}` } : undefined);
       return { id: r.orden, subtotal: r.subtotal, fee: r.fee, total: r.total,
                gratis: r.gratis === true, comprador };
@@ -966,6 +981,7 @@ function dibujarReloj() {
 }
 function vencer() {
   pararReloj();
+  olvidarClave();
   D.tipos.forEach(t => S.cant[t.id] = 0);
   S.orden = null;
   irA("entradas");
@@ -1052,6 +1068,24 @@ function formValido(mostrar) {
    una sola, un error no dice en cuál de las tres se cayó.          */
 function pagoDice(html) { $("#pagoEstado").innerHTML = html; }
 
+/* La client_key de la compra. crear_orden devuelve la MISMA orden si llega
+   una clave repetida, así que un reintento no reserva cupo otra vez. Antes
+   cada intento mandaba una clave nueva: el que tocaba "Volver a intentar"
+   después de un corte dejaba una reserva fantasma de 10 minutos, y en una
+   apertura eso mostraba "Sold out" a otros (LÜMEN, 01/10).
+
+   Se reusa sólo para LO MISMO: mismas entradas, mismos datos, mismo total
+   visto y dentro de los 9 minutos (la orden vence a los 10). Cualquier
+   cambio, una compra terminada o una reserva vencida, clave nueva. */
+let claveCompra = null;
+function claveDeCompra(items, comprador, tc) {
+  const huella = JSON.stringify([items, comprador, tc || null, cotizar().total]);
+  if (!claveCompra || claveCompra.huella !== huella || Date.now() - claveCompra.t > 9 * 60 * 1000)
+    claveCompra = { huella, key: crypto.randomUUID(), t: Date.now() };
+  return claveCompra.key;
+}
+function olvidarClave() { claveCompra = null; }
+
 async function pagar() {
   /* En un evento gratis el tercer paso no es un pago: llamarlo así deja al
      invitado esperando un cobro que no existe. El rótulo del rail lo pone
@@ -1085,6 +1119,7 @@ async function pagar() {
     if (!S.orden.gratis && Math.abs(Number(S.orden.total) - visto) > 0.5) {
       const nuevo = Number(S.orden.total);
       S.orden = null;
+      olvidarClave();
       await recargarEvento().catch(() => null);
       pagoFallo(`Mientras elegías cambió el precio: ahora el total es ${bs(nuevo)} ` +
                 `en vez de ${bs(visto)}. Revisá tu compra antes de pagar.`, "entradas");
@@ -1108,14 +1143,27 @@ async function pagar() {
     const r = await API.iniciarPago(S.orden);
     S.orden.pago_ref = r.pago_ref;
     if (r.url) { location.href = r.url; return; }   // pasarela real: se va y vuelve
-    pasarelaSimulada();
+    /* Sin link: o es la pasarela simulada (lo dice la respuesta), o la orden
+       ya tenía su cobro iniciado de un intento anterior y esta versión del
+       servidor no devuelve el link guardado. En ese caso nunca la simulada
+       —sería mostrarle un cobro falso a alguien que paga de verdad—: clave
+       nueva y a intentar de nuevo, que crea una orden limpia. */
+    if (r.simulada === true) { pasarelaSimulada(); return; }
+    // La misma clave trajo una orden que ya se pagó (el intento anterior
+    // llegó a cobrarse): a sus entradas, no a pagar otra vez.
+    if (r.ya_pagada) { olvidarClave(); location.href = linkDeOrden(); return; }
+    olvidarClave();
+    throw new Error("No pudimos abrir el pago. Tocá «Volver a intentar».");
   } catch (err) {
     // El precio cambió y la orden no se creó: se recarga y se vuelve a elegir.
     if (/cambió el precio/.test(err.message)) {
+      olvidarClave();
       await recargarEvento().catch(() => null);
       pagoFallo(err.message, "entradas");
       return;
     }
+    // La orden de la clave ya no sirve (vencida o anulada): la próxima, nueva.
+    if (/ya no está vigente|Se venció la reserva/.test(err.message)) olvidarClave();
     pagoFallo(err.message, "datos");
   }
 }
@@ -1364,6 +1412,7 @@ function armarLlegar(link) {
 async function mostrarListo() {
   irA("listo");
   pararReloj();
+  olvidarClave();   // la próxima compra es otra compra
   $("#listoNota").textContent =
     `${S.entradas.length} ${S.entradas.length === 1 ? "entrada" : "entradas"} a nombre de ${S.comprador.nombre}.`;
   // Al que no le cobraron nada no le vendiste nada: consiguió un lugar.

@@ -72,12 +72,26 @@ Deno.serve(async (req) => {
     if (!id && !ref) return json({ ok: false, motivo: "Falta la orden." }, 400);
     if (!o) return json({ ok: false, motivo: "No encontramos esa compra." }, 404);
     id = o.id;
-    if (o.estado !== "pagada")
+    if (o.estado !== "pagada") {
       /* Devuelve el uuid: quien llegó por el pago_ref de la pasarela lo
          necesita para poder preguntar por estado-orden mientras el cobro se
-         confirma, y para quedarse con el link bueno. */
-      return json({ ok: true, estado: o.estado, orden: o.id,
+         confirma, y para quedarse con el link bueno.
+
+         Y el arte sobre el que se va a dibujar la entrada (el de la fase si
+         tiene, si no el del evento, como ticket.js), para que la página lo
+         baje MIENTRAS confirma el pago y no recién al final. Si esto falla
+         no importa: es una precarga. */
+      let arte_url: string | null = null;
+      try {
+        const [it, ev] = await Promise.all([
+          uno(`orden_items?orden_id=eq.${o.id}&fase_id=not.is.null&select=evento_fase(arte_url)&limit=1`),
+          uno(`eventos?id=eq.${o.evento_id}&select=arte_url`),
+        ]);
+        arte_url = it?.evento_fase?.arte_url ?? ev?.arte_url ?? null;
+      } catch { /* sin precarga */ }
+      return json({ ok: true, estado: o.estado, orden: o.id, arte_url,
                     motivo: "Esta compra todavía no está pagada." });
+    }
 
     const e = await uno(`eventos?id=eq.${o.evento_id}&select=id,nombre,lugar,fecha,hora_inicio,arte_url`);
     const ent = await rest(`entradas?orden_id=eq.${id}&select=code,precio,estado,used_at,fase_id,tipo_entrada(nombre),mesas(etiqueta,categoria)&order=created_at`);
