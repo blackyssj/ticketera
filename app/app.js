@@ -496,6 +496,19 @@ function ponerLogo(e) {
    JavaScript de Google peleándole la red al afiche y a los precios, para un
    mapa que la mayoría no mira. La caja tiene su alto fijo (styles.css), así
    que el iframe llega sin mover nada. */
+/* El Instagram del organizador (0102). Viene sólo el usuario, validado en
+   la base; el link se arma acá. */
+function pintarRedes() {
+  const u = D.organizador && D.organizador.instagram;
+  const caja = $("#redes");
+  if (!caja) return;
+  caja.hidden = !u;
+  if (!u) return;
+  $("#redesTitulo").textContent = `Seguí a ${D.organizador.nombre}`;
+  $("#redesInsta").href = `https://www.instagram.com/${encodeURIComponent(u)}/`;
+  $("#redesInstaTxt").textContent = `@${u} en Instagram`;
+}
+
 function pintarUbicacion() {
   const e = D.evento;
   const punto = e.lat != null && e.lng != null;
@@ -586,6 +599,7 @@ function pintarHero() {
     otras.hidden = false;
   }
   pintarUbicacion();
+  pintarRedes();
   document.title = `${e.marca_1} ${e.marca_2} — ${VOCAB.titulo}`;
   $("#faseChip").innerHTML = `<i></i>${esc(D.fase.nombre)} · ${esc(D.fase.hasta_txt)}`;
   // Sin fase abierta (0092) no hay nombre que poner en la pastilla.

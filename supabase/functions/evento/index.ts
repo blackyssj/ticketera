@@ -129,7 +129,9 @@ Deno.serve(async (req) => {
                      /* Cuántas fechas del organizador están a la venta, esta
                         incluida. Con más de una, la página ofrece el camino
                         a la vidriera; con una sola no hay a dónde ir. */
-                     fechas: Number(o.fechas ?? 1) },
+                     fechas: Number(o.fechas ?? 1),
+                     // Sólo el usuario (0102): la página arma el link.
+                     instagram: o.instagram ?? null },
       evento: {
         id: e.id,
         marca_1: partes[0],

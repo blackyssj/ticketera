@@ -199,6 +199,17 @@
             </a>
           </section>
 
+          <!-- El Instagram del organizador (0102). Nace oculto y app.js lo
+               abre si el cliente lo cargó. Va abajo y no en el hero: ahí
+               aparecer al llegar los datos movería la página. -->
+          <section class="ubicacion redes" id="redes" aria-label="Redes del organizador" hidden>
+            <h3 id="redesTitulo">Seguinos</h3>
+            <a class="ubi-llegar" id="redesInsta" target="_blank" rel="noopener">
+              <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="12" height="12" rx="3.5"/><circle cx="8" cy="8" r="2.8"/><circle cx="11.6" cy="4.4" r=".5" fill="currentColor"/></svg>
+              <span id="redesInstaTxt"></span>
+            </a>
+          </section>
+
           <!-- Las dudas que llegan por WhatsApp mientras la persona todavía
                no compró. Contestadas acá, antes de pedirle un dato. -->
           <section class="dudas" id="dudas" aria-label="Dudas rápidas">
@@ -404,6 +415,6 @@
 <!-- La sesión del comprador. Antes de app.js: crearOrden le pide el token
      y la pantalla "listo" le pide crear/entrar/vincular. -->
 <script src="/cuenta.js?v=4"></script>
-<script src="/app.js?v=51"></script>
+<script src="/app.js?v=52"></script>
 </body>
 </html>
