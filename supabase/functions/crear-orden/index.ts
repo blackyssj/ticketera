@@ -81,6 +81,30 @@ function traducir(m: string) {
   return "No se pudo reservar. Probá de nuevo.";
 }
 
+/* Fechas de Bowie y BurTown (espejo de Plataforma Puerta, 0103): allá las
+   escanean con el escáner de Puerta, así que la entrada recién emitida
+   tiene que existir en la base de Puerta antes de que la persona llegue a
+   la fila. El cron la manda al minuto; esto la manda en segundos. Se mira
+   primero si quedó algo en la cola —barato— para no despertar a
+   puerta-sync por cada entrada gratis de los otros clientes. Nunca demora
+   la respuesta: si falla, el cron la levanta. */
+function avisarPuerta() {
+  const clave = Deno.env.get("BARRIDO_CLAVE") ?? "";
+  if (!clave) return;
+  const tarea = (async () => {
+    const hay = await rest("puerta_envio?select=id&tipo=eq.entrada&estado=eq.pendiente&limit=1");
+    if (!hay?.length) return;
+    const r = await fetch(`${SB}/functions/v1/puerta-sync`, {
+      method: "POST", headers: { ...H, "x-barrido": clave },
+      body: JSON.stringify({ solo: "envios" }), signal: AbortSignal.timeout(15000),
+    });
+    if (!r.ok) console.error(`puerta-sync devolvió ${r.status} tras emitir gratis`);
+  })().catch((e) => console.error(`aviso a puerta-sync falló: ${e}`));
+
+  const rt = (globalThis as any).EdgeRuntime;
+  if (rt && typeof rt.waitUntil === "function") rt.waitUntil(tarea);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ ok: false, motivo: "Usá POST." }, 405);
@@ -199,9 +223,10 @@ Deno.serve(async (req) => {
        que hay— así que un doble envío del formulario no duplica entradas. */
     if (data?.ok && Number(data.total) === 0) {
       try {
-        await rpc("emitir_orden", {
+        const em = await rpc("emitir_orden", {
           p_orden: data.orden, p_monto_cobrado: 0, p_pago_ref: "GRATIS",
         });
+        if (em?.ok === true && em.repetida === false) avisarPuerta();
         return json({ ...data, gratis: true });
       } catch (err) {
         console.error(`no se pudo emitir la orden gratis ${data.orden}: ${err}`);

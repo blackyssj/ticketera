@@ -82,8 +82,62 @@ function firma(x, W, H, o) {
    queda igual de grande en relación al arte: a 1000px su caja mide 520px,
    de sobra para el lector de la puerta. */
 const ANCHO_MAX = 1000;
+
+/* ── la entrada de Plataforma Puerta ─────────────────────────────
+   Bowie y BurTown son espejo de Puerta (0103): la entrada que se compra
+   acá va al mismo escáner y a los mismos chats que la que genera un
+   relacionador allá. Se dibuja IGUAL que ticketImage() de Puerta (app.js
+   de plataforma): sus fuentes —Space Grotesk 700 el código, Inter 500 el
+   nombre—, sin la firma de TICKETAZO, y con el sello de la fase cuando la
+   fase no trae arte propio. Si se viera distinta, en la fila sería "la de
+   internet" y alguien la discutiría. Lo decide `entrada_puerta`, que manda
+   la base por ser espejo (0104), no un slug escrito acá.
+
+   El tamaño sigue topado en ANCHO_MAX: todo va en proporción a W y H, así
+   que la pieza es la misma; solo pesa menos. */
+const FUENTE_CODIGO = '"Space Grotesk", sans-serif';
+const FUENTE_NOMBRE = "Inter, sans-serif";
+
+/* Las fuentes de Puerta no las usa ninguna regla de CSS de acá, así que el
+   navegador no las baja solo y document.fonts.ready no las espera: sin
+   pedirlas, el canvas dibujaría con la de repuesto y el código saldría en
+   otra letra. Las caras las declara el <link> de Google Fonts de la página
+   (evento.html, orden/); document.fonts.load baja justo la que hace falta.
+   Con tope de 3 s: una fuente que no llega no deja a nadie sin su QR. */
+function fuentesPuerta(t) {
+  if (!document.fonts || !document.fonts.load) return Promise.resolve();
+  const bajar = Promise.all([
+    document.fonts.load(`700 64px ${FUENTE_CODIGO}`, "#" + (t.code || "0")),
+    document.fonts.load(`500 32px ${FUENTE_NOMBRE}`, t.cliente || "A"),
+  ]).catch(() => {});
+  return Promise.race([bajar, new Promise(ok => setTimeout(ok, 3000))]);
+}
+
+/* El sello de la tanda, el de marcaFase() de Puerta: una pastilla oscura
+   abajo, al 92,5% de la altura. El cliente compró un "Hot Ticket" y eso es
+   parte de lo que compró. Mismas medidas que allá: 800 se pide como allá
+   aunque Space Grotesk llegue hasta 700, y el navegador usa la 700 en los
+   dos lados. */
+function selloFase(x, W, H, txt) {
+  x.shadowColor = "transparent"; x.shadowBlur = 0;
+  const t = String(txt).toUpperCase();
+  x.font = `800 ${Math.round(W * 0.032)}px ${FUENTE_CODIGO}`;
+  x.textAlign = "center"; x.textBaseline = "middle";
+  const pw = x.measureText(t).width + W * 0.07, ph = W * 0.068;
+  const px = (W - pw) / 2, py = H * 0.925 - ph / 2;
+  x.fillStyle = "rgba(0,0,0,.55)";
+  x.beginPath(); x.roundRect(px, py, pw, ph, ph / 2); x.fill();
+  x.strokeStyle = "rgba(255,255,255,.5)"; x.lineWidth = Math.max(1, W * 0.0025);
+  x.beginPath(); x.roundRect(px, py, pw, ph, ph / 2); x.stroke();
+  x.fillStyle = "#fff";
+  x.fillText(t, W / 2, py + ph / 2 + W * 0.002);
+  x.textBaseline = "alphabetic";
+}
+
 async function sobreArte(t, evento, fase, arte) {
-  const img = await cargarImagen(arte);
+  const puerta = !!(evento && evento.entrada_puerta);
+  // En paralelo con la imagen: las dos cosas viajan a la vez.
+  const [img] = await Promise.all([cargarImagen(arte), puerta ? fuentesPuerta(t) : null]);
   const k = Math.min(1, ANCHO_MAX / img.naturalWidth);
   const W = Math.round(img.naturalWidth * k), H = Math.round(img.naturalHeight * k);
   const c = document.createElement("canvas");
@@ -108,11 +162,21 @@ async function sobreArte(t, evento, fase, arte) {
   x.textAlign = "center";
   x.shadowColor = "rgba(0,0,0,.9)"; x.shadowBlur = W * 0.02;
   x.fillStyle = "#fff";
-  x.font = `700 ${Math.round(W * 0.078)}px "DM Mono", monospace`;
+  x.font = puerta ? `700 ${Math.round(W * 0.078)}px ${FUENTE_CODIGO}`
+                  : `700 ${Math.round(W * 0.078)}px "DM Mono", monospace`;
   x.fillText("#" + t.code, W / 2, by + caja + H * 0.055);
-  x.font = `500 ${Math.round(W * 0.042)}px "Inter Tight", sans-serif`;
+  x.font = puerta ? `500 ${Math.round(W * 0.042)}px ${FUENTE_NOMBRE}`
+                  : `500 ${Math.round(W * 0.042)}px "Inter Tight", sans-serif`;
   x.fillText(t.cliente || "—", W / 2, by + caja + H * 0.055 + W * 0.075);
-  firma(x, W, H, { sombra: true });
+  if (puerta) {
+    /* Como Puerta: el sello solo si la fase NO trae arte propio (la imagen
+       ya la distingue) y solo para fases de Puerta. `sello` lo manda la
+       base y viene null en la fase 'Online' que inventa el espejo. Nada de
+       firma: en Puerta no hay. */
+    if (fase && fase.sello && !fase.arte_url) selloFase(x, W, H, fase.sello);
+  } else {
+    firma(x, W, H, { sombra: true });
+  }
   return c.toDataURL("image/jpeg", 0.92);
 }
 

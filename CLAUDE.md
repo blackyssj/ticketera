@@ -103,6 +103,20 @@ rompiéndole el acceso a todos— el día que alguien se va.
   detecta al subir (`sincronizar_puerta` devuelve los conflictos), no se
   previene. Si tocás `entradas.estado` a mano, acordate de que hay copias vivas
   en los teléfonos de la puerta.
+- **Bowie y BurTown son espejo de Plataforma Puerta** (0103). Los eventos se
+  crean solos desde Puerta con el MISMO uuid (el QR `EVT:<evento>:<code>` lo
+  lee el escáner de Puerta), y cada entrada pagada viaja allá por la cola
+  `puerta_envio` vía la función `puerta-sync` (cron cada minuto + aviso al
+  emitir). Nombre, fecha, precios y fases no se editan acá: un trigger lo
+  frena (`ESPEJO_PUERTA`). Nuestra puerta no controla esas fechas. Estado del
+  espejo: `select ultima_corrida_at, ultima_corrida from puerta_config;` y las
+  filas `rechazado` de `puerta_envio` son entradas pagadas que Puerta no
+  aceptó: las mira una persona (para reenviar: `estado = 'pendiente',
+  forzar_precio = true`). Una entrada que el filtro de Seguridad de Puerta
+  deja marcada más de `filtro_espera` se anula ALLÁ primero y acá cuando
+  Puerta confirma (sin devolución). Las funciones del sync prenden el
+  permiso con `set_config(…, true)`: un `set ticketazo.… = 'on'` en el
+  CREATE FUNCTION es de superusuario y la migración no aplica en Supabase.
 
 ## Antes de decir que algo anda
 

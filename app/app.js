@@ -513,7 +513,7 @@ function pintarUbicacion() {
   const e = D.evento;
   const punto = e.lat != null && e.lng != null;
   const caja = $("#ubicacion");
-  if (!caja || (!punto && !e.direccion)) return;
+  if (!caja || (!punto && !e.direccion && !e.maps_url)) return;
   $("#ubiLugar").textContent = e.lugar || "";
   $("#ubiDireccion").textContent = e.direccion || "";
   if (punto) {
@@ -542,6 +542,14 @@ function pintarUbicacion() {
     const ir = $("#ubiLlegar");
     ir.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
     ir.hidden = false;
+  } else if (e.maps_url) {
+    /* Sin punto pero con el link del lugar (0104: el del club en Plataforma
+       Puerta, que suele ser un maps.app.goo.gl sin coordenadas adentro).
+       No alcanza para dibujar el mapa, sí para "Cómo llegar". La base solo
+       deja pasar links https de Google Maps. */
+    const ir = $("#ubiLlegar");
+    ir.href = e.maps_url;
+    ir.hidden = false;
   }
   caja.hidden = false;
 }
@@ -555,7 +563,18 @@ function pintarHero() {
   pintarMarca(e);
   ponerLogo(e);
   $("#barraFecha").textContent = e.fecha_txt;
-  $("#heroLugar").textContent = e.lugar;
+  /* Con la marca de título (0104, Bowie y BurTown) la función ya manda la
+     casa en marca_1 y la noche en marca_2: BOWIE grande y "Crush" abajo,
+     de subtítulo (styles.css, .titulo.con-marca). Arriba de "BOWIE" decir
+     "Bowie" otra vez es tartamudear, así que el renglón chico muestra el
+     lugar solo si dice algo más que el nombre de la casa ("Bowie
+     Equipetrol"); si no, la fecha, que es lo que el afiche de un boliche
+     pone arriba. */
+  const conMarca = e.titulo_marca === true && !!e.marca_2;
+  $("#heroTitulo").classList.toggle("con-marca", conMarca);
+  const casa = String(D.organizador.nombre || "").trim().toLowerCase();
+  $("#heroLugar").textContent = conMarca && String(e.lugar || "").trim().toLowerCase() === casa
+    ? e.fecha_txt : e.lugar;
   $("#heroL1").textContent = e.marca_1;
   $("#heroL2").textContent = e.marca_2;
   $("#heroBajada").textContent = e.bajada;
@@ -600,7 +619,10 @@ function pintarHero() {
   }
   pintarUbicacion();
   pintarRedes();
-  document.title = `${e.marca_1} ${e.marca_2} — ${VOCAB.titulo}`;
+  // "BOWIE · Crush — entradas": la casa y la noche, no un nombre partido.
+  document.title = conMarca
+    ? `${e.marca_1} · ${e.marca_2} — ${VOCAB.titulo}`
+    : `${e.marca_1} ${e.marca_2} — ${VOCAB.titulo}`;
   $("#faseChip").innerHTML = `<i></i>${esc(D.fase.nombre)} · ${esc(D.fase.hasta_txt)}`;
   // Sin fase abierta (0092) no hay nombre que poner en la pastilla.
   $("#faseChip").hidden = !D.fase.nombre;

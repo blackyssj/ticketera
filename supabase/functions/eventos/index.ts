@@ -130,6 +130,10 @@ Deno.serve(async (req) => {
       return {
         organizador: o.slug,
         organizador_nombre: o.nombre,
+        /* true = la tarjeta lleva arriba la marca del organizador (BOWIE)
+           y abajo el nombre de la noche (0104). Lo que vende un boliche es
+           la casa, no cómo se llama cada sábado. */
+        titulo_marca: o.titulo_marca === true,
         slug: e.slug,
         nombre: e.nombre,
         // El link se arma acá para que la portada no tenga que saber cómo se

@@ -15,7 +15,7 @@ from _api import REF, pat, request
 
 BASE = pathlib.Path(__file__).resolve().parent.parent / "supabase" / "functions"
 TODAS = ["og", "eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
-         "barrer-pagos",
+         "barrer-pagos", "puerta-sync",
          "orden", "enviar-entradas", "enviar-links", "equipo", "cuenta",
          "contacto", "liquidar", "pago-callback"]
 
@@ -34,6 +34,9 @@ TODAS = ["og", "eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden
 # anon key para crear la cuenta (todavía no hay sesión que exigir). La
 # función verifica el JWT a mano contra /auth/v1/user en la acción que sí
 # lo necesita (vincular).
+# `puerta-sync` va SIN JWT exigido, igual que barrer-pagos: la llama pg_cron
+# sin cabecera Authorization, y la guardia de verdad es x-barrido contra
+# BARRIDO_CLAVE, adentro de la función.
 # `enviar-links` la aprieta un admin o un staff desde el panel, asi que
 # siempre hay sesion: la reja va puesta. Adentro igual se revalida contra
 # /auth/v1/user y se mira el rol EN LA BASE, porque el JWT no lo lleva.

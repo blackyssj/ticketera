@@ -275,7 +275,10 @@ async function cargar() {
   evento = r.evento;
   $("#marca").innerHTML = `<b>${esc(r.evento.marca_1)}</b> ${esc(r.evento.marca_2)}`;
   $("#barraFecha").textContent = r.evento.fecha_txt;
-  document.title = `Tus entradas — ${r.evento.marca_1} ${r.evento.marca_2}`;
+  // Con la marca de título (0104) es la casa y la noche: "BOWIE · Crush".
+  document.title = r.evento.titulo_marca && r.evento.marca_2
+    ? `Tus entradas — ${r.evento.marca_1} · ${r.evento.marca_2}`
+    : `Tus entradas — ${r.evento.marca_1} ${r.evento.marca_2}`;
 
   const n = r.entradas.length;
   const usadas = r.entradas.filter(e => e.estado === "usada").length;

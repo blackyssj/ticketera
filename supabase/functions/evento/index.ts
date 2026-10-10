@@ -52,6 +52,44 @@ const CORREO_CONFIGURADO = !!Deno.env.get("RESEND_API_KEY");
 const MES = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
 const DIA = ["DOM","LUN","MAR","MIÉ","JUE","VIE","SÁB"];
 
+const DIA_LARGO = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
+
+/* Una lista free cover de Puerta (0104) dicha como la diría el boliche.
+   ingreso_hasta ('HH:MM') es hasta qué hora entra gratis el que está en la
+   lista; registro_hasta ('YYYY-MM-DD HH:MM', hora de Bolivia) hasta cuándo
+   uno se puede anotar. Son dos cosas distintas y no se mezclan: "hasta las
+   22:00" a secas, con la hora de anotarse, haría llegar a las 22:30 a
+   alguien que igual entraba gratis — o al revés. Sin ninguna de las dos,
+   "en lista": es lo que Puerta sabe.
+
+   El cierre de la lista lleva día cuando cae fuera de la noche (de las
+   12:00 de la fecha a las 12:00 del día siguiente): en Puerta una lista se
+   puede cerrar el jueves para el sábado, y "hasta las 20:00" a secas se
+   leería como el sábado. Y si ya pasó, se dice: anotarse ya no se puede,
+   pero el que está anotado sigue necesitando saber hasta qué hora entra.
+   `ahora` va en el mismo formato y en hora de Bolivia, así que se compara
+   como texto. */
+function freeCoverTxt(f: Record<string, unknown>, fecha: string, ahora: string) {
+  const entra = typeof f.ingreso_hasta === "string" && /^\d{2}:\d{2}/.test(f.ingreso_hasta)
+    ? f.ingreso_hasta.slice(0, 5) : null;
+  const reg = typeof f.registro_hasta === "string"
+    && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(f.registro_hasta) ? f.registro_hasta : null;
+  let anota: string | null = null;
+  if (reg && reg <= ahora) {
+    anota = "lista cerrada";
+  } else if (reg) {
+    const d = new Date(reg.slice(0, 10) + "T12:00:00Z");
+    const noche = new Date(fecha + "T12:00:00Z").getTime();
+    const ms = new Date(reg.replace(" ", "T") + ":00Z").getTime();
+    const esLaNoche = ms >= noche && ms < noche + 24 * 3600_000;
+    anota = esLaNoche
+      ? `en lista hasta las ${reg.slice(11)}`
+      : `en lista hasta el ${DIA_LARGO[d.getUTCDay()]} ${d.getUTCDate()} a las ${reg.slice(11)}`;
+  }
+  if (entra) return `hasta las ${entra} · ${anota ?? "en lista"}`;
+  return anota ?? "en lista";
+}
+
 /* Los cuatro motivos por los que la base no devuelve un evento, con el
    mismo texto y el mismo código que tenía cada uno cuando eran cuatro
    pedidos distintos. El comprador los ve en pantalla: "no existe" y
@@ -111,7 +149,27 @@ Deno.serve(async (req) => {
     // mesas lo dejaba alfabético (A1 antes que M1) y abría en la alta.
 
 
-    const partes = String(e.nombre).split(" ");
+    /* El título. Partido en dos renglones (marca_1 / marca_2) como lo
+       espera la página. Con titulo_marca (0104, Bowie y BurTown) arriba va
+       la marca de la casa en mayúsculas y abajo la noche: lo que vende es
+       el boliche, y "CRUSH" en grande con "Bowie" de lugar se leía al revés.
+       Se decide acá y no en el front para que el título del documento, el
+       .ics, "Mis entradas" y el ticket sin arte digan todos lo mismo. */
+    const marca = o.titulo_marca === true;
+    const partes = marca
+      ? [String(o.nombre).toUpperCase(), String(e.nombre)]
+      : String(e.nombre).split(" ");
+    /* Lo que la noche trae de Puerta (0104). Solo en espejos: en una fecha
+       cargada acá el cierre es el default 06:00 que nadie eligió, y
+       anunciarlo sería inventarlo. */
+    const espejo = e.entrada_puerta === true;
+    const hi = String(e.hora_inicio).slice(0, 5);
+    const hf = espejo && e.hora_fin ? String(e.hora_fin).slice(0, 5) : null;
+    const free: Record<string, unknown>[] = Array.isArray(e.free_cover)
+      ? e.free_cover.filter((f: unknown) => f && typeof f === "object" && (f as any).nombre).slice(0, 6)
+      : [];
+    // Ahora en Bolivia (UTC−4 todo el año), con la forma de registro_hasta.
+    const ahoraBo = new Date(Date.now() - 4 * 3600_000).toISOString().slice(0, 16).replace("T", " ");
     return json({
       ok: true,
       pasarela: PASARELA,
@@ -136,7 +194,17 @@ Deno.serve(async (req) => {
         id: e.id,
         marca_1: partes[0],
         marca_2: partes.slice(1).join(" "),
+        /* true = marca_1 es la casa y marca_2 la noche (0104): la página
+           los pinta como título y subtítulo y no como un nombre partido. */
+        titulo_marca: marca,
+        /* true = espejo de Plataforma Puerta: ticket.js dibuja la entrada
+           IGUAL que Puerta (sus fuentes, sin la firma de TICKETAZO), porque
+           va al mismo escáner y a los mismos chats que la del relacionador. */
+        entrada_puerta: espejo,
         lugar: e.lugar ?? "",
+        // El link de Google Maps del lugar (0104), para "Cómo llegar" cuando
+        // no hay punto. Viene validado por la base: https y de Google.
+        maps_url: e.maps_url ?? null,
         // Dónde queda (0086): la dirección en texto y el punto para el mapa
         // y el botón "Cómo llegar". Nulos si el organizador no los cargó;
         // la página esconde el bloque entero.
@@ -158,8 +226,13 @@ Deno.serve(async (req) => {
         // Un evento gratis (todos los precios en 0) no tiene "Pago": tiene
         // inscripción. Y "Edad mínima 0" no es un dato, es un renglón vacío:
         // un congreso o un DevFest no piden edad.
-        datos: [["Puertas", String(e.hora_inicio).slice(0,5)],
+        /* En un espejo, además, hasta qué hora es la noche y el free cover
+           de Puerta, un renglón por lista ("Free Cover Mujeres · hasta las
+           23:50 · en lista hasta las 22:00"). Van en el afiche, al lado de las puertas: es
+           lo primero que se pregunta por WhatsApp antes de comprar. */
+        datos: [["Puertas", hf ? `${hi} a ${hf}` : hi],
                 ...(Number(e.edad_min) > 0 ? [["Edad mínima", String(e.edad_min)]] : []),
+                ...free.map((f) => [String(f.nombre), freeCoverTxt(f, String(e.fecha), ahoraBo)]),
                 ...(reservas > 0 ? [["Reservas", `${reservas} disponibles`]] : []),
                 tipos.length && tipos.every((t) => Number(t.precio) === 0)
                   ? ["Inscripción", "Gratis"] : ["Pago", "Con QR"]],
@@ -177,7 +250,11 @@ Deno.serve(async (req) => {
       },
       // `hasta` en crudo para que el front diga "cierra en 3 días" sólo
       // cuando hay un cierre de verdad; `hasta_txt` sigue para el chip.
-      fase: { nombre: fase?.nombre ?? "", arte_url: fase?.arte_url ?? null, hasta: fase?.hasta ?? null, hasta_txt: fase?.hasta
+      /* `sello`: el nombre que Puerta imprime en la entrada cuando la fase
+         no tiene arte propio (0104). Null en todo lo que no es una fase de
+         Puerta, incluida la 'Online' que inventa el espejo. */
+      fase: { nombre: fase?.nombre ?? "", arte_url: fase?.arte_url ?? null, sello: fase?.sello ?? null,
+              hasta: fase?.hasta ?? null, hasta_txt: fase?.hasta
         ? "hasta el " + new Date(fase.hasta).toLocaleDateString("es-BO",
             { day: "numeric", month: "long", timeZone: "America/La_Paz" })
         : "" },

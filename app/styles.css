@@ -152,6 +152,11 @@ input{font:inherit}
 .titulo{font-size:clamp(50px,13vw,158px);letter-spacing:-.012em;margin:0;transition:font-size .3s ease}
 .titulo .l1{display:block;color:var(--espuma)}
 .titulo .l2{display:block;color:var(--rojo);text-shadow:0 0 34px color-mix(in srgb, var(--rojo) 45%, transparent)}
+/* La marca de título (0104, Bowie y BurTown): la casa es el título y la
+   noche va debajo, de subtítulo. Con los dos renglones del mismo tamaño
+   "CRUSH" le peleaba el lugar a "BOWIE", que es lo que vende. En em, para
+   que achique junto con el título cuando el hero se compacta. */
+.titulo.con-marca .l2{font-size:.4em;line-height:1;margin-top:.22em;letter-spacing:.02em}
 .bajada{max-width:48ch;margin-top:20px;color:var(--humo);font-size:clamp(15px,1.6vw,18px)}
 .datos{display:flex;flex-wrap:wrap;gap:10px 26px;margin-top:24px;font-family:var(--dato);font-size:13px;color:var(--humo)}
 .datos span b{color:var(--espuma);font-weight:500}

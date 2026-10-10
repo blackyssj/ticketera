@@ -158,6 +158,16 @@ Deno.serve(async (req) => {
     const filtro = vidriera
       ? `&estado=eq.publicado&fecha=gte.${hoy}&order=fecha.asc,hora_inicio.asc`
       : `&slug=eq.${encodeURIComponent(ev)}`;
+    /* ¿El título es la marca? (0104: "BOWIE · Crush" y no "Crush"). Aparte
+       del pedido del evento y con red: antes de aplicar 0104 la columna no
+       existe, y pedirla junto con el evento haría fallar la tarjeta entera.
+       Sale en paralelo, así que no suma espera. La imagen no lo necesita. */
+    const pMarca: Promise<boolean> = quiereImagen || vidriera ? Promise.resolve(false)
+      : fetch(`${SB}/rest/v1/organizadores?select=titulo_marca&slug=eq.${encodeURIComponent(org)}&limit=1`,
+              { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } })
+          .then((x) => x.ok ? x.json() : [])
+          .then((f) => Array.isArray(f) && f[0]?.titulo_marca === true)
+          .catch(() => false);
     const r = await fetch(
       `${SB}/rest/v1/eventos?select=slug,nombre,lugar,fecha,hora_inicio,descripcion,` +
       `og_url,flyer_url,arte_url,estado,organizadores!inner(slug,nombre,activo)` +
@@ -174,9 +184,12 @@ Deno.serve(async (req) => {
     const cuando = `${DIA[f.getDay()]} ${f.getDate()} de ${MES[f.getMonth()]}` +
                    (hora ? ` · ${hora}` : "");
     if (vidriera) ev = String(e.slug ?? "");
+    // Con la marca de título, el nombre de la noche va después de la casa.
+    const nombre = await pMarca
+      ? `${String(e.organizadores.nombre).toUpperCase()} · ${e.nombre}` : String(e.nombre);
     const titulo = vidriera
       ? `${e.organizadores.nombre} — próxima fecha: ${cuando}`
-      : `${e.nombre} — ${cuando}`;
+      : `${nombre} — ${cuando}`;
     /* La bajada del organizador si la escribió; si no, el dato que igual
        hace falta para decidir: dónde y cuándo. Una descripción vacía deja
        la tarjeta con el título flotando. */
@@ -203,6 +216,13 @@ Deno.serve(async (req) => {
           "Cache-Control": "public, max-age=86400, s-maxage=86400",
           /* Lo contrario de lo que manda Storage, que es todo el punto. */
           "X-Robots-Tag": "all",
+          /* El cuerpo es de afuera y sale bajo ticketazo.com.bo, el origen
+             del panel. Desde 0103 la imagen de Bowie y BurTown la elige
+             Plataforma Puerta (personal del boliche, no de TICKETAZO): un
+             SVG o un HTML con script abierto directo correría acá. Con
+             sandbox no corre nada; como <img> o para WhatsApp no cambia. */
+          "Content-Security-Policy": "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
+          "X-Content-Type-Options": "nosniff",
         },
       });
     }
@@ -239,7 +259,7 @@ Deno.serve(async (req) => {
 ${img ? `<meta property="og:image" content="${esc(img)}">
 <meta property="og:image:secure_url" content="${esc(img)}">
 <meta property="og:image:type" content="image/jpeg">
-<meta property="og:image:alt" content="Afiche de ${esc(e.nombre)}">
+<meta property="og:image:alt" content="Afiche de ${esc(nombre)}">
 ${med ? `<meta property="og:image:width" content="${med.w}">
 <meta property="og:image:height" content="${med.h}">` : ""}` : ""}
 <meta name="twitter:card" content="${img ? "summary_large_image" : "summary"}">
@@ -248,7 +268,7 @@ ${med ? `<meta property="og:image:width" content="${med.w}">
 ${img ? `<meta name="twitter:image" content="${esc(img)}">` : ""}
 <link rel="canonical" href="${esc(url)}">
 </head><body>
-<h1>${esc(e.nombre)}</h1>
+<h1>${esc(nombre)}</h1>
 <p>${esc(cuando)}${e.lugar ? " · " + esc(e.lugar) : ""}</p>
 <p><a href="${esc(url)}">Ver entradas</a></p>
 </body></html>`);

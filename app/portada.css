@@ -492,6 +492,18 @@ img{max-width:100%;display:block}
   font-size:23px;line-height:.96;letter-spacing:-.024em;text-transform:uppercase;
 }
 .donde{color:var(--hueso-64);line-height:1.35}
+/* La noche, debajo de la casa (0104): con la marca de título el .nombre
+   es BOWIE y esto es "Crush". Fluor y sin mayúsculas forzadas, para que se
+   lea como el nombre propio de esa fecha y no como un segundo título. */
+.sub{
+  display:block;max-width:100%;margin-top:5px;
+  font-weight:800;font-stretch:96%;font-size:16px;line-height:1.05;letter-spacing:-.01em;
+  color:var(--fluor);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.destacado .sub{margin-top:7px;font-size:clamp(17px,2.3vw,22px)}
+@container (max-width:210px){
+  .evento .sub{margin-top:3px;font-size:12.5px}
+}
 /* En la grilla el lugar va en su propio renglón, entero. Compartiendo
    renglón con el precio, en una columna de 273px se cortaba en "FEXPO '26
    · SAN…" — catorce caracteres no distinguen la Fexpo de la Casa de la

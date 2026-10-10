@@ -194,6 +194,26 @@ function pedirCartelera() {
 
    `prioridad` la traen las primeras de la página: son las que decide el
    navegador antes de saber qué hay más abajo. */
+/* ── la marca de título (0104) ──
+   Para Bowie y BurTown lo que vende es la casa, no cómo se llama la noche:
+   el título es el organizador (BOWIE) y el nombre del evento va abajo, de
+   subtítulo. Antes la tarjeta decía "CRUSH" en grande y "Bowie" en la
+   letra chica del lugar, que es justo al revés de cómo se elige a qué
+   boliche ir. Lo decide `titulo_marca`, que viene del organizador.
+
+   Y el lugar no repite la casa: "BOWIE" arriba y "Bowie" abajo es el mismo
+   dato dos veces. Si el lugar dice algo más ("Bowie Equipetrol"), va. */
+function rotulo(e) {
+  return e.titulo_marca && e.organizador_nombre
+    ? { titulo: String(e.organizador_nombre), sub: e.nombre }
+    : { titulo: e.nombre, sub: null };
+}
+function dondeTxt(e) {
+  if (!e.titulo_marca) return e.lugar;
+  const l = String(e.lugar || "").trim();
+  return l.toLowerCase() === String(e.organizador_nombre || "").trim().toLowerCase() ? "" : l;
+}
+
 function afiche(e, prioridad) {
   /* "pronto" lleva la hora adentro, así que no vive en SELLOS. */
   const s = e.venta === "pronto" && e.abre_txt
@@ -220,17 +240,20 @@ function afiche(e, prioridad) {
   const tinta = e.papel
     ? ` style="--papel-a:${esc(e.papel[0])};--papel-b:${esc(e.papel[1])}"`
     : "";
+  /* Con la marca de título el papel dice la casa en grande y la noche en
+     el renglón de abajo, donde los demás llevan el organizador. */
+  const r = rotulo(e);
   const papel = `<div class="papel"${tinta}${e.flyer_url ? ' aria-hidden="true"' : ""}>
       <span class="papel-dia" aria-hidden="true">${esc(e.dia)}</span>
-      <h3 class="papel-nombre">${esc(e.nombre)}</h3>
-      <span class="papel-org">${esc(e.organizador_nombre)}</span>
+      <h3 class="papel-nombre">${esc(r.titulo)}</h3>
+      <span class="papel-org">${esc(r.sub || e.organizador_nombre)}</span>
     </div>`;
 
   /* width/height con la proporción del recorte (4:5): el hueco queda
      reservado antes de que baje un solo byte y la grilla no salta cuando
      las imágenes van llegando de a una. */
   const img = e.flyer_url
-    ? `<img src="${esc(e.flyer_url)}" alt="Flyer de ${esc(e.nombre)}"
+    ? `<img src="${esc(e.flyer_url)}" alt="Flyer de ${esc(r.sub ? `${r.titulo} · ${r.sub}` : r.titulo)}"
             width="800" height="1000"
             loading="${prioridad ? "eager" : "lazy"}" decoding="async"
             ${prioridad ? 'fetchpriority="high"' : ""}>`
@@ -290,15 +313,29 @@ function cuandoTxt(e) {
             : `${esc(e.dia_semana)} ${esc(e.dia)} ${esc(e.mes)}`;
 }
 
+/* El título y, con la marca de título, la noche debajo. Mismo criterio que
+   el nombre: sin flyer ya lo dice el papel y no se repite en el talón. */
+function titulos(e, conFlyer) {
+  if (!conFlyer) return "";
+  const r = rotulo(e);
+  return `<h3 class="nombre">${esc(r.titulo)}</h3>` +
+         (r.sub ? `<span class="sub">${esc(r.sub)}</span>` : "");
+}
+
 function tarjeta(e, i) {
   const conFlyer = !!e.flyer_url;
+  /* El lugar se planta abajo del talón (margin-top:auto) para que todas las
+     tarjetas de una fila tengan el botón a la misma altura. Si con la marca
+     de título no hay lugar que decir, el renglón queda igual, vacío: sin él
+     el botón de esta tarjeta subiría y el de la de al lado no. */
+  const donde = dondeTxt(e);
   return `<a class="evento${e.venta === "agotado" ? " agotado" : ""}" href="${esc(e.url)}">
     ${afiche(e, i === 0)}
     ${perf}
     <div class="talon">
       <div class="cuando"><span>${cuandoTxt(e)}<i class="hora"> · ${esc(e.hora)}</i></span></div>
-      ${conFlyer ? `<h3 class="nombre">${esc(e.nombre)}</h3>` : ""}
-      <span class="donde">${esc(e.lugar)}</span>
+      ${titulos(e, conFlyer)}
+      <span class="donde"${donde ? "" : ' aria-hidden="true"'}>${donde ? esc(donde) : e.titulo_marca ? "&nbsp;" : ""}</span>
       <div class="accion">
         <span class="ver" aria-hidden="true">Ver entradas<i class="flecha"></i></span>
         ${precio(e)}
@@ -343,9 +380,9 @@ function destacado(e, i) {
     <div class="talon">
       <span class="cuando">${ya ? `<b class="ya">${esc(ya)}</b>` : esc(e.dia_semana)} · ${esc(e.hora)}</span>
       <div class="fechon"><b>${esc(e.dia)}</b><span>${esc(MESES[Number(e.fecha.slice(5, 7)) - 1] || e.mes)}</span></div>
-      ${e.flyer_url ? `<h3 class="nombre">${esc(e.nombre)}</h3>` : ""}
-      <p class="donde">${esc(e.lugar)}</p>
-      ${e.flyer_url ? `<span class="quien">${esc(e.organizador_nombre)}</span>` : ""}
+      ${titulos(e, !!e.flyer_url)}
+      ${dondeTxt(e) ? `<p class="donde">${esc(dondeTxt(e))}</p>` : ""}
+      ${e.flyer_url && !e.titulo_marca ? `<span class="quien">${esc(e.organizador_nombre)}</span>` : ""}
       <div class="accion">
         <span class="ver" aria-hidden="true">Ver entradas<i class="flecha"></i></span>
         ${precio(e)}
@@ -370,7 +407,12 @@ function destacado(e, i) {
 
    El nombre va siempre en el talón, con o sin flyer: el papel acá mide
    cien píxeles y el CSS le apaga el nombre —queda el día grande, que es
-   lo que un afiche chico alcanza a mostrar de lejos. */
+   lo que un afiche chico alcanza a mostrar de lejos.
+
+   Acá el título es la noche aunque el organizador tenga la marca de título
+   (0104): estos renglones viven en SU vidriera, debajo de su nombre en
+   grande, y "BOWIE" en cada renglón debajo de "Bowie" no diría cuál es
+   cuál. */
 function fecha(e, i) {
   const ya = cerca(e.fecha);
   return `<a class="fecha${e.venta === "agotado" ? " agotado" : ""}" href="${esc(e.url)}">

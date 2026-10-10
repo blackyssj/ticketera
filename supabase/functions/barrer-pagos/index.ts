@@ -82,10 +82,42 @@ function avisarPorCorreo(orden: string) {
   }).catch((e) => console.error(`barrido: enviar-entradas falló para ${orden}: ${e}`));
 }
 
+/* Fechas de Bowie y BurTown (espejo de Plataforma Puerta, 0103): la
+   entrada emitida tiene que existir en la base de Puerta antes de que la
+   persona llegue a la fila, porque allá la escanean con el escáner de
+   Puerta. El cron de puerta-sync la manda al minuto; esto la manda en
+   segundos. Se mira primero si quedó algo en la cola —barato— para no
+   despertar a puerta-sync por las compras de los otros clientes. Un fallo
+   no toca la emisión: el cron la levanta. */
+function avisarPuerta(): Promise<void> {
+  const clave = Deno.env.get("BARRIDO_CLAVE") ?? "";
+  if (!clave) return Promise.resolve();
+  return (async () => {
+    const hay = await rest("puerta_envio?select=id&tipo=eq.entrada&estado=eq.pendiente&limit=1");
+    if (!hay?.length) return;
+    const r = await fetch(`${SB}/functions/v1/puerta-sync`, {
+      method: "POST", headers: { ...H, "x-barrido": clave },
+      body: JSON.stringify({ solo: "envios" }), signal: AbortSignal.timeout(15000),
+    });
+    if (!r.ok) console.error(`barrido: puerta-sync devolvió ${r.status}`);
+  })().catch((e) => console.error(`barrido: aviso a puerta-sync falló: ${e}`));
+}
+
+/* Comparación en tiempo constante, la misma de pago-callback y liquidar:
+   con `!==` la respuesta tarda distinto según cuántos caracteres del
+   principio acertó quien prueba. x-barrido abre también puerta-sync (0103),
+   que escribe en las dos bases. */
+function igual(a: string, b: string) {
+  if (a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ ok: false, motivo: "Usá POST." }, 405);
-  if (!CLAVE || req.headers.get("x-barrido") !== CLAVE)
+  if (!CLAVE || !igual(req.headers.get("x-barrido") ?? "", CLAVE))
     return json({ ok: false, motivo: "No." }, 403);
   if (PASARELA !== "v2pro") return json({ ok: true, salteado: "pasarela simulada", revisadas: 0 });
 
@@ -154,6 +186,8 @@ Deno.serve(async (req) => {
        queda emitida y el comprador sin aviso, que es el agujero que esta
        función vino a tapar. Con waitUntil siguen después de responder; sin
        él se esperan acá, que para un cron de veinte órdenes no es caro. */
+    // Uno solo por corrida, no uno por orden: puerta-sync vacía la cola entera.
+    if (emitidas > 0) correos.push(avisarPuerta());
     const rt = (globalThis as any).EdgeRuntime;
     if (rt && typeof rt.waitUntil === "function") rt.waitUntil(Promise.all(correos));
     else await Promise.all(correos);

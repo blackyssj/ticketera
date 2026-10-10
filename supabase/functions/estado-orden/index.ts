@@ -115,6 +115,31 @@ function avisarPorCorreo(orden: string) {
   if (rt && typeof rt.waitUntil === "function") rt.waitUntil(tarea);
 }
 
+/* Fechas de Bowie y BurTown (espejo de Plataforma Puerta, 0103): allá las
+   escanean con el escáner de Puerta, así que la entrada recién emitida
+   tiene que existir en la base de Puerta antes de que la persona llegue a
+   la fila. El cron la manda al minuto; esto la manda en segundos. Primero
+   se mira si quedó algo en la cola —una consulta barata— para no despertar
+   a puerta-sync por cada compra de los otros clientes. Igual que el correo:
+   nunca demora la respuesta ni rompe una venta cobrada; si falla, el cron
+   la levanta. */
+function avisarPuerta() {
+  const clave = Deno.env.get("BARRIDO_CLAVE") ?? "";
+  if (!clave) return;
+  const tarea = (async () => {
+    const hay = await rest("puerta_envio?select=id&tipo=eq.entrada&estado=eq.pendiente&limit=1");
+    if (!hay?.length) return;
+    const r = await fetch(`${SB}/functions/v1/puerta-sync`, {
+      method: "POST", headers: { ...H, "x-barrido": clave },
+      body: JSON.stringify({ solo: "envios" }), signal: AbortSignal.timeout(15000),
+    });
+    if (!r.ok) console.error(`puerta-sync devolvió ${r.status} tras emitir`);
+  })().catch((e) => console.error(`aviso a puerta-sync falló: ${e}`));
+
+  const rt = (globalThis as any).EdgeRuntime;
+  if (rt && typeof rt.waitUntil === "function") rt.waitUntil(tarea);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ ok: false, motivo: "Usá POST." }, 405);
@@ -144,7 +169,10 @@ Deno.serve(async (req) => {
         }
         // Recién emitida: mandar el correo. Nunca esperar a que salga ni
         // dejar que su fallo tumbe una venta ya cobrada.
-        if (r && r.ok === true && r.repetida === false) avisarPorCorreo(o.id);
+        if (r && r.ok === true && r.repetida === false) {
+          avisarPorCorreo(o.id);
+          avisarPuerta();
+        }
       }
     }
 

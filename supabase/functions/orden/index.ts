@@ -95,13 +95,28 @@ Deno.serve(async (req) => {
 
     const e = await uno(`eventos?id=eq.${o.evento_id}&select=id,nombre,lugar,fecha,hora_inicio,arte_url`);
     const ent = await rest(`entradas?orden_id=eq.${id}&select=code,precio,estado,used_at,fase_id,tipo_entrada(nombre),mesas(etiqueta,categoria)&order=created_at`);
-    const fase = ent?.[0]?.fase_id
-      ? await uno(`evento_fase?id=eq.${ent[0].fase_id}&select=nombre,arte_url`) : null;
+    /* Dos datos de 0104, aparte y con red: si fallan (la columna todavía no
+       existe porque 0104 no se aplicó, o un corte), la página sale como
+       siempre. Esta es la página donde el que pagó ve su QR la noche del
+       evento: un detalle de cómo se dibuja no la puede tumbar.
+         · espejo: la fecha viene de Plataforma Puerta → la entrada se dibuja
+           igual que la de Puerta, y fase_online dice qué fase inventó el
+           espejo (esa no lleva sello).
+         · titulo_marca: el título es "BOWIE" y la noche va abajo. */
+    const [fase, espejo, org] = await Promise.all([
+      ent?.[0]?.fase_id
+        ? uno(`evento_fase?id=eq.${ent[0].fase_id}&select=id,nombre,arte_url`) : Promise.resolve(null),
+      uno(`puerta_evento?evento_id=eq.${e.id}&select=fase_online`).catch(() => null),
+      uno(`organizadores?id=eq.${o.organizador_id}&select=nombre,titulo_marca`).catch(() => null),
+    ]);
 
     const MES = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
     const DIA = ["DOM","LUN","MAR","MIÉ","JUE","VIE","SÁB"];
     const f = new Date(e.fecha + "T00:00:00-04:00");
-    const partes = String(e.nombre).split(" ");
+    const marca = org?.titulo_marca === true && !!org?.nombre;
+    const partes = marca
+      ? [String(org.nombre).toUpperCase(), String(e.nombre)]
+      : String(e.nombre).split(" ");
 
     return json({
       ok: true, estado: "pagada",
@@ -116,8 +131,13 @@ Deno.serve(async (req) => {
         hora_inicio: String(e.hora_inicio).slice(0,5),
         fecha_txt: `${DIA[f.getDay()]} ${f.getDate()} ${MES[f.getMonth()]} · ${String(e.hora_inicio).slice(0,5)}`,
         arte_url: e.arte_url ?? null,
+        titulo_marca: marca,
+        entrada_puerta: !!espejo,
       },
-      fase: { nombre: fase?.nombre ?? "", arte_url: fase?.arte_url ?? null },
+      /* sello: lo que Puerta imprime en la entrada de una fase suya sin arte
+         propio. La 'Online' del espejo no existe en Puerta: sin sello. */
+      fase: { nombre: fase?.nombre ?? "", arte_url: fase?.arte_url ?? null,
+              sello: espejo && fase?.id && fase.id !== espejo.fase_online ? fase.nombre : null },
       entradas: (ent ?? []).map((x) => ({
         code: x.code, cliente: o.comprador_nombre, estado: x.estado, used_at: x.used_at,
         etiqueta: x.tipo_entrada?.nombre
