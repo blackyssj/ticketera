@@ -341,9 +341,22 @@ img{max-width:100%;display:block}
   aspect-ratio:4/5;background:var(--tinta-3);
   container-type:inline-size;
 }
+/* El flyer va ENTERO, nunca recortado. La tarjeta es 4:5 pero los flyers
+   llegan de cualquier proporción: los de los boliches (Bowie, Burtown) son
+   9:16, hechos para la historia de Instagram, y con `cover` se perdía el
+   título de arriba y la fecha de abajo, que es justo lo que el afiche tiene
+   que decir. Con `contain` entra todo, y lo que sobra a los costados lo
+   rellena el mismo flyer desenfocado y oscurecido (el ::before) — la misma
+   solución que ya usaban los renglones de la vidriera y la tarjeta de
+   WhatsApp. Un flyer 4:5 llena la tarjeta igual que antes. */
+.afiche[style*="--flyer"]::before{
+  content:"";position:absolute;inset:-14px;z-index:1;pointer-events:none;
+  background:var(--flyer) center/cover;
+  filter:blur(14px) brightness(.45);
+}
 .afiche img{
-  position:absolute;inset:0;width:100%;height:100%;
-  object-fit:cover;object-position:50% 50%;
+  position:absolute;inset:0;width:100%;height:100%;z-index:1;
+  object-fit:contain;object-position:50% 50%;
   /* `scale` y no `transform` para la llegada: son dos propiedades distintas
      y se multiplican, así que el afiche puede asentarse al cargar sin
      pelearse con el scale del hover, que sí vive en `transform`. */
@@ -781,12 +794,6 @@ img{max-width:100%;display:block}
   flex:0 0 clamp(120px,38%,176px);
   aspect-ratio:var(--ratio,4/5);align-self:stretch;
 }
-.fecha .afiche::before{
-  content:"";position:absolute;inset:-14px;z-index:1;pointer-events:none;
-  background:var(--flyer,none) center/cover;
-  filter:blur(14px) brightness(.45);
-}
-.fecha .afiche img{object-fit:contain;z-index:1}
 /* El papel sin flyer, a esta escala: sólo el día grande. El nombre ya va
    en el talón a diez centímetros y a cien píxeles de ancho sería una
    palabra partida en tres renglones. */
