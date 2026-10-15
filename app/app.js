@@ -816,10 +816,21 @@ function avisoSinVenta() {
    precios, que el organizador prefiere no anunciar de una.
    "La de ahora" es la que vende; si no vende ninguna, la próxima en abrir;
    y si ya no queda ninguna por abrir, la última. */
+/* Organizadores que piden mostrar SOLO la fase de ahora: ni la anterior
+   agotada ni la que viene. Tenis SCZ no quiere anunciar a cuánto sube la
+   entrada — el «Next» con el precio siguiente apura a algunos, pero a
+   otros los hace esperar un descuento que no va a venir. Va por el código
+   del link (CFG.ORGANIZADOR) porque es lo único que la página sabe del
+   organizador antes de pedir nada. El precio siguiente sigue viajando en
+   la respuesta de `evento`: esto lo deja de MOSTRAR, no lo esconde. */
+const SOLO_FASE_ACTUAL = new Set(["tenisscz"]);
+const soloFaseActual = () => SOLO_FASE_ACTUAL.has(String(CFG.ORGANIZADOR || "").toLowerCase());
+
 function fasesAMostrar(F) {
   let k = F.findIndex(f => f.estado === "vigente");
   if (k < 0) k = F.findIndex(f => f.estado === "proxima");
   if (k < 0) k = F.length - 1;
+  if (soloFaseActual()) return k >= 0 ? [k] : [];
   const ver = [];
   const previa = F[k - 1];
   if (previa && ["agotada", "retenida", "cerrada"].includes(previa.estado)) ver.push(k - 1);
@@ -831,7 +842,9 @@ function fasesAMostrar(F) {
 function listaFases() {
   const F = Array.isArray(D.fases) ? D.fases : [];
   const ver = fasesAMostrar(F);
-  if (ver.length < 2) return "";
+  /* Una sola fase no es una escalera y se omite… salvo que el organizador
+     haya pedido ver sólo la actual: ahí esa una ES lo que quiere mostrar. */
+  if (ver.length < (soloFaseActual() ? 1 : 2)) return "";
   return `<section class="fases-venta" aria-label="Fases de venta">
     <h3>Fases de venta</h3>
     <ol>${ver.map(i => {
