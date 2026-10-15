@@ -824,6 +824,9 @@ function avisoSinVenta() {
    organizador antes de pedir nada. El precio siguiente sigue viajando en
    la respuesta de `evento`: esto lo deja de MOSTRAR, no lo esconde. */
 const SOLO_FASE_ACTUAL = new Set(["tenisscz"]);
+/* Organizadores que muestran cuántas quedan aunque la base diga que no
+   (ver `callar` en la tarjeta del tipo). */
+const MUESTRA_CUPO_SIEMPRE = new Set(["tenisscz"]);
 const soloFaseActual = () => SOLO_FASE_ACTUAL.has(String(CFG.ORGANIZADOR || "").toLowerCase());
 
 function fasesAMostrar(F) {
@@ -876,7 +879,15 @@ function tarjetaTipo(t, tope, usadas) {
      (muestra_cupo en false): ahí la tarjeta calla la cuenta y deja sólo
      "Agotado", que no es una cifra sino el motivo por el que el + no anda.
      El cupo sigue en `t.cupo` para el stepper; lo que no hay es renglón. */
-  const callar = D.organizador.muestra_cupo === false;
+  /* Tenis SCZ quiere el «Quedan N» como argumento de venta: el número lo
+     eligen ellos cargando el cupo de la fase en su panel, y es real —se
+     venden esos N a ese precio y la fase pasa sola a la siguiente—. En la
+     base tienen muestra_cupo en false; hasta que eso se cambie (es un dato
+     de `organizadores`, va por migración), la página lo pisa acá por el
+     código del link, igual que SOLO_FASE_ACTUAL. Sin cupo cargado no hay
+     número: sinTope de abajo lo calla igual. */
+  const callar = D.organizador.muestra_cupo === false &&
+    !MUESTRA_CUPO_SIEMPRE.has(String(CFG.ORGANIZADOR || "").toLowerCase());
   const cls = t.cupo === 0 ? "agotado" : (!callar && !sinTope && t.cupo <= 20) ? "poco" : "";
   const partes = [];
   if (t.cupo === 0) partes.push("Agotado");
