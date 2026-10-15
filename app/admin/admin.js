@@ -926,13 +926,16 @@ async function pantallaEntradas(eventoId) {
         </tr></thead>
         <tbody>
           ${T.map(t => `<tr data-tipo="${t.id}">
-            <th>${esc(t.nombre)}<em>${esc(t.descripcion || "")}</em>
+            <th>${esc(t.nombre)}<em>${esc(t.descripcion || "")}</em>${t.incluye
+              ? `<em class="tipo-incluye-adm"><b>Incluye</b> ${esc(t.incluye)}</em>` : ""}
               <div class="tipo-pie">
                 ${marcaCartelera(t)}
                 <span class="tipo-acciones">
                   <button type="button" class="btn plano chico"
                           data-renombrar-tipo="${esc(t.id)}"
                           data-nombre="${esc(t.nombre)}">Renombrar</button>
+                  <button type="button" class="btn plano chico"
+                          data-describir-tipo="${esc(t.id)}">Descripción</button>
                   <button type="button" class="btn plano chico peligrosa"
                           data-borrar-tipo="${esc(t.id)}"
                           data-nombre="${esc(t.nombre)}">Borrar</button>
@@ -961,6 +964,7 @@ async function pantallaEntradas(eventoId) {
       </table>
     </div>
     <section id="zonaFase"></section>
+    <section id="zonaTipo"></section>
     <p class="ayuda explica nota-fee">El precio es lo que te queda. Encima va el
        ${Math.round(cfgFee.fee_pct * 100)}% de servicio de TICKETAZO, que paga el
        comprador${Number(cfgFee.fee_fijo_transaccion) > 0
@@ -983,6 +987,9 @@ async function pantallaEntradas(eventoId) {
   $("#btnTipo").onclick = () => nuevoTipo(eventoId);
   document.querySelectorAll("#main [data-renombrar-tipo]").forEach(b => {
     b.onclick = () => renombrarTipo(eventoId, b.dataset.renombrarTipo, b.dataset.nombre);
+  });
+  document.querySelectorAll("#main [data-describir-tipo]").forEach(b => {
+    b.onclick = () => describirTipo(eventoId, T.find(t => t.id === b.dataset.describirTipo));
   });
   document.querySelectorAll("#main [data-borrar-tipo]").forEach(b => {
     b.onclick = () => borrarTipo(eventoId, b.dataset.borrarTipo, b.dataset.nombre);
@@ -1319,6 +1326,69 @@ async function renombrarTipo(eventoId, id, actual) {
   if (!data || !data.length) { avisar("No se pudo guardar: la base no lo permitió."); return; }
   avisar(`Ahora se llama «${nombre}».`);
   pantallaEntradas(eventoId);
+}
+
+/* Lo que se lleva quien compra. Hay entradas que no son sólo una entrada
+   —una gala de fin de año a 850 Bs trae botella, piqueos y comida— y sin
+   decirlo el precio parece caro en vez de completo. La página del evento
+   ya mostraba los dos campos; lo que faltaba era poder cargarlos sin SQL.
+
+   Dos campos y no uno porque se leen distinto: la descripción es la frase
+   que vende, debajo del nombre; «incluye» es la lista concreta, con su
+   rótulo, que es lo que el comprador va a reclamar en la puerta. Por eso
+   «incluye» se escribe como se lo va a leer él, no como lo anota el
+   organizador.
+
+   Debajo de la grilla y no en la celda del tipo: la celda mide 230px y un
+   texto de tres renglones ahí no se puede ni leer ni corregir. */
+function describirTipo(eventoId, t) {
+  if (!t) return;
+  const z = $("#zonaTipo");
+  z.innerHTML = `
+    <form class="form-fase form-tipo" id="formTipo">
+      <h3>Descripción de «${esc(t.nombre)}»</h3>
+      <label class="ancha"><span>La frase que vende (va debajo del nombre)</span>
+        <textarea id="tdDesc" rows="2" maxlength="220"
+          placeholder="Ej.: Recibí el año nuevo con todo resuelto, de la cuenta regresiva al amanecer."
+          >${esc(t.descripcion || "")}</textarea>
+        <em class="ayuda" id="tdDescCuenta"></em></label>
+      <label class="ancha"><span>Incluye (lo que se lleva quien compra)</span>
+        <textarea id="tdIncluye" rows="2" maxlength="220"
+          placeholder="Ej.: ¼ de botella por persona · mesa de piqueos · comida al amanecer"
+          >${esc(t.incluye || "")}</textarea>
+        <em class="ayuda">Se muestra con el rótulo «Incluye» adelante. Separá cada cosa con « · ».</em></label>
+      <p class="error" id="tdError"></p>
+      <div class="acciones">
+        <button type="submit" class="btn primario" id="tdGuardar">Guardar</button>
+        <button type="button" class="btn plano" id="tdCancelar">Cancelar</button>
+      </div>
+    </form>`;
+  const desc = $("#tdDesc"), cuenta = $("#tdDescCuenta");
+  /* Corta es mejor: en el teléfono la tarjeta del tipo es angosta y una
+     frase de cuatro renglones empuja el precio fuera de la vista. */
+  const contar = () => { cuenta.textContent = `${desc.value.length} de 220 · mejor si entra en una línea o dos`; };
+  desc.oninput = contar; contar();
+  $("#tdCancelar").onclick = () => { z.innerHTML = ""; };
+  $("#formTipo").onsubmit = async e => {
+    e.preventDefault();
+    /* Vacío se guarda como null y no como "": la página pregunta «si hay
+       incluye» y un texto vacío dibujaría el rótulo solo. */
+    const cambios = {
+      descripcion: desc.value.trim() || null,
+      incluye: $("#tdIncluye").value.trim() || null,
+    };
+    await conBoton($("#tdGuardar"), "Guardando…", async () => {
+      const { data, error } = await sb.from("tipo_entrada")
+        .update(cambios).eq("id", t.id).select("id");
+      if (error) { $("#tdError").textContent = sinCodigo(error.message); return; }
+      /* Un update que RLS filtra contesta sin error y sin filas. */
+      if (!data || !data.length) { $("#tdError").textContent = "No se pudo guardar: la base no lo permitió."; return; }
+      avisar("Descripción guardada. Ya se ve en la página del evento.");
+      pantallaEntradas(eventoId);
+    });
+  };
+  z.scrollIntoView({ block: "start", behavior: QUIETO.matches ? "auto" : "smooth" });
+  desc.focus({ preventScroll: true });
 }
 
 /* Borrar un tipo. Hermano de borrarFase() y por los mismos motivos: la

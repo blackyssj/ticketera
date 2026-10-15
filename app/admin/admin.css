@@ -2092,3 +2092,21 @@ select{transition:border-color .15s ease,box-shadow .15s ease}
   .tabla-fases .fase-tipo td:first-child{padding-left:0}
   .tabla-fases td.vacia{display:none}
 }
+
+/* ─── la descripción de un tipo ───
+   «Incluye» en la grilla con el mismo rótulo que ve el comprador: así el
+   organizador lee lo que está prometiendo, no un campo de la base. */
+.grilla tbody th em.tipo-incluye-adm{margin-top:6px;color:var(--txt-2);-webkit-line-clamp:3}
+.tipo-incluye-adm b{
+  font-family:var(--dato);font-size:9.5px;font-weight:500;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--dorado);margin-right:4px;
+}
+.form-tipo textarea{
+  width:100%;padding:11px 13px;resize:vertical;min-height:64px;
+  font:inherit;font-size:14px;line-height:1.45;
+  background:var(--hundido);color:var(--txt);
+  border:1px solid var(--linea-2);border-radius:var(--r-chico);
+  transition:border-color .15s ease,box-shadow .15s ease;
+}
+.form-tipo textarea:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--rojo-suave)}
+.form-tipo label .ayuda{margin-top:2px}
