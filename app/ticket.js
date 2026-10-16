@@ -134,10 +134,48 @@ function selloFase(x, W, H, txt) {
   x.textBaseline = "alphabetic";
 }
 
+/* El rótulo de una cortesía ("Invitada especial", "Staff"): lo escribe
+   quien la emite y va en una pastilla como la del sello, centrada debajo
+   del nombre. Ahí y no abajo de todo porque el pie del arte es del
+   cliente —fecha, lugar, logos— y el espacio bajo el nombre es el único
+   que ticket.js ya sabe libre en cualquier arte. Medido en el arte de
+   Nocturne (15/10), el texto del cliente arranca 0,105 del ancho debajo
+   de la base del nombre: la pastilla va de 0,024 a 0,080, lejos de las
+   colas del nombre y de la fecha del afiche. Más chica que la del sello
+   por eso mismo. Es una copia de selloFase y no una reforma suya a
+   propósito: el sello se dibuja igual que en Puerta y esas entradas se
+   están vendiendo. */
+function rotulo(x, W, cy, txt, fuente) {
+  x.save();
+  x.shadowColor = "transparent"; x.shadowBlur = 0;
+  const t = String(txt).toUpperCase();
+  x.font = `800 ${Math.round(W * 0.03)}px ${fuente}`;
+  x.textAlign = "center"; x.textBaseline = "middle";
+  const pw = x.measureText(t).width + W * 0.06, ph = W * 0.056;
+  const px = (W - pw) / 2, py = cy - ph / 2;
+  x.fillStyle = "rgba(0,0,0,.55)";
+  x.beginPath(); x.roundRect(px, py, pw, ph, ph / 2); x.fill();
+  x.strokeStyle = "rgba(255,255,255,.5)"; x.lineWidth = Math.max(1, W * 0.0025);
+  x.beginPath(); x.roundRect(px, py, pw, ph, ph / 2); x.stroke();
+  x.fillStyle = "#fff";
+  x.fillText(t, W / 2, cy + W * 0.002);
+  x.restore();
+}
+const FUENTE_ROTULO = '"Big Shoulders Display", sans-serif';
+
+/* La letra del rótulo no la usa ningún CSS visible del panel, así que el
+   navegador no la baja sola y el canvas dibujaría con la de repuesto: se
+   pide, con el mismo tope de 3 s que las de Puerta. */
+function fuenteRotulo(t) {
+  if (!t.rotulo || !document.fonts || !document.fonts.load) return Promise.resolve();
+  const bajar = document.fonts.load(`800 40px ${FUENTE_ROTULO}`, String(t.rotulo)).catch(() => {});
+  return Promise.race([bajar, new Promise(ok => setTimeout(ok, 3000))]);
+}
+
 async function sobreArte(t, evento, fase, arte) {
   const puerta = !!(evento && evento.entrada_puerta);
   // En paralelo con la imagen: las dos cosas viajan a la vez.
-  const [img] = await Promise.all([cargarImagen(arte), puerta ? fuentesPuerta(t) : null]);
+  const [img] = await Promise.all([cargarImagen(arte), puerta ? fuentesPuerta(t) : null, fuenteRotulo(t)]);
   const k = Math.min(1, ANCHO_MAX / img.naturalWidth);
   const W = Math.round(img.naturalWidth * k), H = Math.round(img.naturalHeight * k);
   const c = document.createElement("canvas");
@@ -167,7 +205,9 @@ async function sobreArte(t, evento, fase, arte) {
   x.fillText("#" + t.code, W / 2, by + caja + H * 0.055);
   x.font = puerta ? `500 ${Math.round(W * 0.042)}px ${FUENTE_NOMBRE}`
                   : `500 ${Math.round(W * 0.042)}px "Inter Tight", sans-serif`;
-  x.fillText(t.cliente || "—", W / 2, by + caja + H * 0.055 + W * 0.075);
+  const yNombre = by + caja + H * 0.055 + W * 0.075;
+  x.fillText(t.cliente || "—", W / 2, yNombre);
+  if (t.rotulo) rotulo(x, W, yNombre + W * 0.052, t.rotulo, puerta ? FUENTE_CODIGO : FUENTE_ROTULO);
   if (puerta) {
     /* Como Puerta: el sello solo si la fase NO trae arte propio (la imagen
        ya la distingue) y solo para fases de Puerta. `sello` lo manda la
@@ -192,6 +232,7 @@ async function dibujarTicket(t, evento, fase) {
       console.error("arte no disponible, se dibuja el ticket propio:", e.message);
     }
   }
+  await fuenteRotulo(t);
   const W = 900, H = 1500;
   const c = document.createElement("canvas");
   c.width = W; c.height = H;
@@ -236,6 +277,7 @@ async function dibujarTicket(t, evento, fase) {
   x.fillText("#" + t.code, W / 2, by + box + 74);
   x.font = '500 34px "Inter Tight", sans-serif';
   x.fillText(t.cliente || "—", W / 2, by + box + 124);
+  if (t.rotulo) rotulo(x, W, by + box + 124 + W * 0.052, t.rotulo, FUENTE_ROTULO);
 
   // perforación
   const py = 1104;

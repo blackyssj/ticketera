@@ -44,15 +44,28 @@ const H = { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "applic
 /* El cliente sobre el que trabaja quien llama. Casi siempre es el de su
    perfil; si es un operador de TICKETAZO que entró como un cliente (0090),
    es ese cliente. La regla vive en la base (organizador_efectivo) y se le
-   pregunta a ella para que la función y el panel nunca discrepen. Si la
-   consulta falla, null: se sigue con el del perfil, que es el lado seguro. */
-async function organizadorEfectivo(uid: string): Promise<string | null> {
+   pregunta a ella para que la función y el panel nunca discrepen.
+
+   Si la consulta falla, se corta: NO se sigue con el del perfil. Hasta el
+   16/10 ése era el plan B y parecía el lado seguro, pero el perfil de un
+   operador es de TICKETAZO: un 5xx pasajero justo en el alta de un cliente
+   (0105) creaba su admin ADENTRO de TICKETAZO, y desde ahí ese admin podía
+   resetearle la clave a un operador. organizador_efectivo ya cae al del
+   perfil por su cuenta, así que para un perfil activo nunca devuelve null:
+   null o un error son siempre una falla, nunca una respuesta. */
+async function organizadorEfectivo(uid: string): Promise<string> {
   const r = await fetch(`${SB}/rest/v1/rpc/organizador_efectivo`, {
     method: "POST", headers: H, body: JSON.stringify({ p_uid: uid }),
   }).catch(() => null);
-  if (!r || !r.ok) return null;
-  const v = await r.json().catch(() => null);
-  return typeof v === "string" ? v : null;
+  const v = r && r.ok ? await r.json().catch(() => null) : null;
+  if (typeof v !== "string")
+    throw new Error("No pude confirmar en qué cliente estás. Probá de nuevo.");
+  return v;
+}
+
+/* Si el perfil es de un operador de TICKETAZO (plataforma_operador). */
+async function esOperador(id: string): Promise<boolean> {
+  return !!(await uno(`plataforma_operador?perfil_id=eq.${id}&select=perfil_id`));
 }
 
 
@@ -140,8 +153,7 @@ async function quienLlama(req: Request): Promise<Guardia> {
      dice y no lo que la base sabe. */
   const yo = await uno(`perfiles?id=eq.${u.id}&select=id,nombre,rol,activo,organizador_id`);
   if (!yo || !yo.activo) return { motivo: "Tu cuenta no está habilitada.", status: 403 };
-  const efectivo = await organizadorEfectivo(u.id);
-  if (efectivo) yo.organizador_id = efectivo;
+  yo.organizador_id = await organizadorEfectivo(u.id);
   if (yo.rol !== "admin") return {
     motivo: "Solo un administrador puede administrar el equipo.", status: 403 };
   return { yo };
@@ -157,6 +169,13 @@ async function objetivoDe(id: unknown, yo: any): Promise<Objetivo> {
     return { motivo: "Esa persona no es de tu equipo.", status: 404 };
   const p = await uno(`perfiles?id=eq.${id}&select=id,nombre,rol,activo,slug,organizador_id`);
   if (!p || p.organizador_id !== yo.organizador_id)
+    return { motivo: "Esa persona no es de tu equipo.", status: 404 };
+  /* Un operador de TICKETAZO sólo lo toca otro operador. Los operadores son
+     del organizador de TICKETAZO, y cualquier admin que termine ahí —por un
+     error, por un alta que salió mal— podría resetearle la clave a uno y
+     quedarse con la plata de todos los clientes. Misma respuesta que "no
+     existe", por lo mismo que arriba. */
+  if (p.id !== yo.id && await esOperador(p.id) && !(await esOperador(yo.id)))
     return { motivo: "Esa persona no es de tu equipo.", status: 404 };
   return { objetivo: p };
 }

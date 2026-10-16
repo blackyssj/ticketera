@@ -253,6 +253,92 @@ async function recargarSesion(pantalla) {
   arrancarApp();
 }
 
+/* ── alta de un cliente (0105) ──
+   Tres pasos que antes pedían una terminal: crear el organizador, entrar
+   como él y crearle su admin. Los dos primeros son una sola llamada a la
+   base (no puede quedar un cliente creado con el operador afuera); el
+   tercero es la función `equipo` de siempre, que crea la cuenta dentro del
+   cliente efectivo. Si ese tercero falla, el cliente ya existe y el
+   operador ya está adentro: se lo manda a Equipo a crearlo a mano en vez
+   de deshacer nada. */
+const slugDe = txt => String(txt || "").toLowerCase()
+  .normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .replace(/[^a-z0-9]+/g, "").slice(0, 30);
+
+function cablearNuevoCliente() {
+  const f = $("#formNuevoCliente"), btn = $("#btnNuevoCliente");
+  if (!f || !btn) return;
+  const nombre = $("#ncNombre"), slug = $("#ncSlug"), link = $("#ncLink");
+  /* El usuario se propone a partir del nombre hasta que alguien lo toca:
+     "Dark Garden" → darkgarden. Después manda lo que escribió la persona. */
+  let tocado = false;
+  const eco = () => { link.textContent = slug.value || "usuario"; };
+  nombre.oninput = () => { if (!tocado) { slug.value = slugDe(nombre.value); eco(); } };
+  slug.oninput = () => {
+    tocado = slug.value !== "";
+    slug.value = slug.value.toLowerCase().replace(/[^a-z0-9-]/g, "");
+    eco();
+  };
+  btn.onclick = () => {
+    f.hidden = !f.hidden;
+    btn.textContent = f.hidden ? "Nuevo cliente" : "Cerrar";
+    if (!f.hidden) nombre.focus();
+  };
+  $("#btnNcNo").onclick = () => { f.hidden = true; btn.textContent = "Nuevo cliente"; };
+  f.onsubmit = e => { e.preventDefault(); conBoton($("#btnCrearCliente"), "Creando…", crearCliente); };
+}
+
+async function crearCliente() {
+  const err = $("#ncError");
+  err.textContent = "";
+  const nombre = $("#ncNombre").value.trim();
+  const usuario = $("#ncSlug").value.trim().toLowerCase();
+  const fee = Number(String($("#ncFee").value).replace(",", "."));
+  if (!nombre) { err.textContent = "Falta el nombre del cliente."; return; }
+  if (!/^[a-z0-9-]{3,30}$/.test(usuario)) {
+    err.textContent = 'El usuario va en minúsculas, entre 3 y 30 caracteres, sólo letras, números y "-".';
+    return;
+  }
+  if (!(fee >= 0 && fee <= 20)) { err.textContent = "La comisión va en %, entre 0 y 20."; return; }
+
+  const { data, error } = await sb.rpc("plataforma_crear_cliente",
+    { p_nombre: nombre, p_slug: usuario, p_fee_pct: fee });
+  if (error) {
+    /* Un error acá puede ser un corte de red DESPUÉS de que la base hizo el
+       alta: el cliente existe y el operador ya está adentro, pero el panel
+       no se enteró. Se le pregunta a la base dónde está parado antes de
+       decir que falló; si ya está adentro del nuevo, se sigue en Equipo. */
+    try { await cargarPerfil(); } catch (e) { /* el aviso de abajo alcanza */ }
+    if (S.org && S.org.operando && S.orgSlug === usuario) {
+      await recargarSesion("equipo");
+      avisar(`${nombre} se creó, pero no llegó la confirmación. Creá su usuario acá, en Equipo.`);
+      return;
+    }
+    err.textContent = sinCodigo(error.message);
+    return;
+  }
+  if (!data || !data.ok) { err.textContent = (data && data.motivo) || "No se pudo crear el cliente."; return; }
+
+  let aviso = `Creaste ${data.nombre}. Ya estás operando como el cliente.`;
+  try {
+    const res = await llamarEquipo({ accion: "crear", usuario, nombre, rol: "admin" });
+    /* La cuenta tiene que haber caído ADENTRO del cliente nuevo. Si cayó en
+       otro lado (el de TICKETAZO, si `equipo` no supo en qué cliente
+       estabas), esa clave no se muestra: sería un admin nuestro en manos de
+       alguien de afuera. */
+    if (!res.perfil || res.perfil.organizador_id !== data.id) {
+      aviso = `Creaste ${data.nombre}, pero su usuario quedó fuera del cliente. ` +
+              `Avisale a un operador para desactivar "${usuario}" y crealo de nuevo desde Equipo.`;
+    } else {
+      EQ.pendiente = { titulo: `La clave de ${nombre}`, usuario: res.usuario, clave: res.clave };
+    }
+  } catch (e) {
+    aviso = `Creaste ${data.nombre}, pero no su usuario: ${e.message} Crealo acá, en Equipo.`;
+  }
+  await recargarSesion("equipo");
+  avisar(aviso);
+}
+
 function pintarOperando() {
   const z = $("#operando");
   if (!z) return;
@@ -4102,6 +4188,9 @@ async function pantallaCortesias(eventoId) {
         <label><span>A nombre de</span>
           <input id="cPara" required maxlength="80" autocomplete="off"
                  placeholder="Radio Line, el DJ, la marca…"></label>
+        <label><span>Rótulo en la entrada <em class="ayuda">opcional</em></span>
+          <input id="cRotulo" maxlength="30" autocomplete="off"
+                 placeholder="Invitada especial"></label>
         <label class="ancha"><span>Motivo</span>
           <input id="cMotivo" required maxlength="200" autocomplete="off"
                  placeholder="canje por la transmisión, invitados del DJ…"></label>
@@ -4217,6 +4306,12 @@ async function emitirCortesias() {
   const b = $("#btnEmitir");
   $("#cError").textContent = "";
   b.disabled = true;
+  /* El rótulo no va a la base: es parte del dibujo y las cortesías se
+     dibujan una sola vez, acá, apenas se emiten. Se lee antes de la
+     llamada para que la tanda salga con el que estaba escrito al apretar.
+     Se deja escrito después: el que regala diez "Invitada especial" suele
+     seguir con otras diez. */
+  const rot = $("#cRotulo").value.trim();
   const { data, error } = await sb.rpc("emitir_cortesias", {
     p_evento:   CORT.evento,
     p_tipo:     $("#cTipo").value,
@@ -4227,7 +4322,7 @@ async function emitirCortesias() {
   b.disabled = false;
   if (error) { $("#cError").textContent = sinCodigo(error.message); return; }
   avisar(data.motivo);
-  CORT.ultimas = data;
+  CORT.ultimas = { ...data, rotulo: rot };
   $("#cPara").value = "";
   $("#cMotivo").value = "";
   pintarEmitidas();
@@ -4295,7 +4390,7 @@ async function dibujarCortesias() {
   try {
     for (const code of d.codes) {
       pngs.push(await window.dibujarTicket(
-        { code, cliente: d.para, etiqueta: d.tipo }, evento, CORT.fase));
+        { code, cliente: d.para, etiqueta: d.tipo, rotulo: d.rotulo }, evento, CORT.fase));
     }
   } catch (e) {
     CORT.dibujando = false;
@@ -4477,7 +4572,7 @@ async function resolverRevision(ordenId, decision, motivo) {
    Nada de los `if` de rol de acá es seguridad: el que llegue por consola
    se choca con la función o con la RLS, que son las que deciden. */
 
-const EQ = { gente: [], editando: null, alta: false, clave: null, eventos: [], busca: "" };
+const EQ = { gente: [], editando: null, alta: false, clave: null, pendiente: null, eventos: [], busca: "" };
 
 const ROLES_TXT = { admin: "Administrador", staff: "Staff",
                     rrpp: "Relacionador", portero: "Portero" };
@@ -4530,7 +4625,12 @@ async function pantallaEquipo(opts) {
   EQ.editando = null;
   EQ.alta = false;
   EQ.busca = "";
-  if (!(opts && opts.mantenerClave)) EQ.clave = null;
+  /* `pendiente` es la clave del admin de un cliente recién dado de alta en
+     Plataforma: se crea allá y se muestra acá, al aterrizar. Se borra recién
+     cuando la tarjeta se pintó (abajo): si la lista no carga, o alguien
+     cambia de pestaña mientras dice "Cargando", la próxima entrada a Equipo
+     la vuelve a mostrar en vez de perderla. */
+  if (!(opts && opts.mantenerClave)) EQ.clave = EQ.pendiente || null;
   /* El filtro por organizador va del lado del servidor aunque la RLS ya
      lo haga: es la misma regla de siempre —PostgREST corta en 1000 filas
      sin avisar y lo que se filtra en JS no ahorra ese corte— y además
@@ -4553,6 +4653,7 @@ async function pantallaEquipo(opts) {
   EQ.gente = gente.data || [];
   EQ.eventos = evs.error ? [] : (evs.data || []);
   pintarEquipo();
+  if (EQ.clave && EQ.clave === EQ.pendiente) EQ.pendiente = null;
 }
 
 /* ── el buscador ──
@@ -5115,7 +5216,31 @@ async function pantallaPlataforma() {
         mover y va a ser por esto.</p>
     </section>
 
-    <h3 class="titulo-bloque">Por cliente</h3>
+    <div class="cab-bloque">
+      <h3 class="titulo-bloque">Por cliente</h3>
+      <button type="button" class="btn plano chico" id="btnNuevoCliente">Nuevo cliente</button>
+    </div>
+    <form class="tarjeta form-nuevo-cliente" id="formNuevoCliente" hidden>
+      <h3>Nuevo cliente</h3>
+      <p class="ayuda">Crea el cliente con su cuenta de administrador y te deja
+        operando como él para cargarle el evento. La comisión se suma al precio
+        y la paga el comprador. La cuenta bancaria y el giro automático se
+        completan después, desde su panel.</p>
+      <label><span>Nombre</span>
+        <input id="ncNombre" required maxlength="80" autocomplete="off" placeholder="Dark Garden"></label>
+      <label><span>Usuario</span>
+        <input id="ncSlug" required maxlength="30" autocomplete="off" autocapitalize="off"
+               spellcheck="false" placeholder="darkgarden">
+        <em class="ayuda">Entra al panel con este usuario y es su link:
+          ticketazo.com.bo/<b id="ncLink">darkgarden</b></em></label>
+      <label><span>Comisión %</span>
+        <input id="ncFee" required inputmode="decimal" value="7" size="4"></label>
+      <div class="acciones">
+        <button type="submit" class="btn primario" id="btnCrearCliente">Crear cliente</button>
+        <button type="button" class="btn plano" id="btnNcNo">Cancelar</button>
+      </div>
+      <p class="error" id="ncError"></p>
+    </form>
     <div class="tabla-scroll">
       <table class="tabla">
         <thead><tr><th>Cliente</th><th>Tarifa</th><th class="num">Entradas</th>
@@ -5215,6 +5340,7 @@ async function pantallaPlataforma() {
   document.querySelectorAll("[data-operar]").forEach(b => {
     b.onclick = () => operarComo(b.dataset.operar, b);
   });
+  cablearNuevoCliente();
 
   document.querySelectorAll("[data-girar]").forEach(b => {
     b.onclick = () => girarDesdePlataforma(evs.find(x => x.id === b.dataset.girar), b);

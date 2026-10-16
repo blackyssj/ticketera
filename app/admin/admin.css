@@ -800,6 +800,16 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 }
 .form-cortesias .acciones,.form-cortesias .error{grid-column:1/-1;margin-top:0}
 
+/* Alta de un cliente, en Plataforma (0105). Tres campos en una línea en la
+   compu —nombre y usuario anchos, la comisión angosta porque es un número
+   de dos cifras— y uno abajo del otro en el teléfono. */
+.form-nuevo-cliente{display:grid;grid-template-columns:2fr 2fr 1fr;gap:16px;
+  max-width:760px;margin:0 0 18px}
+.form-nuevo-cliente label{min-width:0}
+.form-nuevo-cliente h3,.form-nuevo-cliente>.ayuda,
+.form-nuevo-cliente .acciones,.form-nuevo-cliente .error{grid-column:1/-1;margin:0}
+.form-nuevo-cliente label .ayuda{display:block;margin-top:6px;font-style:normal}
+
 /* Los códigos son lo que se copia y lo que se dicta por teléfono: mono,
    espaciados y seleccionables de a uno con un clic. */
 .codigos{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
@@ -866,6 +876,7 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 @media (max-width:860px){
   .dos-tablas{grid-template-columns:1fr}
   .form-cortesias{grid-template-columns:1fr}
+  .form-nuevo-cliente{grid-template-columns:1fr}
 }
 @media (max-width:760px){
   .cifra-grande .valor{font-size:36px}
