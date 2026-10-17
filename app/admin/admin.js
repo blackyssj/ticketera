@@ -975,9 +975,9 @@ async function pantallaEntradas(eventoId) {
      escribe 120, el comprador ve 130, y se entera cuando alguien le
      pregunta por qué le cobraron de más. */
   const cfgFee = (await sb.from("organizadores")
-    .select("fee_pct,fee_fijo_transaccion,fee_piso")
+    .select("fee_pct,fee_fijo_transaccion,fee_piso,comision_modo")
     .eq("id", S.yo.organizador_id).single()).data
-    || { fee_pct: 0, fee_fijo_transaccion: 0, fee_piso: 0 };
+    || { fee_pct: 0, fee_fijo_transaccion: 0, fee_piso: 0, comision_modo: "sobre" };
   /* Antes de pintar, no después: textoPaga() se llama dentro del template y
      con FEE_CFG todavía en cero el primer eco decía el precio pelado. */
   FEE_CFG = cfgFee;
@@ -1051,12 +1051,16 @@ async function pantallaEntradas(eventoId) {
     </div>
     <section id="zonaFase"></section>
     <section id="zonaTipo"></section>
-    <p class="ayuda explica nota-fee">El precio es lo que te queda. Encima va el
-       ${Math.round(cfgFee.fee_pct * 100)}% de servicio de TICKETAZO, que paga el
-       comprador${Number(cfgFee.fee_fijo_transaccion) > 0
+    <p class="ayuda explica nota-fee">${cfgFee.comision_modo === "adentro"
+       ? `El precio es lo que paga el comprador. De ahí se descuenta el
+          ${pctTxt(cfgFee.fee_pct)}% de servicio de TICKETAZO`
+       : `El precio es lo que te queda. Encima va el
+          ${pctTxt(cfgFee.fee_pct)}% de servicio de TICKETAZO, que paga el comprador`}${
+         Number(cfgFee.fee_fijo_transaccion) > 0
          ? ` más ${bs(cfgFee.fee_fijo_transaccion)} por compra` : ""}${
          Number(cfgFee.fee_piso) > 0 ? `, con un mínimo de ${bs(cfgFee.fee_piso)}` : ""}.
-       Debajo de cada precio dice cuánto va a pagar.</p>
+       Debajo de cada precio dice ${cfgFee.comision_modo === "adentro"
+         ? "cuánto te queda" : "cuánto va a pagar"}.</p>
     <div class="acciones">
       <button class="btn plano" id="btnTipo">Crear tipo de entrada</button>
       <button class="btn primario" id="btnGuardarGrilla">Guardar precios</button>
@@ -1186,16 +1190,32 @@ function ofrecerVuelta(chk, valor) {
    es la de la base. Si algún día dejan de coincidir, la que está mal es
    esta — pero verla antes de guardar el precio evita el descubrimiento
    caro, que es el comprador preguntando por qué le cobraron de más. */
+/* Con la comisión descontada (0064) la base redondea a centavos y nunca
+   descuenta más que el precio: en 60 al 2,5% son 1,50, no 2. Sumada, sigue
+   redondeando a Bs enteros como siempre. Las dos ramas copian a crear_orden;
+   si no coinciden, la que manda es la de la base. */
 function feePreview(sub, cfg) {
   if (!(sub > 0)) return 0;
-  return Math.max(Math.round(sub * Number(cfg.fee_pct || 0))
-                  + Number(cfg.fee_fijo_transaccion || 0),
-                  Number(cfg.fee_piso || 0));
+  const pct = Number(cfg.fee_pct || 0), fijo = Number(cfg.fee_fijo_transaccion || 0),
+        piso = Number(cfg.fee_piso || 0);
+  if (cfg.comision_modo === "adentro")
+    return Math.min(Math.max(Math.round(sub * pct * 100) / 100 + fijo, piso), sub);
+  return Math.max(Math.round(sub * pct) + fijo, piso);
 }
 
-let FEE_CFG = { fee_pct: 0, fee_fijo_transaccion: 0, fee_piso: 0 };
+let FEE_CFG = { fee_pct: 0, fee_fijo_transaccion: 0, fee_piso: 0, comision_modo: "sobre" };
+/* Sumada, lo que importa es cuánto paga el comprador; descontada, el
+   comprador paga el precio tal cual y lo que importa es cuánto le queda al
+   organizador. */
 const textoPaga = sub => !(sub > 0) ? ""
-  : `paga ${bs(sub + feePreview(sub, FEE_CFG))}`;
+  : FEE_CFG.comision_modo === "adentro"
+    ? `te quedan ${bs(Math.round((sub - feePreview(sub, FEE_CFG)) * 100) / 100)}`
+    : `paga ${bs(sub + feePreview(sub, FEE_CFG))}`;
+
+/* El porcentaje tal cual, con coma y hasta dos decimales: un 2,5% redondeado
+   decía "3%" en la Plataforma y en Entradas, y el cliente leía una tarifa
+   que no era la que firmó. */
+const pctTxt = p => (Number(p || 0) * 100).toLocaleString("es-BO", { maximumFractionDigits: 2 });
 
 /* ══ el reloj de Bolivia ══════════════════════════════════════════
    Bolivia es UTC−4 todo el año: no hay horario de verano, así que el
@@ -5252,7 +5272,7 @@ async function pantallaPlataforma() {
           return `<tr>
             <td><b>${esc(c.organizador)}</b>${Number(c.simuladas)
               ? `<em class="ayuda"> ${bs(c.simuladas)} en pruebas</em>` : ""}</td>
-            <td class="dato">${Math.round(Number(c.fee_pct) * 100)}%
+            <td class="dato">${pctTxt(c.fee_pct)}%
               <em class="ayuda">${c.modo === "adentro" ? "descontada" : "sumada"}</em></td>
             <td class="num">${Number(c.entradas)}</td>
             <td class="num">${bs(c.cobrado)}</td>
