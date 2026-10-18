@@ -1,56 +1,102 @@
 /* ══════════════════════════════════════════════════════════════════
    Administración de la ticketera.
 
-   Oscura y neutra: grises, sin resplandores, títulos en la misma familia
-   que el texto. La landing es el afiche; esto es la oficina (17/09/2026). La profundidad la da una pila de
-   superficies con bordes de un pelo, no cajas con marco — es lo que hace
-   que Puerta se vea armada y esto no.
+   Clara, con la marca puesta (18/10/2026). Hasta acá era una consola gris
+   oscura con rótulos en mono y mayúsculas: se veía como una herramienta
+   interna, y la usan organizadores desde el teléfono a pleno día, que
+   leían fechas y ayudas en 11px de máquina de escribir. Ahora es una
+   oficina: fondo apenas violeta, tarjetas blancas con borde de un pelo,
+   Inter para todo y el violeta de TICKETAZO como único acento. El amarillo
+   flúor no es texto nunca (sobre blanco no se lee): es un relleno, y va
+   sólo donde hay que mirar sí o sí.
+
+   La puerta sigue oscura. Ver body[data-pantalla="puerta"] más abajo.
 
    Es una herramienta, no una vitrina: densidad alta, movimiento solo donde
    confirma que algo pasó.
    ══════════════════════════════════════════════════════════════════ */
 
+/* Los nombres viejos (--noche, --sup, --rojo, --dorado…) se quedan como
+   la interfaz pública de la hoja: casi todas las reglas de abajo cambian
+   de color solas al cambiar el valor acá, sin tocarlas una por una. */
 :root{
-  /* la pila de superficies: cada nivel un escalón hacia el lector */
-  --noche:#131316;
-  --hundido:#0E0E11;        /* más abajo que el fondo: donde van los inputs */
-  --sup:#1A1A1F;
-  --sup-2:#212127;
-  --sup-3:#2A2A31;
+  color-scheme:light;
 
-  --linea:rgba(236,236,238,.09);
-  --linea-2:rgba(236,236,238,.16);
+  /* la marca, igual que la portada */
+  --marca-tinta:#180E3A;
+  --marca-tinta-2:#231550;
+  --marca-violeta:#3A2478;
+  --fluor:#FFE24B;
+  --fluor-suave:#FFF8D1;
+  --fluor-borde:#F2DC72;
+  --crema:#F6F1E4;
 
-  /* tres niveles de texto: la jerarquía no la carga el tamaño */
-  --txt:#ECECEE;
-  --txt-2:#A0A0A8;
-  --txt-3:#6B6B74;
+  /* la pila de superficies: el fondo apenas tinto, la tarjeta blanca */
+  --noche:#F7F6FB;          /* fondo de la página */
+  --sup:#FFFFFF;            /* tarjeta */
+  --sup-2:#FAF9FD;          /* cabecera de tabla, fila al pasar */
+  --sup-3:#F0EEF6;          /* pastilla gris, riel de avance, apretado */
+  /* El campo deja de ir hundido: en claro, un pozo más oscuro que el
+     fondo se lee como deshabilitado. Blanco con borde y una sombra de un
+     pixel es lo que se lee como "acá se escribe". */
+  --hundido:#FFFFFF;
 
-  --rojo:#DC0A2D;
-  --rojo-claro:#F01236;
-  --rojo-suave:rgba(220,10,45,.14);
-  --dorado:#D9A441;
+  --linea:#E7E5EF;          /* bordes de tarjeta y divisores */
+  --linea-2:#D6D3E1;        /* borde de campo */
+  --linea-3:#BDB8CC;        /* borde de campo al pasar */
+  --cab-vidrio:rgba(255,255,255,.86);
+
+  /* tres niveles de texto, los tres AA sobre blanco y sobre --noche */
+  --txt:#1A1530;            /* 17.6:1 */
+  --txt-2:#5B5670;          /* 7.0:1 */
+  --txt-3:#6F6A84;          /* 5.2:1: AA también en 12px */
+  --txt-placeholder:#8D899E;
+
+  /* El acento es el violeta de TICKETAZO. --rojo queda como alias por las
+     reglas viejas que lo nombran: el rojo de verdad es --peligro, y así
+     «apretá acá» y «esto está mal» dejan de ser el mismo color. */
+  --acento:#5B34D9;         /* blanco encima: 7.2:1 */
+  --acento-hover:#4C28C2;
+  --acento-suave:#F1EDFD;
+  --acento-anillo:rgba(91,52,217,.22);
+  --sobre-acento:#FFFFFF;
+  --rojo:#5B34D9;
+  --rojo-claro:#4C28C2;
+  --rojo-suave:rgba(91,52,217,.22);
+  /* Ya no es "el color de la plata": el oro de antes sobre blanco da 2.2:1.
+     Es un ámbar oscuro para lo que pide mirar sin estar mal. */
+  --dorado:#8A5300;
 
   /* semánticos, separados del acento: un evento a la venta no es "lo activo",
      es "lo que está bien" */
-  --ok:#4CAF7D;
-  --ok-bg:rgba(76,175,125,.12);
-  --aviso:#D9A441;
-  --aviso-bg:rgba(217,164,65,.12);
-  --peligro:#E5484D;
-  --peligro-bg:rgba(229,72,77,.12);
+  --ok:#0E7A4A;      --ok-bg:#E8F6EE;      --ok-borde:#BFE5CF;
+  --aviso:#9A5B00;   --aviso-bg:#FFF4D6;   --aviso-borde:#F3D58A;
+  --peligro:#C4243B; --peligro-bg:#FDECEE; --peligro-borde:#F5BCC4;
+  --toast-fondo:#1A1530; --toast-txt:#FFFFFF;
 
-  /* Los títulos van en la misma familia que el texto: es una herramienta,
-     no un afiche. La condensada queda sólo para Puerta, que se lee a un
-     metro y de noche. */
-  --display:"Inter Tight",system-ui,-apple-system,sans-serif;
+  /* Una sola familia para leer. La condensada es la marca y la puerta, que
+     se lee a un metro y de noche; la mono queda para lo que se copia o se
+     dicta (códigos, claves, links), donde una l y un 1 no pueden parecerse. */
+  --texto:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --display:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --dato:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; /* deja de ser mono */
+  --codigo:"DM Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --marca-fuente:"Big Shoulders Display","Arial Narrow",sans-serif;
   --display-puerta:"Big Shoulders Display","Arial Narrow",system-ui,sans-serif;
-  --texto:"Inter Tight",system-ui,-apple-system,sans-serif;
-  --dato:"DM Mono",ui-monospace,Menlo,monospace;
 
-  --r:10px;
-  --r-chico:7px;
-  --carril:1120px;
+  /* espacio, radio, sombra */
+  --r-xs:4px;
+  --r-chico:6px;
+  --r:8px;
+  --r-grande:12px;
+  --sombra-1:0 1px 2px rgba(24,14,58,.06);
+  --sombra-2:0 1px 3px rgba(24,14,58,.08),0 1px 2px rgba(24,14,58,.04);
+  --sombra-3:0 12px 32px -8px rgba(24,14,58,.22),0 2px 6px rgba(24,14,58,.06);
+  /* El alto de la barra, en un solo lugar: tres cosas se pegan debajo de
+     ella al scrollear y cada una tenía el 58 escrito a mano. */
+  --alto-cab:58px;
+  /* Era 1120: las tablas de Plataforma tienen once columnas. */
+  --carril:1200px;
 
   /* Las curvas del movimiento. Las de serie del navegador (`ease`,
      `ease-out`) arrancan tibias: lo que aparece tarda en reaccionar y se
@@ -61,35 +107,109 @@
   --entra:cubic-bezier(.32,.72,0,1);      /* lo que se desliza, como la marca de pestaña */
 }
 
+/* ─── la puerta, de noche ───
+   La única pantalla que sigue oscura. El portero la mira con la fila
+   encima y sin luz: una pantalla blanca le cierra la pupila y deja de ver
+   la cara del que tiene adelante. admin.js marca el body al mostrar cada
+   pantalla, y acá se redeclara la paleta entera.
+
+   Con VALORES y no con var(): una variable que nombra a otra se resuelve
+   donde se declara y baja ya resuelta, así que un alias declarado en
+   :root seguiría claro adentro de la puerta.
+
+   El acento también es violeta acá, más claro para que se lea sobre gris.
+   Antes «Buscar» era del mismo rojo que el cartel de NO PASA: el color que
+   decía «rechazá» decía también «apretá acá». */
+body[data-pantalla="puerta"]{
+  color-scheme:dark;
+  --noche:#131316; --hundido:#0E0E11; --sup:#1A1A1F; --sup-2:#212127; --sup-3:#2A2A31;
+  --linea:rgba(236,236,238,.09); --linea-2:rgba(236,236,238,.16); --linea-3:rgba(236,236,238,.24);
+  --cab-vidrio:rgba(26,26,31,.82);
+  --txt:#ECECEE; --txt-2:#A0A0A8;
+  --txt-3:#8A8A93;          /* era #6B6B74 (3.3:1); éste da 5.1:1 */
+  --txt-placeholder:#6B6B74;
+  --acento:#7A5CF0; --acento-hover:#8C72F3; --acento-suave:rgba(122,92,240,.18);
+  --acento-anillo:rgba(122,92,240,.35); --sobre-acento:#FFFFFF;
+  --rojo:#7A5CF0; --rojo-claro:#8C72F3; --rojo-suave:rgba(122,92,240,.35);
+  --dorado:#D9A441;
+  --ok:#4CAF7D; --ok-bg:rgba(76,175,125,.12); --ok-borde:rgba(76,175,125,.3);
+  --aviso:#D9A441; --aviso-bg:rgba(217,164,65,.12); --aviso-borde:rgba(217,164,65,.34);
+  --peligro:#E5484D; --peligro-bg:rgba(229,72,77,.12); --peligro-borde:rgba(229,72,77,.32);
+  --toast-fondo:#2A2A31; --toast-txt:#ECECEE;
+  --dato:"DM Mono",ui-monospace,Menlo,monospace;
+  --sombra-1:none; --sombra-2:none; --sombra-3:0 10px 30px -6px rgba(0,0,0,.55);
+}
+/* Los rótulos de la puerta siguen en mono y versalitas: se leen de reojo
+   y no se escriben, que es justo para lo que esa letra sirve. */
+body[data-pantalla="puerta"] label>span{
+  font-family:var(--dato);font-size:11px;font-weight:400;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--txt-3);
+}
+body[data-pantalla="puerta"] .marca{color:var(--txt)}
+/* Un blanco grande para el dedo de noche: el botón de 14px de la oficina
+   acá se erra con la mano fría y la fila empujando. */
+body[data-pantalla="puerta"] .puerta .btn.primario{font-size:17px;min-height:52px}
+
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{
   margin:0;background:var(--noche);color:var(--txt);
-  font-family:var(--texto);font-size:15px;line-height:1.5;
+  font-family:var(--texto);font-size:14px;line-height:1.5;
+  /* La a de un solo ojo de Inter: con la de dos, "Bs" y "a" al lado de un
+     número se leen más apretados en 13px. */
+  font-feature-settings:"cv11";
   -webkit-font-smoothing:antialiased;
 }
-h1,h2,h3{margin:0;font-family:var(--display);font-weight:600;line-height:1.15;letter-spacing:-.01em}
+h1,h2,h3{margin:0;font-family:var(--texto);font-weight:600;line-height:1.2;letter-spacing:-.011em;color:var(--txt)}
 p{margin:0}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
 input{font:inherit}
-:focus-visible{outline:2px solid var(--txt-2);outline-offset:2px;border-radius:4px}
+:focus-visible{outline:2px solid var(--acento);outline-offset:2px;border-radius:4px}
+::selection{background:var(--acento-suave)}
 [hidden]{display:none !important}
 
 /* ─── entrar ───
-   Centrada y sola: no hay nada más que hacer en esta pantalla. */
+   La marca a un lado y el formulario solo del otro: es lo primero que ve
+   un organizador nuevo, muchas veces desde un link que le mandaron, y
+   tiene que saber de quién es el panel antes de escribir su clave. En el
+   teléfono la marca va arriba y la caja se monta encima de su borde. */
 .entrar{
-  min-height:100dvh;display:grid;place-items:center;padding:24px;
-  background:var(--noche);
+  min-height:100dvh;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);
+  padding:0;background:var(--noche);
 }
+.entrar-marca{
+  display:flex;flex-direction:column;justify-content:space-between;gap:24px;
+  padding:48px;color:var(--crema);
+  background:radial-gradient(120% 90% at 0% 100%,var(--marca-violeta) 0%,transparent 60%),var(--marca-tinta);
+}
+/* La misma palabra que la portada: TICKET en crema y AZO en flúor. */
+.logo{font:800 72px/.9 var(--marca-fuente);letter-spacing:.01em;text-transform:uppercase}
+.logo span{color:var(--fluor)}
+.entrar-lema{max-width:28ch;font:500 18px/1.4 var(--texto);color:rgba(246,241,228,.72)}
 .caja{
-  width:min(370px,100%);background:var(--sup);
-  border:1px solid var(--linea);border-radius:12px;padding:28px 24px;
-  display:flex;flex-direction:column;gap:15px;
+  display:flex;flex-direction:column;gap:16px;
+  background:var(--sup);border:1px solid var(--linea);border-radius:var(--r-grande);
+  box-shadow:var(--sombra-3);
 }
-.caja h1{font-size:38px}
-.caja .sub{
-  margin:-11px 0 8px;font-family:var(--dato);font-size:11px;
-  letter-spacing:.16em;text-transform:uppercase;color:var(--txt-3);
+.entrar>.caja{align-self:center;justify-self:center;width:min(400px,calc(100% - 32px));padding:32px}
+.caja h1{font:600 22px/1.25 var(--texto);letter-spacing:-.01em}
+.caja .sub{margin:-8px 0 4px;font:14px/1.5 var(--texto);color:var(--txt-2)}
+.caja .btn.primario{min-height:44px;font-size:15px}
+.entrar-ayuda{font-size:13px;line-height:1.5;color:var(--txt-3);text-align:center}
+/* El error vacío no ocupa lugar (sí sigue en el árbol, para que el lector
+   de pantalla anuncie lo que se escriba ahí). */
+.caja .error:empty{min-height:0;margin-top:-16px}
+/* Mientras se revisa una sesión guardada (ver el script del <head>) la
+   caja no existe: con `display` y no con `visibility`, para que su
+   animación de entrada corra cuando aparece y no antes, a escondidas. */
+html[data-sesion="revisando"] .entrar>.caja{display:none}
+@media (max-width:760px){
+  .entrar{grid-template-columns:1fr;align-content:start}
+  .entrar-marca{padding:32px 20px 80px}
+  .logo{font-size:48px}
+  .entrar-lema{font-size:15px;margin-top:8px}
+  .entrar>.caja{margin-top:-56px;align-self:start;padding:24px 20px}
+  .caja input{height:48px}
 }
 
 /* ─── barra ─── */
@@ -97,88 +217,110 @@ input{font:inherit}
    que dice que hay más página sin agregar una sombra. Sin soporte de
    `backdrop-filter` queda la superficie lisa de siempre. */
 .cab{
-  display:flex;align-items:center;gap:16px;padding:0 20px;height:58px;
+  display:flex;align-items:center;gap:24px;padding:0 24px;height:var(--alto-cab);
   background:var(--sup);border-bottom:1px solid var(--linea);
   position:sticky;top:0;z-index:20;
 }
 @supports (backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)){
   .cab{
-    background:rgba(26,26,31,.82);
+    background:var(--cab-vidrio);
     -webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%);
   }
 }
-.marca{font-family:var(--display);font-size:17px;font-weight:700;letter-spacing:-.01em}
-/* La pastilla roja de la pestaña elegida es UNA sola, debajo de los
-   botones, y se corre de uno a otro (ver moverIndicador en admin.js). Los
-   botones quedan transparentes y por encima. Sin JS o antes de medir, la
-   pastilla no tiene ancho y el botón elegido se pinta solo, como antes. */
-.tabs{display:flex;gap:3px;position:relative;isolation:isolate}
+/* La palabra de la portada, en chico: AZO sobre un taco flúor. El flúor
+   va de fondo y no de letra porque sobre blanco no se lee (1.3:1). */
+.marca{
+  font:800 22px/1 var(--marca-fuente);letter-spacing:.01em;text-transform:uppercase;
+  color:var(--marca-tinta);white-space:nowrap;
+}
+.marca>span{
+  background:var(--fluor);color:var(--marca-tinta);
+  padding:1px 2px 0;border-radius:3px;
+}
+/* La pastilla de la pestaña elegida es UNA sola, debajo de los botones, y
+   se corre de uno a otro (ver moverIndicador en admin.js). Los botones
+   quedan transparentes y por encima. Sin JS o antes de medir, la pastilla
+   no tiene ancho y el botón elegido se pinta solo, como antes. */
+.tabs{display:flex;gap:2px;position:relative;isolation:isolate}
 .tabs::before{
   content:"";position:absolute;z-index:-1;left:0;top:0;
-  height:var(--ind-h,0);width:var(--ind-w,0);border-radius:999px;background:var(--rojo);
+  height:var(--ind-h,0);width:var(--ind-w,0);border-radius:var(--r-chico);background:var(--acento-suave);
   transform:translate(var(--ind-x,0),var(--ind-y,0));
 }
 .tabs[data-ind]::before{transition:transform .32s var(--entra),width .32s var(--entra)}
 .tabs button{
-  padding:7px 14px;border-radius:999px;
-  font-family:var(--dato);font-size:12px;letter-spacing:.04em;color:var(--txt-3);
+  padding:6px 12px;border-radius:var(--r-chico);white-space:nowrap;
+  font:500 14px/20px var(--texto);letter-spacing:0;color:var(--txt-2);
   transition:background .15s ease,color .2s ease;
 }
-.tabs button[aria-current]{background:var(--rojo);color:#fff}
+.tabs button[aria-current]{background:var(--acento-suave);color:var(--acento)}
 .tabs[style*="--ind-w"] button[aria-current]{background:transparent}
-.yo{margin-left:auto;font-family:var(--dato);font-size:12px;color:var(--txt-3)}
+/* `.cab .yo` y no `.yo` suelto: la fila propia de la tabla de socios
+   también se llama `.yo`, y se llevaba el margen, la letra y el gris de
+   la barra. */
+.cab .yo{margin-left:auto;font:13px var(--texto);color:var(--txt-2);white-space:nowrap}
+/* Salir no es una acción de la barra sino una puerta: sin marco, para que
+   no compita con las pestañas. */
+#btnSalir{border:0;box-shadow:none;color:var(--txt-2);background:transparent}
 
-main{max-width:var(--carril);margin:0 auto;padding:28px 20px 90px}
+main{max-width:var(--carril);margin:0 auto;padding:32px 24px 96px}
 
 /* ─── el evento por dentro ───────────────────────────────────────
    Cabecera del evento abierto: volver, nombre con su estado, el link, y
    una fila de pestañas que queda pegada bajo la barra al scrollear. En
    el teléfono las pestañas se deslizan de costado en vez de partirse en
    dos renglones. */
-.ev-cab{max-width:var(--carril);margin:0 auto;padding:18px 20px 0}
-.evc-fila{margin:0 0 6px -8px}
+.ev-cab{max-width:var(--carril);margin:0 auto;padding:20px 24px 0}
+/* «← Eventos» es un camino de vuelta, no un botón más: texto suelto
+   arriba del título, como una miga de pan. */
+.evc-fila{margin:0 0 4px}
+.evc-fila .btn.plano{
+  border:0;box-shadow:none;background:transparent;
+  padding:4px 0;min-height:0;color:var(--txt-2);font-size:13px;font-weight:500;
+}
 .evc-titulo{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.evc-titulo h2{font-size:clamp(22px,4vw,30px);display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0}
-.evc-titulo h2 .pastilla{font-size:11px}
+.evc-titulo h2{font-size:24px;font-weight:600;display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0}
 .evc-meta{margin:4px 0 0;color:var(--txt-2);font-size:14px}
 .evc-acciones{display:flex;gap:8px;flex-wrap:wrap}
-.evc-acciones a.btn{text-decoration:none;display:inline-flex;align-items:center}
+.evc-acciones a.btn{text-decoration:none}
 .evc-tabs{
-  display:flex;gap:2px;margin-top:16px;
+  display:flex;gap:20px;margin-top:16px;
   border-bottom:1px solid var(--linea);
   overflow-x:auto;scrollbar-width:none;
-  position:sticky;top:58px;z-index:15;background:var(--noche);
+  position:sticky;top:var(--alto-cab);z-index:15;background:var(--noche);
 }
 .evc-tabs::-webkit-scrollbar{display:none}
 .evc-tabs button{
-  padding:12px 14px;white-space:nowrap;color:var(--txt-2);font-weight:500;font-size:14px;
+  padding:12px 2px;white-space:nowrap;color:var(--txt-2);font-weight:500;font-size:14px;
   border-bottom:2px solid transparent;margin-bottom:-1px;
 }
 .evc-tabs button{transition:color .2s ease}
-.evc-tabs button[aria-selected="true"]{color:var(--txt);border-bottom-color:var(--rojo)}
+.evc-tabs button[aria-selected="true"]{color:var(--acento);border-bottom-color:var(--acento)}
 /* Igual que la pastilla de arriba: una sola línea que viaja. Medida, el
-   borde propio del botón se apaga para que no haya dos rojas a la vez. */
+   borde propio del botón se apaga para que no haya dos líneas a la vez. */
 .evc-tabs::after{
   content:"";position:absolute;left:0;bottom:0;height:2px;border-radius:2px 2px 0 0;
-  width:var(--ind-w,0);background:var(--rojo);transform:translateX(var(--ind-x,0));
+  width:var(--ind-w,0);background:var(--acento);transform:translateX(var(--ind-x,0));
 }
 .evc-tabs[data-ind]::after{transition:transform .32s var(--entra),width .32s var(--entra)}
 .evc-tabs[style*="--ind-w"] button[aria-selected="true"]{border-bottom-color:transparent}
 .app.en-evento main{padding-top:22px}
 
 /* ─── operando como un cliente ───────────────────────────────────
-   Ámbar lleno y no un aviso tenue: es la única pantalla del panel donde
-   lo que hacés no es en tu cuenta. Queda pegada bajo la barra, y las
-   pestañas del evento bajan su altura para no meterse debajo. */
+   Flúor lleno y no un aviso tenue: es la única pantalla del panel donde
+   lo que hacés no es en tu cuenta. Es el amarillo de la marca porque es
+   EL lugar del panel que no se puede pasar por alto. Queda pegada bajo la
+   barra, y las pestañas del evento bajan su altura para no meterse debajo. */
 #operando{
-  position:sticky;top:58px;z-index:19;
+  position:sticky;top:var(--alto-cab);z-index:19;
   display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;
-  padding:8px 16px;background:#D9A441;color:#1A1406;font-size:14px;text-align:center
+  padding:8px 16px;background:var(--fluor);color:var(--marca-tinta);font-size:14px;text-align:center;
+  border-bottom:1px solid var(--fluor-borde);
 }
 #operando b{font-weight:700}
-#operando .btn.plano{border-color:rgba(26,20,6,.35);color:#1A1406;background:rgba(255,255,255,.18)}
-#operando .btn.plano:hover{background:rgba(255,255,255,.32);color:#1A1406}
-.app.con-franja .evc-tabs{top:calc(58px + var(--alto-franja,44px))}
+#operando .btn.plano{border-color:rgba(24,14,58,.3);color:var(--marca-tinta);background:rgba(255,255,255,.4);box-shadow:none}
+#operando .btn.plano:hover{background:rgba(255,255,255,.65);color:var(--marca-tinta)}
+.app.con-franja .evc-tabs{top:calc(var(--alto-cab) + var(--alto-franja,44px))}
 
 /* Dentro de un evento, cada pantalla ya no necesita su propia flecha de
    volver ni su título: las pestañas dicen dónde estás. Y una cabecera que
@@ -190,83 +332,143 @@ main{max-width:var(--carril);margin:0 auto;padding:28px 20px 90px}
    estado (quién cerró, a qué cuenta va la plata) siguen a la vista. */
 .app.en-evento .ayuda.explica{display:none}
 
-.cab-seccion{display:flex;align-items:center;gap:14px;margin-bottom:22px;flex-wrap:wrap}
-.cab-seccion h2{font-size:32px}
+.cab-seccion{display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap}
+.cab-seccion h2{font-size:24px;font-weight:600}
 .cab-seccion>.btn:last-child{margin-left:auto}
 
-/* ─── lista de eventos ─── */
-.lista{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+/* ─── listas ───
+   Una caja con renglones y no tarjetas sueltas: con siete pixeles entre
+   tarjeta y tarjeta cada fila se leía como una cosa aparte, y lo que se
+   compara —fechas, ventas— queda más cerca si las filas comparten borde. */
+.lista{
+  list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0;
+  background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
+  box-shadow:var(--sombra-1);overflow:hidden;
+}
 .fila{
-  display:flex;align-items:center;gap:14px;padding:15px 17px;
+  display:flex;align-items:center;gap:14px;padding:14px 20px;
   background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
   cursor:pointer;transition:background .15s ease,border-color .15s ease,transform .08s ease;
 }
-.fila:hover{background:var(--sup-2);border-color:var(--linea-2)}
+.lista>.fila{border:0;border-radius:0;border-bottom:1px solid var(--linea);box-shadow:none}
+.lista>.fila:last-child{border-bottom:0}
+.fila:hover{background:var(--sup-2)}
 .fila:active{transform:scale(.995)}
-.fila-nombre{font-weight:600;font-size:15.5px}
-.fila-dato{font-family:var(--dato);font-size:12.5px;color:var(--txt-2);margin-left:auto}
+.fila-nombre{font-weight:600;font-size:14px}
+.fila-dato{font:13px var(--texto);color:var(--txt-2);margin-left:auto;font-variant-numeric:tabular-nums}
 .fila-dato.tenue{color:var(--txt-3);margin-left:0}
-
-.pastilla{
-  font-family:var(--dato);font-size:10.5px;padding:4px 10px;border-radius:999px;
-  text-transform:uppercase;letter-spacing:.07em;white-space:nowrap;
+/* En la compu la lista de eventos va en columnas: nombre, estado, fecha y
+   lo vendido, cada uno en su x. Con cada fila como una línea flexible la
+   fecha caía donde terminaba el nombre y la lista se leía en zigzag. Las
+   columnas son fijas, no `auto`: cada fila es su propia grilla, y con
+   auto cada una se mediría distinta. */
+@media (min-width:761px){
+  .fila[data-ev]{
+    display:grid;grid-template-columns:minmax(0,1fr) 116px 116px 230px 12px;gap:16px;
+  }
+  .fila[data-ev] .fila-nombre{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fila[data-ev] .pastilla{justify-self:start}
+  .fila[data-ev] .fila-dato{margin-left:0}
+  .fila[data-ev] .fila-dato.tenue{
+    text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
 }
-.pastilla.verde{background:var(--ok-bg);color:var(--ok);box-shadow:inset 0 0 0 1px rgba(61,214,140,.3)}
-.pastilla.gris{background:var(--sup-3);color:var(--txt-3)}
-/* Una manilla que ya entró no está mal ni bien: está gastada. Va en dorado
+/* En el teléfono, tres renglones fijos —nombre; estado y fecha; lo
+   vendido— y la flecha a la derecha a lo alto de la fila. Con el `wrap`
+   de siempre la flecha caía donde sobraba lugar: a veces al lado de la
+   plata, a veces sola en un renglón. */
+@media (max-width:760px){
+  .fila[data-ev]{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:6px 10px;align-items:center}
+  .fila[data-ev] .fila-nombre{grid-column:1/3;grid-row:1;width:auto}
+  .fila[data-ev] .pastilla{grid-column:1;grid-row:2;justify-self:start}
+  .fila[data-ev] .fila-dato{grid-column:2;grid-row:2;margin-left:0}
+  .fila[data-ev] .fila-dato.tenue{grid-column:1/3;grid-row:3}
+  .fila[data-ev] .fila-dato.tenue:empty{display:none}
+  .fila[data-ev]::after{grid-column:3;grid-row:1/4}
+}
+
+/* Sin mayúsculas forzadas: los estados se escriben en admin.js como se
+   leen («Vende ahora», «A mano»). En versalitas de 10px de máquina de
+   escribir se leía la forma de la palabra y no la palabra. */
+.pastilla{
+  display:inline-flex;align-items:center;gap:6px;min-height:22px;padding:2px 8px;
+  border-radius:999px;font:500 12px/16px var(--texto);letter-spacing:0;text-transform:none;
+  white-space:nowrap;
+}
+.pastilla.verde{background:var(--ok-bg);color:var(--ok);box-shadow:inset 0 0 0 1px var(--ok-borde)}
+.pastilla.gris{background:var(--sup-3);color:var(--txt-2);box-shadow:inset 0 0 0 1px var(--linea)}
+/* Una manilla que ya entró no está mal ni bien: está gastada. Va en ámbar
    y no en verde para que "válida" —la que todavía tiene que pasar— sea la
    única que se lee de un vistazo en una lista de veinte. */
-.pastilla.dorada{background:var(--aviso-bg);color:var(--dorado);box-shadow:inset 0 0 0 1px rgba(233,180,76,.3)}
-.pastilla.aviso{background:var(--aviso-bg);color:var(--aviso);box-shadow:inset 0 0 0 1px rgba(246,180,74,.3)}
-.pastilla.roja{background:var(--peligro-bg);color:var(--peligro);box-shadow:inset 0 0 0 1px rgba(251,113,133,.3)}
+.pastilla.dorada,.pastilla.aviso{background:var(--aviso-bg);color:var(--aviso);box-shadow:inset 0 0 0 1px var(--aviso-borde)}
+.pastilla.roja{background:var(--peligro-bg);color:var(--peligro);box-shadow:inset 0 0 0 1px var(--peligro-borde)}
+/* «A mano» en Plataforma y el estado de pago que no está en el mapa. La
+   clase la pedía admin.js y no existía: salía texto pelado, sin pastilla. */
+.pastilla.amarilla{background:var(--fluor-suave);color:#6B5400;box-shadow:inset 0 0 0 1px var(--fluor-borde)}
 
 /* ─── estados que dicen qué hacer ─── */
-.vacio,.cargando{
-  font-family:var(--dato);font-size:13px;color:var(--txt-3);
-  padding:34px 20px;text-align:center;
-  border:1px dashed var(--linea-2);border-radius:var(--r);
+.vacio{
+  background:var(--sup);border:1px dashed var(--linea-2);border-radius:var(--r);
+  padding:40px 24px;font:14px/1.5 var(--texto);color:var(--txt-2);text-align:center;
 }
-.cargando{color:var(--txt-2)}
-.error{font-family:var(--dato);font-size:12.5px;color:var(--peligro);min-height:1em}
-.ayuda{font-family:var(--dato);font-size:11.5px;color:var(--txt-3);font-style:normal;line-height:1.5}
+/* Un círculo que gira y no un texto que late: el texto quieto o latiendo
+   es indistinguible de una pantalla colgada, la rueda no. */
+.cargando{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  padding:40px 24px;font:14px var(--texto);color:var(--txt-2);
+}
+.cargando::before{
+  content:"";flex:0 0 auto;width:16px;height:16px;border-radius:50%;
+  border:2px solid var(--linea-2);border-top-color:var(--acento);
+  animation:gira .8s linear infinite;
+}
+@keyframes gira{to{transform:rotate(1turn)}}
+.error{font:13px/1.4 var(--texto);color:var(--peligro);min-height:1em}
+.ayuda{font:13px/1.5 var(--texto);color:var(--txt-2);font-style:normal}
 
 /* ─── formularios ───
-   El campo va HUNDIDO respecto de su contenedor. Un input al mismo nivel que
-   el fondo no se lee como algo donde se escribe. */
+   Campo blanco con borde y una sombra de un pixel: en claro, eso es lo que
+   se lee como "acá se escribe". El foco es el anillo violeta de la marca. */
 .form-evento{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:660px}
-label{display:flex;flex-direction:column;gap:7px}
-label>span{
-  font-family:var(--dato);font-size:10.5px;letter-spacing:.11em;
-  text-transform:uppercase;color:var(--txt-3);
-}
-input{
-  padding:12px 14px;border:1px solid var(--linea-2);border-radius:var(--r-chico);
-  background:var(--hundido);color:var(--txt);
+label{display:flex;flex-direction:column;gap:6px}
+label>span{font:500 13px/1.4 var(--texto);letter-spacing:0;text-transform:none;color:var(--txt)}
+input,select{
+  padding:0 12px;border:1px solid var(--linea-2);border-radius:var(--r-chico);
+  background:var(--hundido);color:var(--txt);box-shadow:var(--sombra-1);
+  font:14px var(--texto);
   transition:border-color .15s ease,box-shadow .15s ease;
 }
-input::placeholder{color:var(--txt-3)}
-input:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--rojo-suave)}
-input[type="date"],input[type="time"]{color-scheme:dark}
+/* Con :where() para que el alto no pese más que un `input` pelado: cada
+   pantalla que necesita otro (la grilla, la puerta) lo pisa con su clase. */
+input:where(:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"])),select{height:40px}
+input::placeholder,textarea::placeholder{color:var(--txt-placeholder)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acento);box-shadow:0 0 0 3px var(--acento-anillo)}
+input[type="checkbox"],input[type="radio"]{
+  width:18px;height:18px;margin:0;padding:0;border:0;box-shadow:none;accent-color:var(--acento);
+}
 .acciones{grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+.acciones+.ayuda{display:block;margin-top:10px}
 .form-evento .error{grid-column:1/-1}
+/* Una casilla con su frase al lado, no un rótulo arriba de un campo. Sin
+   esto «Mostrar en la cartelera» caía en la columna del `label` general:
+   la casilla arriba, la frase abajo y en letra de rótulo. */
+label.check{flex-direction:row;align-items:center;gap:10px;cursor:pointer}
+label.check>span{font:400 14px/1.4 var(--texto);text-transform:none;letter-spacing:0;color:var(--txt)}
+.form-evento label.check{grid-column:1/-1}
 /* Los colores del evento: una caja aparte dentro del formulario, a todo
    ancho, porque son una decisión distinta de la fecha y el lugar. El
    selector nativo de color es el único input de la pantalla que no es
    texto, así que se lo deja del tamaño de una muestra y no de un campo. */
 .marca-evento{
   grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 22px;
-  margin:0;padding:14px 16px 16px;border:1px solid var(--linea-2);border-radius:var(--r-chico);
+  margin:0;padding:14px 16px 16px;background:var(--sup);
+  border:1px solid var(--linea);border-radius:var(--r);
 }
-.marca-evento legend{
-  padding:0 6px;font-family:var(--dato);font-size:10.5px;letter-spacing:.11em;
-  text-transform:uppercase;color:var(--txt-3);
-}
+.marca-evento legend{padding:0 6px;font:600 13px var(--texto);color:var(--txt)}
 .marca-evento input[type="color"]{
   width:64px;height:38px;padding:3px;border-radius:var(--r-chico);cursor:pointer;
 }
-.marca-evento .check{flex-direction:row;align-items:center;gap:10px;flex:1 0 100%;cursor:pointer}
-.marca-evento .check input{width:18px;height:18px;padding:0;margin:0;accent-color:var(--rojo)}
-.marca-evento .check span{font-family:var(--texto);font-size:13.5px;letter-spacing:0;text-transform:none;color:var(--txt)}
+.marca-evento .check{flex:1 0 100%}
 .marca-evento .ayuda{flex:1 0 100%}
 
 /* ─── la grilla de precios ───
@@ -276,25 +478,26 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 .grilla-envoltorio{
   overflow-x:auto;max-width:100%;
   border:1px solid var(--linea);border-radius:var(--r);background:var(--sup);
+  box-shadow:var(--sombra-1);
 }
 .grilla{border-collapse:separate;border-spacing:0;min-width:100%}
 .grilla th,.grilla td{padding:12px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--linea)}
 .grilla tr:last-child th,.grilla tr:last-child td{border-bottom:0}
 .grilla thead th{
   background:var(--sup-2);color:var(--txt);
-  font-family:var(--display);font-size:17px;font-weight:700;
+  font:600 14px/1.3 var(--texto);
   position:sticky;top:0;
 }
 .grilla th em{
-  display:block;font-family:var(--dato);font-size:10.5px;font-style:normal;
-  font-weight:400;color:var(--txt-3);text-transform:none;letter-spacing:0;margin-top:3px;
+  display:block;font:400 12px/1.4 var(--texto);font-style:normal;
+  color:var(--txt-3);text-transform:none;letter-spacing:0;margin-top:3px;
 }
 /* La primera columna se acota: si la descripción del tipo crece, empuja las
    columnas de fases fuera de pantalla — y esas columnas SON la pantalla. */
 .grilla tbody th{
-  font-family:var(--display);font-size:19px;
+  font:600 15px/1.3 var(--texto);
   background:var(--sup);border-right:1px solid var(--linea);
-  width:230px;min-width:190px;max-width:230px;
+  width:250px;min-width:190px;max-width:250px;
 }
 .grilla tbody th em{
   color:var(--txt-3);text-transform:none;
@@ -326,18 +529,21 @@ input[type="date"],input[type="time"]{color-scheme:dark}
   /* `row` explícito: el `label` general de más arriba es una columna, que
      acá pondría el tilde arriba del texto y centrado. */
   display:inline-flex;flex-direction:row;align-items:center;gap:9px;
-  min-height:44px;padding:0 15px 0 13px;border-radius:999px;
-  border:1px solid var(--linea-2);background:var(--sup-2);
-  font-family:var(--dato);font-size:11px;letter-spacing:.05em;
-  text-transform:uppercase;color:var(--txt-3);cursor:pointer;white-space:nowrap;
+  min-height:40px;padding:0 14px 0 12px;border-radius:999px;
+  border:1px solid var(--linea-2);background:var(--sup);
+  font:500 13px var(--texto);letter-spacing:0;
+  text-transform:none;color:var(--txt-2);cursor:pointer;white-space:nowrap;
   transition:background .15s ease,border-color .15s ease,color .15s ease;
 }
+/* El texto es el estado: hereda el color de la pastilla, no el del rótulo
+   general de los `label`. */
+.cartelera>span{font:inherit;color:inherit}
 .cartelera input{
   width:17px;height:17px;margin:0;flex:0 0 auto;
-  accent-color:var(--dorado);cursor:pointer;
+  accent-color:var(--acento);cursor:pointer;
 }
 .cartelera[data-on="1"]{
-  background:rgba(233,180,76,.12);border-color:rgba(233,180,76,.42);color:var(--dorado);
+  background:var(--acento-suave);border-color:var(--acento);color:var(--acento);
 }
 .cartelera:has(input:disabled){cursor:progress;opacity:.55}
 
@@ -349,12 +555,14 @@ input[type="date"],input[type="time"]{color-scheme:dark}
    cuál es el precio y cuál el cupo. Arriba el precio, grande; abajo el cupo,
    apagado. La jerarquía hace de etiqueta. */
 .grilla td input{
-  display:block;width:118px;padding:8px 11px;
-  font-family:var(--dato);font-size:15px;
+  display:block;width:118px;height:36px;padding:0 10px;
+  font:14px var(--texto);
   text-align:right;font-variant-numeric:tabular-nums;
 }
-.celda-cupo{margin-top:6px;font-size:12.5px !important;color:var(--txt-2)}
-.celda-cupo::placeholder{color:var(--txt-3)}
+/* El cupo más chico que el precio, pero sin `!important`: con él, en el
+   teléfono le ganaba a los 16px que evitan el zoom de iOS. */
+.grilla td input.celda-cupo{margin-top:6px;height:32px;font-size:13px;color:var(--txt-2)}
+.celda-cupo::placeholder{color:var(--txt-placeholder)}
 .col-accion{width:1%;white-space:nowrap;background:var(--sup-2) !important}
 
 /* ─── la cabecera de cada fase ───
@@ -364,7 +572,8 @@ input[type="date"],input[type="time"]{color-scheme:dark}
    lee cuando se busca, el estado se lee de reojo. */
 .th-fase{min-width:190px}
 .fase-titulo{display:block}
-.fase-estado{display:inline-block;margin-top:7px;white-space:normal;letter-spacing:.05em}
+/* Alto libre: «Abre al agotarse «First 200 u.»» parte en dos renglones. */
+.fase-estado{display:inline-flex;margin-top:7px;white-space:normal;line-height:1.35;padding-block:3px}
 /* La roja —"tapada por X"— es la única que informa de plata que no está
    entrando, así que se le da un pelo más de peso que a las otras. */
 .pastilla.roja.fase-estado{font-weight:500}
@@ -381,14 +590,8 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 .form-fase h3,.form-fase .ancha,.form-fase .acciones,
 .form-fase .error,.form-fase>div{grid-column:1/-1}
 .form-fase label{display:flex;flex-direction:column;gap:6px;min-width:0}
-.form-fase label>span:first-child{
-  font-family:var(--dato);font-size:11px;text-transform:uppercase;
-  letter-spacing:.08em;color:var(--txt-3);
-}
-.form-fase input{
-  width:100%;padding:11px 13px;background:var(--hundido);color:var(--txt);
-  border:1px solid var(--linea-2);border-radius:var(--r-chico);
-}
+.form-fase label>span:first-child{font:500 13px/1.4 var(--texto);letter-spacing:0;text-transform:none;color:var(--txt)}
+.form-fase input{width:100%}
 /* La fecha y la hora son un solo dato partido en dos campos: pegados y en
    la misma línea se leen como uno. Separados, alguien llena la fecha, se
    olvida la hora y guarda una fase que abre a medianoche. */
@@ -406,43 +609,44 @@ input[type="date"],input[type="time"]{color-scheme:dark}
    se lee antes de decidir. Un toast se va solo a los cuatro segundos y
    esto tiene que seguir ahí mientras se piensa. */
 .choque{
-  padding:16px 18px;border-radius:var(--r-chico);
-  border:1px solid rgba(251,113,133,.3);background:var(--peligro-bg);
+  padding:16px 18px;border-radius:var(--r);
+  border:1px solid var(--peligro-borde);background:var(--peligro-bg);
 }
-.choque h4{
-  margin:0 0 10px;font-family:var(--display);font-size:19px;
-  text-transform:uppercase;color:var(--peligro);letter-spacing:.01em;
-}
+.choque h4{margin:0 0 10px;font:600 15px var(--texto);color:var(--peligro)}
 .choque ul{margin:0;padding-left:19px}
-.choque li{margin-top:8px;font-size:13.5px;line-height:1.5;color:var(--txt-2)}
+.choque li{margin-top:8px;font-size:14px;line-height:1.5;color:var(--txt-2)}
 .choque li:first-child{margin-top:0}
 .choque li b{color:var(--txt);font-weight:600}
-.choque li i{font-family:var(--dato);font-size:11.5px;font-style:normal;color:var(--txt-3)}
-.choque p{margin:12px 0 0;font-size:13px;line-height:1.5;color:var(--txt-3)}
+.choque li i{font:12px var(--texto);font-style:normal;color:var(--txt-3)}
+.choque p{margin:12px 0 0;font-size:13px;line-height:1.5;color:var(--txt-2)}
 
 /* ─── publicar ─── */
 .publicar{
-  display:flex;align-items:center;gap:20px;margin-top:28px;padding:20px 22px;
+  display:flex;align-items:center;gap:20px;margin-top:28px;padding:20px 24px;
   background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
+  box-shadow:var(--sombra-1);
 }
-.publicar.vivo{border-color:rgba(61,214,140,.35);background:linear-gradient(var(--sup),rgba(61,214,140,.05))}
-.publicar h3{font-size:21px}
+/* A la venta: un filo verde a la izquierda y nada más. El degradé de antes
+   era un segundo idioma para lo mismo que ya dice la pastilla. */
+.publicar.vivo{border-color:var(--ok-borde);box-shadow:inset 3px 0 0 var(--ok),var(--sombra-1);background:var(--sup)}
+.publicar h3{font-size:16px;font-weight:600}
 /* En columna —que es como cae en el teléfono— `align-items:flex-start`
    deja que este bloque crezca hasta su contenido, y adentro hay un link
    público que mide más que la pantalla. Con el ancho fijado, el link
    vuelve a recortarse con puntos suspensivos como fue diseñado. */
 .publicar>div{min-width:0;max-width:100%}
-.publicar p{margin:5px 0 0;font-size:13.5px;color:var(--txt-2)}
+.publicar p{margin:5px 0 0;font-size:14px;color:var(--txt-2)}
 .publicar>.btn{margin-left:auto;flex:0 0 auto}
 .faltan{margin:10px 0 0;padding-left:19px;font-size:13px;color:var(--aviso)}
 .faltan li{margin-top:3px}
 
 .link-publico{
-  display:flex;align-items:center;gap:10px;margin-top:12px;padding:10px 12px;
-  background:var(--hundido);border:1px solid var(--linea-2);border-radius:var(--r-chico);
-  font-family:var(--dato);font-size:12px;color:var(--txt-2);
+  display:flex;align-items:center;gap:10px;margin-top:12px;padding:8px 8px 8px 12px;
+  background:var(--sup-2);border:1px solid var(--linea);border-radius:var(--r-chico);
+  font:13px var(--texto);color:var(--txt-2);
   overflow:hidden;
 }
+.link-publico code{font:13px var(--codigo);color:var(--txt-2)}
 /* El link se recorta con puntos suspensivos en vez de empujar el botón de
    copiar fuera de la caja: con el ?r= del relacionador colgando al final,
    en un teléfono no entra nunca. Se copia entero igual — el recorte es
@@ -455,18 +659,40 @@ input[type="date"],input[type="time"]{color-scheme:dark}
    lo único que se toca; abajo la cuenta, que se lee y no se opera. */
 .tarjeta{
   background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
-  padding:19px 21px;margin-bottom:26px;
+  box-shadow:var(--sombra-1);padding:20px 24px;margin-bottom:24px;
 }
-.tarjeta h3{font-size:21px}
-.tarjeta>.ayuda{display:block;margin:5px 0 14px}
-.titulo-bloque{font-size:21px;margin-bottom:12px}
+.tarjeta h3{font-size:16px;font-weight:600}
+.tarjeta>.ayuda{display:block;margin:4px 0 14px}
+.titulo-bloque{font-size:16px;font-weight:600;margin-bottom:12px}
+/* Los títulos de Plataforma van sueltos entre tablas, sin .cab-bloque que
+   les dé aire: «.sep» sólo existía para .cab-bloque y «Por evento» o
+   «Retiros» quedaban pegados a la tabla de arriba. */
+.titulo-bloque.sep{margin-top:40px}
+.ayuda.sep{display:block;margin-top:32px}
+/* La explicación que va entre un título y su tabla, pegada al título y con
+   aire abajo: sin él la última línea tocaba el borde de la tabla. */
+.titulo-bloque+p.ayuda{margin:-6px 0 12px;max-width:80ch}
+/* Un formulario sin error no guarda el renglón vacío del error. La caja de
+   entrar sí, porque su error es una región que se anuncia (ver arriba). */
+form:not(#formEntrar) .error:empty{display:none}
 
 .link-evento+.link-evento{margin-top:12px}
-.link-titulo{
-  display:block;font-family:var(--dato);font-size:11px;letter-spacing:.09em;
-  text-transform:uppercase;color:var(--txt-3);
-}
+.link-titulo{display:block;font:600 12px var(--texto);color:var(--txt-2)}
 .link-evento .link-publico{margin-top:6px}
+/* El botón de copiar del relacionador es primario: copiar su link y
+   pegarlo en WhatsApp es a lo que entra al panel, y era el botón más
+   chico y más gris de la pantalla. */
+.link-evento .link-publico .btn{background:var(--acento);color:var(--sobre-acento);border:0;box-shadow:var(--sombra-1)}
+.link-evento .link-publico .btn:hover:not(:disabled){background:var(--acento-hover);color:var(--sobre-acento);border:0}
+.link-evento>.ayuda{display:block;margin-top:10px}
+/* En el teléfono el link va entero arriba y el botón abajo, a todo lo
+   ancho y donde llega el pulgar. Al lado, el link real (con su ?r=) se
+   cortaba con puntos suspensivos justo en el código que lo hace suyo. */
+@media (max-width:760px){
+  .link-evento .link-publico{flex-wrap:wrap;padding:10px}
+  .link-evento .link-publico code{flex:1 1 100%;min-width:0;white-space:normal;overflow-wrap:anywhere}
+  .link-evento .link-publico .btn{flex:1 1 100%;min-height:44px;margin-left:0}
+}
 /* Un clic selecciona el link entero: es el plan B cuando el portapapeles no
    está disponible, y ahí lo que importa es que no haya que arrastrar. */
 .link-publico code{user-select:all}
@@ -474,15 +700,16 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 /* No es un error: no se rompió nada, falta un dato que él no puede cargarse
    solo. En rojo leería como "algo falló" y llamaría a soporte. */
 .nota{
-  padding:13px 15px;border-radius:var(--r-chico);font-size:13.5px;
-  background:var(--aviso-bg);border:1px solid rgba(246,180,74,.3);color:var(--aviso);
+  padding:14px 16px;border-radius:var(--r);font-size:14px;line-height:1.5;
+  background:var(--aviso-bg);border:1px solid var(--aviso-borde);color:var(--txt);
 }
+.nota b{color:var(--aviso)}
 
 /* Las filas de venta no se clickean: no hay nada atrás. Sin esto heredan el
    cursor y el hover de la lista de eventos y prometen una pantalla que no
    existe. */
 .fila.quieta{cursor:default}
-.fila.quieta:hover{background:var(--sup);border-color:var(--linea)}
+.fila.quieta:hover{background:var(--sup)}
 .fila.quieta:active{transform:none}
 
 .fila.venta{
@@ -490,36 +717,41 @@ input[type="date"],input[type="time"]{color-scheme:dark}
   gap:6px 26px;align-items:center;
 }
 .venta .fila-nombre{min-width:0}
-.venta .fila-nombre em{
+.venta .fila-nombre em,.liq-linea .fila-nombre em{
   display:block;margin-top:3px;font-style:normal;font-weight:400;
-  font-family:var(--dato);font-size:11.5px;color:var(--txt-3);
+  font:12px var(--texto);color:var(--txt-3);
 }
 /* La cifra arriba y qué es abajo: al revés hay que leer la etiqueta para
    saber si el número que ya viste era plata o entradas. */
 .cifra{
-  font-family:var(--dato);font-size:14.5px;color:var(--txt-2);
+  font:14px var(--texto);color:var(--txt-2);
   text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;
 }
 .cifra em{
-  display:block;margin-top:3px;font-style:normal;font-size:10.5px;
-  letter-spacing:.08em;text-transform:uppercase;color:var(--txt-3);
+  display:block;margin-top:3px;font-style:normal;font-size:12px;
+  letter-spacing:0;text-transform:none;color:var(--txt-3);
 }
-/* La comisión en dorado: de las tres cifras de la fila es la única que es
+/* La comisión en violeta: de las tres cifras de la fila es la única que es
    plata suya. Debajo va la cuenta que la produce — entradas × tarifa — para
    que no haya que preguntar de dónde salió. */
-.cifra.destacada{color:var(--dorado);font-size:17px}
-.cifra.destacada em{text-transform:none;letter-spacing:.02em}
+.cifra.destacada{color:var(--acento-hover);font-weight:600;font-size:15px}
+.cifra.destacada em{font-weight:400;color:var(--txt-3)}
 
+/* El total es el momento de la marca: tinta violeta y la cifra en flúor,
+   que sobre la tinta da 14:1. Es lo que el relacionador abre el panel a
+   mirar y lo que el organizador tiene que pagar: no puede verse como una
+   tarjeta más de la pila. */
 .total{
-  display:flex;align-items:center;gap:20px;margin-top:16px;padding:18px 21px;
-  background:linear-gradient(var(--sup),rgba(233,180,76,.06));
-  border:1px solid rgba(233,180,76,.3);border-radius:var(--r);
+  display:flex;align-items:center;gap:20px;margin:16px 0 24px;padding:20px 24px;
+  background:var(--marca-tinta);border:0;border-radius:var(--r);
+  color:var(--crema);box-shadow:var(--sombra-2);
 }
-.total h3{font-size:21px}
-.total p{margin:5px 0 0;font-family:var(--dato);font-size:12px;color:var(--txt-3)}
+.total h3{font-size:16px;font-weight:600;color:var(--crema)}
+.total p{margin:4px 0 0;font:13px var(--texto);color:rgba(246,241,228,.7)}
 .total .monto{
   margin-left:auto;flex:0 0 auto;white-space:nowrap;
-  font-family:var(--display);font-size:30px;font-weight:600;color:var(--txt);
+  font:700 30px/1.1 var(--texto);letter-spacing:-.02em;color:var(--fluor);
+  font-variant-numeric:tabular-nums;
 }
 
 /* ─── el arte de la entrada ───
@@ -532,7 +764,7 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 .arte-cuerpo{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;margin-top:14px}
 .arte-lienzo{
   position:relative;flex:0 0 auto;width:190px;
-  background:var(--hundido);border:1px solid var(--linea-2);
+  background:var(--sup-2);border:1px solid var(--linea-2);
   border-radius:var(--r-chico);overflow:hidden;
 }
 .arte-lienzo img{display:block;width:100%;height:auto}
@@ -548,18 +780,18 @@ input[type="date"],input[type="time"]{color-scheme:dark}
   aspect-ratio:3/5;border-style:dashed;display:grid;place-items:center;padding:12px;
 }
 .arte-lienzo.sin-arte p{
-  font-family:var(--dato);font-size:11px;line-height:1.45;
+  font:12px/1.45 var(--texto);
   color:var(--txt-3);text-align:center;align-self:end;
 }
 /* left:24% = (100 − 52) / 2: la caja va centrada, desde el 29% de la altura. */
 .arte-qr{
   position:absolute;left:24%;top:29%;width:52%;aspect-ratio:1;
-  border:2px dashed var(--dorado);border-radius:6px;
-  background:rgba(233,180,76,.16);display:grid;place-items:center;
+  border:2px dashed var(--acento);border-radius:6px;
+  background:var(--acento-suave);display:grid;place-items:center;
 }
 .arte-qr i{
-  font-style:normal;font-family:var(--dato);font-size:9px;
-  letter-spacing:.16em;text-transform:uppercase;color:var(--txt-3);
+  font-style:normal;font:600 10px var(--texto);
+  letter-spacing:.08em;text-transform:uppercase;color:var(--acento);
 }
 .arte-controles{
   flex:1 1 230px;min-width:210px;
@@ -567,19 +799,19 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 }
 .arte-controles label{width:100%}
 .arte-controles input[type="file"]{
-  width:100%;padding:9px 11px;
-  font-family:var(--dato);font-size:11.5px;color:var(--txt-2);
+  width:100%;padding:8px;
+  font:13px var(--texto);color:var(--txt-2);
 }
 .arte-controles input[type="file"]::file-selector-button{
-  margin-right:11px;padding:7px 12px;border-radius:8px;cursor:pointer;
-  border:1px solid var(--linea-2);background:var(--sup-2);color:var(--txt);
-  font-family:var(--display);font-size:13px;
+  margin-right:11px;padding:7px 12px;border-radius:var(--r-chico);cursor:pointer;
+  border:1px solid var(--linea-2);background:var(--sup);color:var(--txt);
+  font:600 13px var(--texto);
 }
 .arte-controles input[type="file"]:disabled{opacity:.5;cursor:progress}
 /* Tres estados y tres colores: subiendo, salió bien, salió mal. El error se
    queda en pantalla — el toast se va solo y este hay que poder releerlo. */
-.arte-estado{font-family:var(--dato);font-size:11.5px;line-height:1.45;color:var(--txt-2)}
-.arte-estado.trabajando{color:var(--dorado)}
+.arte-estado{font:13px/1.45 var(--texto);color:var(--txt-2)}
+.arte-estado.trabajando{color:var(--aviso)}
 .arte-estado.ok{color:var(--ok)}
 .arte-estado.mal{color:var(--peligro)}
 
@@ -593,27 +825,31 @@ input[type="date"],input[type="time"]{color-scheme:dark}
 }
 .cifra-grande{
   background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
-  padding:18px 20px;display:flex;flex-direction:column;gap:6px;min-width:0;
+  box-shadow:var(--sombra-1);
+  padding:20px 24px;display:flex;flex-direction:column;gap:4px;min-width:0;
 }
 .cifra-grande .valor{
-  font-family:var(--display);font-size:36px;font-weight:600;line-height:1.05;letter-spacing:-.02em;
+  font:600 30px/1.1 var(--texto);letter-spacing:-.02em;color:var(--txt);
   font-variant-numeric:tabular-nums;overflow-wrap:anywhere;
 }
-/* Lo recaudado es la única cifra en dorado: la plata se distingue de las
-   personas sin tener que leer el rótulo. */
-.cifra-grande.plata .valor{color:var(--dorado);font-size:38px}
-.cifra-grande .valor i{font-style:normal;font-size:24px;color:var(--txt-3)}
+/* Lo recaudado se distingue por un filo flúor arriba de la tarjeta, no por
+   el color del número: el oro de antes sobre blanco no se leía, y es la
+   única tarjeta del tablero que tiene ese filo. */
+.cifra-grande.plata{box-shadow:inset 0 3px 0 var(--fluor),var(--sombra-1)}
+.cifra-grande.plata .valor{color:var(--txt);font-size:30px}
+.cifra-grande .valor i{font-style:normal;font-size:20px;font-weight:500;color:var(--txt-3)}
+/* El rótulo arriba del número en la compu, como se lee una tarjeta de
+   tablero; en el teléfono la tarjeta se acuesta y va al costado. */
 .cifra-grande .rotulo{
-  font-family:var(--dato);font-size:10.5px;letter-spacing:.11em;
-  text-transform:uppercase;color:var(--txt-2);
+  order:-1;font:500 13px var(--texto);letter-spacing:0;text-transform:none;color:var(--txt-2);
 }
-.cifra-grande .pie{font-family:var(--dato);font-size:11.5px;color:var(--txt-3);line-height:1.45}
+.cifra-grande .pie{font:13px/1.45 var(--texto);color:var(--txt-3)}
 /* El avance de la puerta se lee de un vistazo: "38 de 55" es una cuenta,
    la barra es una imagen. */
 .cifra-grande .avance{
-  height:5px;border-radius:999px;background:var(--sup-3);overflow:hidden;margin-top:2px;
+  height:6px;border-radius:999px;background:var(--sup-3);overflow:hidden;margin-top:6px;
 }
-.cifra-grande .avance i{display:block;height:100%;background:var(--ok);border-radius:999px}
+.cifra-grande .avance i{display:block;height:100%;background:var(--acento);border-radius:999px}
 
 /* ─── las alertas ───
    La que está en cero se apaga. Si gritara igual que la que tiene algo
@@ -623,34 +859,33 @@ input[type="date"],input[type="time"]{color-scheme:dark}
   gap:12px;margin-bottom:30px;
 }
 .alerta{
-  display:flex;align-items:flex-start;gap:14px;padding:16px 18px;
+  display:flex;align-items:flex-start;gap:14px;padding:16px 20px;
   border-radius:var(--r);border:1px solid var(--linea);background:var(--sup);
+  box-shadow:var(--sombra-1);
 }
 .alerta-cifra{
-  font-family:var(--display);font-size:28px;font-weight:600;line-height:1.05;letter-spacing:-.02em;
+  font:700 24px/1.1 var(--texto);letter-spacing:-.02em;
   font-variant-numeric:tabular-nums;flex:0 0 auto;
 }
 .alerta-txt{min-width:0;flex:1 1 auto}
-.alerta h4{margin:0;font-family:var(--display);font-size:19px;}
+.alerta h4{margin:0;font:600 15px/1.3 var(--texto)}
 .alerta p{margin:4px 0 0;font-size:13px;line-height:1.45;color:var(--txt-2)}
 .alerta-pie{
-  display:block;margin-top:7px;font-family:var(--dato);font-size:11.5px;
+  display:block;margin-top:7px;font:500 12px var(--texto);
   font-variant-numeric:tabular-nums;
 }
 .alerta>.btn{flex:0 0 auto;align-self:center}
 
-.alerta.hecha{background:transparent;border-style:dashed}
-.alerta.hecha .alerta-cifra{color:var(--ok);font-size:26px}
+/* La resuelta se apaga: fondo gris, sin sombra. Punteada se leía como un
+   lugar vacío para arrastrar algo. */
+.alerta.hecha{background:var(--sup-2);border-style:solid;box-shadow:none}
+.alerta.hecha .alerta-cifra{color:var(--ok);font-size:22px}
 .alerta.hecha h4{color:var(--txt-2)}
-.alerta.hecha p{color:var(--txt-3);font-size:12.5px}
+.alerta.hecha p{color:var(--txt-3);font-size:13px}
 
-.alerta.viva.peligro{
-  border-color:rgba(251,113,133,.4);background:linear-gradient(var(--sup),var(--peligro-bg));
-}
+.alerta.viva.peligro{background:var(--peligro-bg);border-color:var(--peligro-borde)}
 .alerta.viva.peligro .alerta-cifra,.alerta.viva.peligro .alerta-pie{color:var(--peligro)}
-.alerta.viva.aviso{
-  border-color:rgba(246,180,74,.34);background:linear-gradient(var(--sup),var(--aviso-bg));
-}
+.alerta.viva.aviso{background:var(--aviso-bg);border-color:var(--aviso-borde)}
 .alerta.viva.aviso .alerta-cifra,.alerta.viva.aviso .alerta-pie{color:var(--aviso)}
 
 /* ─── tablas de lectura ───
@@ -658,35 +893,52 @@ input[type="date"],input[type="time"]{color-scheme:dark}
    columna fija: lo que hace falta es que la columna de números esté
    alineada a la derecha y en cifras de ancho fijo, para poder compararlas
    de arriba abajo sin leerlas. */
-.tabla{border-collapse:separate;border-spacing:0;min-width:100%;background:var(--sup)}
-.tabla th,.tabla td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--linea);vertical-align:top}
+/* Una sola definición. Había dos —ésta y otra con las de Plataforma— que se
+   contradecían, y la de abajo ganaba sin que se viera: forzaba `nowrap` en
+   todas, incluida la columna de detalle de la bitácora, que tiene un ancho
+   máximo justamente para partir. Queda `nowrap` por defecto, que es lo que
+   pasaba de hecho, y sólo lo largo (detalle, notas) parte renglón. */
+.tabla{
+  width:100%;min-width:100%;border-collapse:separate;border-spacing:0;
+  background:var(--sup);font-size:14px;white-space:nowrap;
+}
+.tabla th,.tabla td{padding:12px 16px;text-align:left;border-bottom:1px solid var(--linea);vertical-align:top}
 .tabla tr:last-child td{border-bottom:0}
 .tabla thead th{
   background:var(--sup-2);position:sticky;top:0;z-index:1;white-space:nowrap;
-  font-family:var(--dato);font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;color:var(--txt-3);font-weight:400;
+  font:500 12px/1.3 var(--texto);letter-spacing:0;text-transform:none;color:var(--txt-2);
 }
 .tabla tbody tr:hover td{background:var(--sup-2)}
-.tabla td.n,.tabla th.n{text-align:right;font-family:var(--dato);font-variant-numeric:tabular-nums;white-space:nowrap}
-.tabla td.n{font-size:13.5px;color:var(--txt)}
-.tabla td.dato{font-family:var(--dato);font-size:12.5px;color:var(--txt-2)}
-.tabla td em,.tabla td.n em{
-  display:block;margin-top:3px;font-style:normal;font-family:var(--dato);
-  font-size:10.5px;color:var(--txt-3);text-transform:none;letter-spacing:0;
+.tabla td.n,.tabla th.n,.tabla .num{
+  text-align:right;font-family:var(--texto);font-variant-numeric:tabular-nums;white-space:nowrap;
 }
-.tabla td i{font-style:normal;color:var(--txt-3);font-size:12.5px}
-.tabla .prod-nombre{font-weight:600;font-size:14.5px}
+.tabla td.n{color:var(--txt)}
+.tabla td.dato{font:13px var(--texto);color:var(--txt-2)}
+.tabla td em,.tabla td.n em{
+  display:block;margin-top:3px;font-style:normal;
+  font:12px var(--texto);color:var(--txt-3);text-transform:none;letter-spacing:0;
+}
+.tabla td i{font-style:normal;color:var(--txt-3);font-size:13px}
+.tabla .prod-nombre{font-weight:600;font-size:14px}
 .tabla .agotado{font-weight:400;color:var(--aviso)}
 /* Un tipo inactivo sigue teniendo historia de ventas: esconderlo
    descuadraría los totales, así que se apaga en vez de irse. */
 .tabla tr.apagada td{color:var(--txt-3)}
 .tabla tr.apagada .prod-nombre{font-weight:400;color:var(--txt-2)}
 .tabla .sin-nada{
-  padding:26px 14px;text-align:center;font-family:var(--dato);
-  font-size:12.5px;color:var(--txt-3);
+  padding:28px 16px;text-align:center;font:13px var(--texto);color:var(--txt-3);
+  white-space:normal;
 }
 .tabla .tenue{color:var(--txt-3)}
-.tabla .detalle{max-width:270px;font-size:13.5px;color:var(--txt-2)}
+.tabla .detalle{max-width:270px;font-size:13px;color:var(--txt-2)}
+/* Sólo lo largo parte renglón. Los `em` de abajo de un número («1.910 Bs
+   en camino») siguen en uno: partidos se leen como dos datos. */
+.tabla .detalle,.tabla .detalle em{white-space:normal}
+.tabla .num.ok{color:var(--ok)}
+/* Lo que todavia no se le giro al cliente. En ambar y no en rojo: no esta
+   mal, esta pendiente — el rojo se guarda para lo que hay que arreglar. */
+.tabla .num.plat-falta{color:var(--aviso)}
+.tabla td em.ayuda{display:block;font-style:normal;font-size:12px}
 
 /* `min-width:0` y no `auto`: una celda de grilla se mide por su contenido,
    así que la tabla de adentro —que ya scrollea sola— empujaba la celda
@@ -700,22 +952,13 @@ input[type="date"],input[type="time"]{color-scheme:dark}
    El título, el conteo y el buscador en la misma línea: el conteo cambia
    mientras se escribe y ahí es donde se lo mira. */
 .cab-bloque{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px}
-.cab-bloque.sep{margin-top:34px;padding-top:22px;border-top:1px solid var(--linea)}
+.cab-bloque.sep{margin-top:40px;padding-top:24px;border-top:1px solid var(--linea)}
 .cab-bloque .titulo-bloque{margin:0}
-.conteo{font-family:var(--dato);font-size:11.5px;color:var(--txt-3);white-space:nowrap}
-.buscador{
-  margin-left:auto;width:min(300px,100%);padding:9px 13px;
-  font-family:var(--dato);font-size:13px;
-}
-.buscador::-webkit-search-cancel-button{filter:invert(.7)}
+.conteo{font:13px var(--texto);color:var(--txt-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.buscador{margin-left:auto;width:min(300px,100%)}
 .cab-bloque .buscador+.conteo{margin-left:0}
 
-select{
-  padding:9px 12px;border:1px solid var(--linea-2);border-radius:var(--r-chico);
-  background:var(--hundido);color:var(--txt);font:inherit;font-size:13.5px;
-  max-width:100%;
-}
-select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--rojo-suave)}
+select{max-width:100%;padding-right:8px;cursor:pointer}
 .cab-bloque select{margin-left:auto}
 
 /* Siete columnas y tres botones no entraban en el ancho del panel: la
@@ -731,6 +974,11 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
    y «Manillas» y «Anular» quedaban tajados contra el borde. Ahora la
    columna pide lo suyo y son las de texto las que ceden, abajo. */
 .acc-compra{display:flex;flex-wrap:nowrap;justify-content:flex-end;gap:6px;margin-left:auto}
+/* La banda gris de `.col-accion` es de la grilla de precios, donde separa
+   la columna de crear fase. En la lista de compras no separa nada y en
+   claro se veía como una columna pintada a medias. */
+.tabla-compras td.col-accion{background:var(--sup) !important}
+.tabla-compras tbody tr:hover td.col-accion{background:var(--sup-2) !important}
 /* El texto largo cede con puntos suspensivos. Un nombre o un correo de
    cuarenta letras empujaban la tabla fuera del carril, y lo primero que
    se caia del otro lado eran los botones. Se lee entero pasando el mouse. */
@@ -751,41 +999,44 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
    motivo enfocable. Un `confirm()` no puede pedir un motivo, y pedirlo en
    un `prompt()` aparte parte la decisión en dos pantallas donde la
    segunda ya no dice qué se estaba anulando. */
-.fila-detalle>td{background:var(--hundido) !important;padding:0 !important}
+.fila-detalle>td{background:var(--sup-2) !important;padding:0 !important}
 .form-anular{
   display:flex;flex-direction:column;gap:12px;padding:16px 18px;
   border-left:3px solid var(--peligro);background:var(--peligro-bg);
 }
-.anular-que{font-size:13.5px;line-height:1.5;color:var(--txt-2);max-width:78ch}
+.anular-que{font-size:14px;line-height:1.5;color:var(--txt-2);max-width:78ch}
 .anular-que b{color:var(--txt);font-weight:600}
 /* La casilla de "ya entraron" NO viene marcada y no puede venir marcada:
    es el único camino por el que el conteo de la puerta baja, y tiene que
    costar una decisión propia. */
 .anular-usadas{
-  display:flex;gap:10px;align-items:flex-start;max-width:78ch;
-  padding:11px 13px;border-radius:var(--r-chico);
-  background:var(--aviso-bg);border:1px solid rgba(246,180,74,.3);
+  display:flex;flex-direction:row;gap:10px;align-items:flex-start;max-width:78ch;
+  padding:12px 14px;border-radius:var(--r);
+  background:var(--aviso-bg);border:1px solid var(--aviso-borde);
 }
 .anular-usadas input{margin:2px 0 0;flex:0 0 auto;accent-color:var(--aviso)}
-/* El `label>span` general va en versalitas de rótulo, que acá haría gritar
-   una frase entera. Este span no es un rótulo: es lo que hay que leer. */
+/* El `label>span` general es un rótulo de campo; este span no es un
+   rótulo: es la frase que hay que leer antes de tildar. */
 .anular-usadas>span{
-  font-family:var(--texto);font-size:13px;line-height:1.45;
-  letter-spacing:0;text-transform:none;color:var(--aviso);
+  font:400 14px/1.45 var(--texto);
+  letter-spacing:0;text-transform:none;color:var(--txt);
 }
 .anular-motivo{max-width:520px}
 .form-anular .acciones{margin-top:0}
 
 .tabla-manillas{margin:0;background:transparent}
 .tabla-manillas thead th{background:var(--sup)}
-.tabla-manillas code{font-family:var(--dato);font-size:12.5px;letter-spacing:.08em;user-select:all}
+.tabla-manillas code{font-family:var(--codigo);font-size:13px;letter-spacing:.06em;user-select:all}
 
 /* ─── cortesías ───
    Formulario corto arriba, códigos abajo: el que entra acá ya sabe qué
    quiere regalar y a lo que viene es a llevarse los códigos. */
 .cortesias,.emitidas{max-width:760px}
-.emitidas{margin-top:18px;border-color:rgba(233,180,76,.3)}
-.emitidas h3{color:var(--dorado)}
+/* Los códigos recién emitidos y la clave nueva comparten el tinte flúor:
+   son las dos cosas del panel que existen una sola vez en pantalla y hay
+   que llevarse antes de cerrar. */
+.emitidas{margin-top:18px;background:var(--fluor-suave);border-color:var(--fluor-borde)}
+.emitidas h3{color:var(--txt)}
 .form-cortesias{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px}
 .form-cortesias label{min-width:0}
 .form-cortesias label.ancha{grid-column:1/-1}
@@ -793,11 +1044,7 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
    .cab-bloque, al lado de un título. Acá abajo es un campo más de un
    formulario y tiene que caer igual que los `input` que lo rodean: un
    control más chico que el de al lado se lee como deshabilitado. */
-.form-cortesias select{
-  width:100%;padding:12px 13px;border-radius:var(--r-chico);
-  background:var(--hundido);border:1px solid var(--linea-2);color:var(--txt);
-  font:inherit;
-}
+.form-cortesias select{width:100%}
 .form-cortesias .acciones,.form-cortesias .error{grid-column:1/-1;margin-top:0}
 
 /* Alta de un cliente, en Plataforma (0105). Tres campos en una línea en la
@@ -814,9 +1061,9 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
    espaciados y seleccionables de a uno con un clic. */
 .codigos{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 .codigos code{
-  font-family:var(--dato);font-size:13.5px;letter-spacing:.1em;user-select:all;
+  font:14px var(--codigo);letter-spacing:.08em;user-select:all;
   padding:7px 11px;border-radius:var(--r-chico);
-  background:var(--hundido);border:1px solid var(--linea-2);color:var(--dorado);
+  background:var(--sup-2);border:1px solid var(--linea);color:var(--txt);
 }
 .tickets-rail{
   display:flex;gap:12px;overflow-x:auto;padding:16px 0 6px;
@@ -832,23 +1079,20 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
    que decide, así que va con su signo y su color: cobró de menos no es lo
    mismo que cobró de más, y un número pelado no lo dice. */
 .rev-tarjeta{
-  padding:18px 20px;margin-bottom:14px;border-radius:var(--r);
-  background:var(--sup);border:1px solid rgba(246,180,74,.28);
+  padding:20px 24px;margin-bottom:14px;border-radius:var(--r);
+  background:var(--sup);border:1px solid var(--aviso-borde);box-shadow:var(--sombra-1);
 }
 .rev-cab{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
 .rev-cab>div{min-width:0;flex:1 1 auto}
-.rev-cab h4{margin:0;font-family:var(--display);font-size:21px;}
-.rev-cab p{margin:3px 0 0;font-family:var(--dato);font-size:12px;color:var(--txt-2)}
-.rev-detalle{margin:12px 0 0;font-size:13.5px;color:var(--txt-2)}
+.rev-cab h4{margin:0;font:600 16px var(--texto)}
+.rev-cab p{margin:3px 0 0;font:13px var(--texto);color:var(--txt-2)}
+.rev-detalle{margin:12px 0 0;font-size:14px;color:var(--txt-2)}
 .rev-plata{display:flex;gap:26px;flex-wrap:wrap;margin:14px 0}
 .rev-plata>span{display:flex;flex-direction:column;gap:3px}
-.rev-plata em{
-  font-family:var(--dato);font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;color:var(--txt-3);font-style:normal;
-}
-.rev-plata b{font-family:var(--dato);font-size:17px;font-variant-numeric:tabular-nums}
+.rev-plata em{font:12px var(--texto);color:var(--txt-3);font-style:normal}
+.rev-plata b{font:600 16px var(--texto);font-variant-numeric:tabular-nums}
 .rev-dif.menos b{color:var(--peligro)}
-.rev-dif.mas b{color:var(--dorado)}
+.rev-dif.mas b{color:var(--aviso)}
 .rev-tarjeta .link-publico{margin:0}
 .rev-tarjeta .form-anular{margin-top:14px;border-radius:var(--r-chico)}
 
@@ -859,17 +1103,17 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
    deshacer devuelve una manilla ya usada a válida, o sea es el único
    movimiento con el que alguien de adentro puede hacer entrar gente de
    más. En cero se apaga —un cero no es una alerta— y en cuanto hay uno
-   pasa a dorado, que es el color que en este panel dice "mirá esto"
+   pasa a ámbar, que es el color que en este panel dice "mirá esto"
    sin decir "esto está mal". */
 /* `td.n` y `td.n em` de la tabla genérica ya fijan el color con dos clases
    y un elemento: para ganarles hay que nombrar la celda entera, no basta
    con la clase suelta. Sin esto el número queda del mismo gris que los
    demás y la columna deja de decir lo único que vino a decir. */
-.tabla-porteros td.n.deshechos{color:var(--dorado);font-weight:500}
-.tabla-porteros td.n.deshechos em{color:var(--dorado);opacity:.8}
+.tabla-porteros td.n.deshechos{color:var(--aviso);font-weight:600}
+.tabla-porteros td.n.deshechos em{color:var(--aviso);opacity:.85}
 .tabla-porteros tfoot td{
   border-top:1px solid var(--linea-2);background:var(--sup-2);
-  font-family:var(--dato);font-size:13px;color:var(--txt-2);
+  font:13px var(--texto);color:var(--txt-2);
 }
 .tabla-porteros tfoot td.n{color:var(--txt)}
 
@@ -879,62 +1123,66 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
   .form-nuevo-cliente{grid-template-columns:1fr}
 }
 @media (max-width:760px){
-  .cifra-grande .valor{font-size:36px}
-  .cifra-grande.plata .valor{font-size:30px}
   .buscador{margin-left:0;width:100%}
   .cab-bloque select{margin-left:0;width:100%}
-  .alerta>.btn{align-self:flex-start}
+  /* El botón abajo del texto y no al lado: al lado le dejaba al texto
+     media pantalla y la explicación se partía en seis renglones. */
+  .alerta{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 14px}
+  .alerta>.btn{grid-column:2;justify-self:start;align-self:start}
 }
 
 /* ─── botones ───
-   El primario lleva sombra de su propio color: eso es lo que le da peso y lo
-   separa de un rectángulo pintado. */
+   14px y en la letra del texto. Antes eran de 18px en la de títulos y cada
+   «Guardar» pesaba más que el título de la pantalla. */
 /* El apretón: .97 y no .985. A .985 un botón de 120px se encoge menos de
    un pixel por lado y no se ve; a .97 el dedo siente que el botón cedió.
    Entra en 160ms con la curva que frena: si tardara más, el clic rápido
    suelta el botón antes de que llegue a hundirse. */
 .btn{
-  padding:12px 20px;border-radius:var(--r-chico);
-  font-family:var(--display);font-size:18px;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  min-height:40px;padding:0 16px;border-radius:var(--r-chico);
+  font:600 14px/1.2 var(--texto);letter-spacing:0;white-space:nowrap;text-decoration:none;
   transition:background .15s ease,box-shadow .15s ease,transform .16s var(--sale),color .15s ease,border-color .15s ease;
 }
 .btn.ancho{width:100%}
-.btn.chico{font-size:13px;padding:8px 13px;letter-spacing:.06em}
+.btn.chico{min-height:32px;padding:0 12px;font-size:13px;letter-spacing:0}
 .btn.primario{
-  background:var(--rojo);color:#fff;
+  background:var(--acento);color:var(--sobre-acento);
   /* Un filo de luz arriba: el primario se lee como algo que sobresale de
      la superficie y no como un rectángulo pintado sobre ella. */
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 1px 2px rgba(0,0,0,.3);
+  box-shadow:var(--sombra-1),inset 0 1px 0 rgba(255,255,255,.12);
 }
 .btn.primario:active:not(:disabled){transform:scale(.97)}
-.btn.primario:disabled{background:var(--sup-3);color:var(--txt-3);box-shadow:none;cursor:not-allowed}
-.btn.plano{border:1px solid var(--linea-2);color:var(--txt-2)}
+.btn.primario:disabled{background:var(--sup-3);color:var(--txt-placeholder);box-shadow:none;cursor:not-allowed}
+.btn.plano{background:var(--sup);border:1px solid var(--linea-2);color:var(--txt);box-shadow:var(--sombra-1)}
 .btn.plano:active:not(:disabled){transform:scale(.97)}
 /* El hover sólo donde hay un puntero que flota. En un teléfono el :hover
    se queda pegado después del toque, y el botón que se acaba de apretar
    sigue pareciendo "encima" hasta que se toca otra cosa. */
 @media (hover:hover) and (pointer:fine){
-  .btn.primario:hover:not(:disabled){background:var(--rojo-claro)}
-  .btn.plano:hover:not(:disabled){border-color:var(--txt-3);color:var(--txt);background:var(--sup-2)}
-  .tabs button:not([aria-current]):hover{background:var(--sup-2);color:var(--txt-2)}
+  .btn.primario:hover:not(:disabled){background:var(--acento-hover)}
+  .btn.plano:hover:not(:disabled){border-color:var(--linea-3);color:var(--txt);background:var(--sup-2)}
+  .tabs button:not([aria-current]):hover{background:var(--sup-2);color:var(--txt)}
   .evc-tabs button:hover{color:var(--txt)}
+  .evc-fila .btn.plano:hover:not(:disabled){background:transparent;color:var(--acento)}
+  #btnSalir:hover:not(:disabled){background:var(--sup-2);color:var(--txt)}
 }
 /* Lo que no se deshace se ve distinto ANTES de apretarlo. No es rojo lleno
    —eso sería el botón más pesado de la pantalla, al lado de "Link"— es
    el mismo botón plano con el texto en el color del peligro: se distingue
    sin gritar, que es lo que hace falta en una fila con varios botones. */
-.btn.plano.peligrosa{color:var(--peligro);border-color:rgba(251,113,133,.28)}
+.btn.plano.peligrosa{color:var(--peligro);border-color:var(--peligro-borde)}
 .btn.plano.peligrosa:hover{color:var(--peligro);border-color:var(--peligro);background:var(--peligro-bg)}
 .btn.primario:disabled,.btn.plano:disabled{opacity:.5;cursor:not-allowed}
 
 /* ─── aviso ─── */
 .toast{
-  position:fixed;left:50%;bottom:24px;transform:translate(-50%,160%);
+  position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translate(-50%,160%);
   z-index:100;max-width:calc(100vw - 32px);
-  background:var(--sup-3);color:var(--txt);
-  border:1px solid var(--linea-2);
-  padding:13px 18px;border-radius:var(--r);font-size:14px;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 10px 30px -6px rgba(0,0,0,.55);
+  background:var(--toast-fondo);color:var(--toast-txt);
+  border:0;
+  padding:12px 18px;border-radius:var(--r);font:500 14px/1.4 var(--texto);
+  box-shadow:var(--sombra-3);
   /* Cerrado está apenas debajo de su lugar y transparente, no 160% más
      abajo: viajar una pantalla entera para un aviso de una línea es
      movimiento que no dice nada. Y sin el rebote de antes — un aviso que
@@ -949,10 +1197,19 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 }
 
 @media (max-width:760px){
+  body{font-size:15px}
   .form-evento{grid-template-columns:1fr}
-  .cab{gap:10px;padding:0 14px}
-  .yo{display:none}
-  main{padding:20px 14px 80px}
+  .cab{gap:8px;padding:0 12px}
+  /* Sólo el de la barra: en el teléfono la fila propia de socios
+     desaparecía con él. */
+  .cab .yo{display:none}
+  main{padding:20px 16px 80px}
+  .tarjeta,.publicar,.cifra-grande,.rev-tarjeta,.total{padding:16px}
+  .lista>.fila{padding:14px 16px}
+  .cab-seccion h2{font-size:22px}
+  /* En el teléfono un botón con texto largo parte renglón antes que salirse
+     de la pantalla: «Quitar de la venta» al lado de un link no entra. */
+  .btn{white-space:normal;text-align:center}
   .fila{flex-wrap:wrap;gap:8px 12px}
   .fila-dato{margin-left:0}
   .fila-nombre{width:100%}
@@ -971,7 +1228,7 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
   /* Lo que entra con fundido aparece y ya: el movimiento se va, el cambio
      de estado queda. El latido de "cargando" se queda quieto. */
   #main[data-nav] > *,#main[data-nav] .lista > .fila,
-  .fila-detalle > td > *,.caja,.cargando,.cifra-grande .avance i{animation:none !important}
+  .fila-detalle > td > *,.caja,.cargando::before,.cifra-grande .avance i{animation:none !important}
 }
 
 
@@ -988,15 +1245,15 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
    caía en una x distinta según lo largo que fuera su nombre, y una lista
    que se recorre de un vistazo se leía en zigzag. */
 .fila.persona{
-  display:grid;grid-template-columns:minmax(0,1fr) 92px 156px 292px;
-  gap:6px 22px;align-items:center;
+  display:grid;grid-template-columns:minmax(0,1fr) 96px 140px 272px;
+  gap:6px 20px;align-items:center;
 }
 .persona .pastilla{justify-self:start}
 .persona .cifra{justify-self:end}
-.persona .fila-nombre{min-width:0}
+.persona .fila-nombre{min-width:0;overflow-wrap:anywhere}
 .persona .fila-nombre em{
   display:block;margin-top:3px;font-style:normal;font-weight:400;
-  font-family:var(--dato);font-size:11.5px;color:var(--txt-3);
+  font:12px var(--texto);color:var(--txt-3);
 }
 /* Sin código no hay link, y sin link su noche no se le atribuye a nadie:
    es lo único de la fila que pide una acción. */
@@ -1006,14 +1263,16 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 .persona .fila-nombre em b{white-space:nowrap}
 /* Desactivado no es un error ni un peligro: es alguien que está pero no
    entra. Apagado alcanza; en rojo parecería que algo se rompió. */
-.persona.inactiva{background:transparent;border-style:dashed}
-.persona.inactiva .fila-nombre{color:var(--txt-2);font-weight:500}
-.soy-yo{
-  font-style:normal;font-family:var(--dato);font-size:10px;letter-spacing:.08em;
-  text-transform:uppercase;color:var(--txt-3);
-}
-.persona-acciones{display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
-.nota-yo{font-family:var(--dato);font-size:11px;color:var(--txt-3);white-space:nowrap}
+.persona.inactiva,.persona.inactiva:hover{background:var(--sup-2)}
+.persona.inactiva .fila-nombre{color:var(--txt-3);font-weight:500}
+.soy-yo{font-style:normal;font:12px var(--texto);color:var(--txt-3)}
+/* Tres botones con marco por fila, en 115 filas, eran una pared de
+   bordes. Sin marco se leen como lo que son: acciones de la fila, que se
+   miran cuando se busca a alguien y no antes. */
+.persona-acciones{display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.persona-acciones .btn.plano{border:0;box-shadow:none;background:transparent;color:var(--txt-2);padding:0 8px}
+.persona-acciones .btn.plano:hover:not(:disabled){background:var(--sup-3);color:var(--txt)}
+.nota-yo{font:12px var(--texto);color:var(--txt-3);white-space:nowrap;padding:0 8px}
 
 .form-persona{
   grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:16px;
@@ -1025,19 +1284,17 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 .tarjeta .form-persona{margin-top:14px;padding-top:0;border-top:0}
 
 /* ─── la clave, la única vez que se ve ───
-   En dorado y arriba de todo: si esta caja se cierra sin que nadie la
-   copie, la clave no existe más en ningún lado. El valor va en el
-   cuerpo de datos y grande — se lee en voz alta o se copia, y una l
-   mayúscula confundida con un 1 es un llamado al día siguiente. */
-.clave-nueva{border-color:rgba(233,180,76,.35);background:linear-gradient(var(--sup),rgba(233,180,76,.06))}
-.clave-nueva h3{color:var(--dorado)}
+   En flúor y arriba de todo: si esta caja se cierra sin que nadie la
+   copie, la clave no existe más en ningún lado. El valor va en mono y
+   grande — se lee en voz alta o se copia, y una l mayúscula confundida
+   con un 1 es un llamado al día siguiente. */
+.clave-nueva{border-color:var(--fluor-borde);background:var(--fluor-suave)}
+.clave-nueva h3{color:var(--txt)}
+.clave-nueva .link-publico{background:var(--sup);border-color:var(--fluor-borde)}
 .clave-nueva .link-publico+.link-publico{margin-top:8px}
-.clave-rotulo{
-  flex:0 0 74px;font-family:var(--dato);font-size:10.5px;letter-spacing:.09em;
-  text-transform:uppercase;color:var(--txt-3);
-}
-.clave-nueva code{user-select:all;font-family:var(--dato)}
-.clave-valor{font-size:17px;letter-spacing:.06em;color:var(--dorado)}
+.clave-rotulo{flex:0 0 74px;font:500 13px var(--texto);color:var(--txt-2)}
+.clave-nueva code{user-select:all;font-family:var(--codigo)}
+.clave-nueva .clave-valor{font:500 18px var(--codigo);letter-spacing:.06em;color:var(--txt)}
 .clave-nueva .acciones{margin-top:14px}
 
 /* El corte de la fila llega ANTES que el del resto del panel: con cuatro
@@ -1051,10 +1308,13 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
   .persona .fila-nombre{flex:1 1 100%}
   .persona .cifra{text-align:left}
   .persona-acciones{margin-left:auto}
-  .form-persona{flex:1 1 100%}
+  .form-persona,.persona-links{flex:1 1 100%}
 }
 @media (max-width:760px){
   .form-persona,.alta-rrpp{grid-template-columns:1fr}
+  /* Las acciones en su renglón, desde la izquierda: tiradas a la derecha
+     dejaban un hueco a la izquierda que parecía un dato que faltaba. */
+  .persona-acciones{flex:1 1 100%;justify-content:flex-start;margin-left:-8px}
   .clave-rotulo{flex-basis:auto}
 }
 
@@ -1165,19 +1425,25 @@ body[data-filtro="1"] .puerta-conteo{border-color:rgba(246,180,74,.35)}
   margin-top:16px;padding-top:15px;border-top:1px solid var(--linea);
 }
 .liq-auto-cab{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.liq-auto-cab b{font-size:14.5px}
+.liq-auto-cab b{font-size:15px}
 .liq-auto[data-on="1"] .liq-auto-cab b{color:var(--ok)}
 .liq-auto .ayuda{margin:6px 0 0}
-.liq-auto-min{
-  display:flex;align-items:center;gap:8px;margin-top:11px;
-  font-family:var(--dato);font-size:12.5px;color:var(--txt-2);
+/* Una frase con campos adentro («Mandar a partir de [ ] Bs [Guardar]»), no
+   un rótulo arriba de un campo. Es un `label`, y el `label` general es una
+   columna: sin el `row` explícito la frase se apilaba renglón por renglón,
+   con los pedazos de texto en letra de rótulo. */
+label.liq-auto-min{
+  display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;
+  font:14px var(--texto);color:var(--txt-2);
 }
-.liq-auto-min{flex-wrap:wrap}
+.liq-auto-min>span{font:14px var(--texto);text-transform:none;letter-spacing:0;color:var(--txt-2)}
+.liq-auto-min input,.liq-auto-min select{width:auto}
+/* El botón de la frase a la altura de los campos que tiene al lado. */
+.liq-auto-min .btn{min-height:40px}
 .liq-auto-min input{
-  width:5.5em;padding:7px 9px;text-align:right;
-  font-family:var(--dato);font-variant-numeric:tabular-nums;
+  width:6.5em;text-align:right;font-variant-numeric:tabular-nums;
 }
-.liq-auto-min input[type=text]{width:min(100%,22em);text-align:left;font-family:inherit}
+.liq-auto-min input[type=text]{width:min(100%,22em);text-align:left}
 
 /* ─── Plataforma: el tablero de TICKETAZO ───
    Una tarjeta con el numero del cuadre arriba y una tabla abajo. Es la
@@ -1185,31 +1451,39 @@ body[data-filtro="1"] .puerta-conteo{border-color:rgba(246,180,74,.35)}
    entre si —que cliente cobro cuanto— y una lista de tarjetas obliga a
    recordar el numero de la anterior mientras se lee la siguiente. */
 .plat-cuadre{display:grid;gap:18px}
-.plat-cuadre h3{font-family:var(--display);font-size:clamp(30px,7vw,42px);line-height:.9}
-.plat-cuadre .ayuda{max-width:56ch}
-.plat-cifras{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px 22px;margin:0}
+.plat-cuadre h3{font:700 30px/1.1 var(--texto);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+/* El margen en verde: `.ok` sólo existía para dd y .num, y el número
+   grande de "lo que nos queda" salía del mismo negro que el cuadre. */
+.plat-cuadre h3.ok{color:var(--ok)}
+.plat-cuadre .ayuda{max-width:60ch;margin-top:6px}
+/* Las frases con campo («Retiré [ ] Bs para…») y su ayuda van juntas: el
+   espacio de la grilla de la tarjeta ya las separa del bloque de arriba. */
+.plat-cuadre label.liq-auto-min{margin-top:4px}
+.plat-cuadre .liq-auto-min+.ayuda{margin-top:-8px}
+.plat-cifras{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(136px,1fr));gap:12px 20px;margin:0;
+  padding-top:16px;border-top:1px solid var(--linea);
+}
 .plat-cifras div{display:flex;flex-direction:column;gap:2px}
-.plat-cifras dt{font-family:var(--dato);font-size:11.5px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.05em}
-.plat-cifras dd{margin:0;font-family:var(--dato);font-size:17px;font-variant-numeric:tabular-nums;color:var(--txt)}
-.plat-cifras .tenue dd{color:var(--txt-2)}
+.plat-cifras dt{font:13px var(--texto);color:var(--txt-2);text-transform:none;letter-spacing:0}
+.plat-cifras dd{margin:0;font:600 16px var(--texto);font-variant-numeric:tabular-nums;color:var(--txt)}
+.plat-cifras .tenue dd{color:var(--txt-2);font-weight:500}
 .plat-cifras dd.ok{color:var(--ok)}
 
 /* La tabla scrollea en su propia caja: en un telefono son ocho columnas y
-   sin esto el que scrollea es el panel entero. */
-.tabla-scroll{overflow-x:auto;border:1px solid var(--linea);border-radius:var(--r);background:var(--sup)}
-.tabla{width:100%;border-collapse:collapse;font-size:13.5px;white-space:nowrap}
-.tabla th,.tabla td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--linea)}
-.tabla thead th{
-  font-family:var(--dato);font-size:11px;text-transform:uppercase;letter-spacing:.06em;
-  color:var(--txt-3);font-weight:500;background:var(--sup-2);position:sticky;top:0;
+   sin esto el que scrollea es el panel entero. (La tabla en sí vive una
+   sola vez, arriba, en «tablas de lectura».) */
+.tabla-scroll{
+  overflow-x:auto;border:1px solid var(--linea);border-radius:var(--r);
+  background:var(--sup);box-shadow:var(--sombra-1);
 }
-.tabla tbody tr:last-child td{border-bottom:0}
-.tabla .num{text-align:right;font-family:var(--dato);font-variant-numeric:tabular-nums}
-.tabla .num.ok{color:var(--ok)}
-/* Lo que todavia no se le giro al cliente. En ambar y no en rojo: no esta
-   mal, esta pendiente — el rojo se guarda para lo que hay que arreglar. */
-.tabla .num.plat-falta{color:var(--aviso)}
-.tabla td em.ayuda{display:block;font-style:normal;font-size:11px}
+/* Plataforma la usan operadores en la compu y sus tablas tienen once
+   columnas: con el carril de las otras pantallas el botón de «Entrar
+   como…» quedaba del otro lado de un scroll que nadie ve. Más ancho y
+   celdas un poco más juntas, y entra entera en una pantalla de 1280. */
+body[data-pantalla="plataforma"] main{max-width:1440px}
+.tabla-scroll .tabla th,.tabla-scroll .tabla td{padding-left:10px;padding-right:10px}
+.tabla-scroll .tabla th:first-child,.tabla-scroll .tabla td:first-child{padding-left:16px}
 
 /* ─── la barra de sin señal ───
    Aparece SOLO cuando hay algo que decir: sin conexión, con ingresos
@@ -1324,6 +1598,9 @@ body[data-filtro="1"] .puerta-visor::before{
 .puerta-mano input{
   width:100%;font-family:var(--dato);font-size:17px;letter-spacing:.09em;
   text-transform:uppercase;
+  /* El alto de 40px de los campos de la oficina no va acá: es el campo que
+     se toca de noche, y conserva su tamaño de siempre. */
+  height:auto;min-height:52px;padding:12px 14px;
 }
 .puerta-mano input::placeholder{letter-spacing:.06em;text-transform:none}
 .puerta-mano .btn{flex:0 0 auto}
@@ -1346,37 +1623,59 @@ body[data-filtro="1"] .puerta-visor::before{
    aviso y no en rojo — no es un error, es una explicación de por qué el
    número es más chico de lo que el bruto sugiere. */
 .aviso-real{color:var(--aviso)}
-.liq-sub{font-size:15px;margin:22px 0 10px;padding-top:16px;border-top:1px solid var(--linea)}
+.liq-sub{font:600 15px var(--texto);margin:24px 0 10px;padding-top:16px;border-top:1px solid var(--linea)}
 .liq-cab{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
 
 .liq-cifras{margin:18px 0 4px}
-.liq-cifras h4{
-  font:600 12px/1 var(--texto);letter-spacing:.14em;text-transform:uppercase;
-  color:var(--txt-3);margin:0 0 12px}
+.liq-cifras h4{font:600 13px/1.2 var(--texto);letter-spacing:0;text-transform:none;color:var(--txt-2);margin:0 0 10px}
 .liq-cifras dl{margin:0;display:grid;gap:2px}
 .liq-cifras dl>div{
   display:flex;align-items:baseline;justify-content:space-between;gap:16px;
   padding:9px 0;border-bottom:1px solid var(--linea)}
 .liq-cifras dt{color:var(--txt-2);font-size:14px}
-.liq-cifras dd{margin:0;font-variant-numeric:tabular-nums;font-size:15px;color:var(--txt)}
+.liq-cifras dd{margin:0;font-variant-numeric:tabular-nums;font-size:14px;color:var(--txt)}
 .liq-cifras .tenue dt,.liq-cifras .tenue dd{color:var(--txt-3);font-size:13px}
-.liq-cifras .total{border-bottom:0;border-top:1px solid var(--linea-2);margin-top:6px;padding-top:14px}
+/* «Para el organizador» es un renglón de la cuenta, no la tarjeta .total
+   de Mis ventas: comparte la clase y se llevaba su fondo, sus bordes y su
+   radio, con el texto pegado al filo. Acá se le saca todo eso. */
+.liq-cifras dl>div.total{
+  display:flex;background:none;border:0;border-radius:0;
+  box-shadow:none;padding:14px 0 0;margin:0;color:inherit;
+}
+/* La raya de arriba del total es la de abajo del renglón anterior, más
+   oscura: dos rayas pegadas se leían como un error de dibujo. */
+.liq-cifras dl>div:has(+div.total){border-bottom-color:var(--linea-2)}
 .liq-cifras .total dt{color:var(--txt);font-weight:600;font-size:15px}
-.liq-cifras .total dd{font-family:var(--display);font-size:26px;font-weight:600;color:var(--txt)}
+.liq-cifras .total dd{font:700 24px var(--texto);color:var(--txt);font-variant-numeric:tabular-nums}
 
 /* Lo que falta resolver y la diferencia usan el mismo amarillo de aviso:
    ninguna de las dos impide cerrar, las dos cambian lo que hay que hacer. */
 .liq-pendiente,.liq-difiere{
-  background:var(--aviso-bg);border:1px solid rgba(246,180,74,.3);
+  background:var(--aviso-bg);border:1px solid var(--aviso-borde);
   border-radius:var(--r);padding:14px 16px;margin:14px 0}
 .liq-pendiente p,.liq-difiere p{margin:0 0 8px;font-size:14px;line-height:1.5}
 .liq-pendiente ul,.liq-difiere ul{margin:0 0 10px;padding-left:18px}
 .liq-pendiente li,.liq-difiere li{font-size:14px;line-height:1.6;color:var(--txt-2)}
-.liq-difiere b{color:var(--aviso)}
+.liq-difiere b,.liq-pendiente b{color:var(--aviso)}
 .liq-pendiente .ayuda,.liq-difiere .ayuda{margin-bottom:0}
 .liq-ok{color:var(--ok);font-size:14px;margin:14px 0 0}
 
 .liq-linea{align-items:center}
+/* Los pagos y los retiros en columnas en la compu, como la lista de
+   eventos: el monto y el estado de cada giro caían donde terminaba el
+   nombre del titular, y una columna de montos que no está alineada no se
+   puede recorrer de arriba abajo. */
+@media (min-width:761px){
+  .lista>.liq-linea{
+    display:grid;grid-template-columns:minmax(0,1.4fr) 120px 150px minmax(0,1fr);gap:16px;
+  }
+  .lista>.liq-linea .fila-nombre{min-width:0}
+  .lista>.liq-linea .cifra{text-align:right}
+  .lista>.liq-linea .pastilla,.lista>.liq-linea>.btn{justify-self:start}
+  .lista>.liq-linea .fila-dato{margin-left:0}
+  /* Los retiros no tienen estado: la fecha toma su lugar y el de al lado. */
+  .lista>.liq-linea>.fila-dato:nth-child(3){grid-column:3/-1}
+}
 /* Pagada se apaga en vez de resaltarse: lo que hay que ver de un vistazo
    es lo que TODAVÍA se debe, no lo que ya se resolvió. */
 .liq-linea.pagada{opacity:.62}
@@ -1386,8 +1685,8 @@ body[data-filtro="1"] .puerta-visor::before{
    Chico y tenue a propósito: no es un dato que se edite, es la
    consecuencia del que sí. */
 .celda-paga{
-  display:block;margin-top:5px;font-size:11px;line-height:1;
-  color:var(--txt-3);font-variant-numeric:tabular-nums;min-height:11px}
+  display:block;margin-top:5px;font-size:12px;line-height:1.1;
+  color:var(--txt-3);font-variant-numeric:tabular-nums;min-height:12px}
 .nota-fee{margin:14px 0 0;max-width:62ch}
 
 /* El link de venta de cada relacionador, dentro de su fila. Va en el flujo
@@ -1395,12 +1694,10 @@ body[data-filtro="1"] .puerta-visor::before{
    entre eso y el WhatsApp es un paso donde se manda el link pelado. */
 .persona-links{
   grid-column:1/-1;margin-top:10px;padding-top:10px;
-  border-top:1px dashed var(--linea-2);display:grid;gap:6px}
+  border-top:1px solid var(--linea);display:grid;gap:6px}
 .persona-links .link-publico{margin:0}
-.link-evento-nombre{
-  font:600 11px/1 var(--texto);letter-spacing:.08em;text-transform:uppercase;
-  color:var(--txt-3);margin-right:8px}
-.vacio-links{color:var(--txt-3);font-size:13px;border-top:1px dashed var(--linea-2)}
+.link-evento-nombre{font:600 12px/1 var(--texto);color:var(--txt-2);margin-right:8px}
+.vacio-links{color:var(--txt-3);font-size:13px;border-top:1px solid var(--linea)}
 
 /* ─── los botones de bajar ───
    A la derecha del título del bloque y no arriba en una barra: un export
@@ -1416,14 +1713,13 @@ body[data-filtro="1"] .puerta-visor::before{
    Se despliega abajo de la fila, igual que la anulación: la pregunta es
    "el link de ESTA compra" y en un modal la fila que la origina
    desaparece justo cuando hay que confirmar de quién era. */
-.link-compra{display:grid;gap:10px;padding:16px 18px;border-left:3px solid var(--dorado)}
+.link-compra{display:grid;gap:10px;padding:16px 18px;border-left:3px solid var(--acento)}
 .link-compra .link-publico{margin:0}
 .link-compra .acciones{margin-top:0}
 /* El resultado del envío arranca vacío y ocupa cero: un renglón fijo que
    dice "—" al lado de un botón de mandar correos se lee como un estado, y
    el estado que importa es el de después de apretar. */
-.mail-resultado{
-  font-family:var(--dato);font-size:12px;line-height:1.5;max-width:72ch;color:var(--txt-2)}
+.mail-resultado{font:13px/1.5 var(--texto);max-width:72ch;color:var(--txt-2)}
 .mail-resultado:empty{display:none}
 .mail-resultado[data-ok="1"]{color:var(--ok)}
 .mail-resultado[data-ok="0"]{color:var(--aviso)}
@@ -1436,8 +1732,8 @@ body[data-filtro="1"] .puerta-visor::before{
    reconstruir después—, y quién lo hizo abajo, en chico. */
 .bitacora{list-style:none;margin:0;padding:0}
 .bit-dia{
-  font-family:var(--dato);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--txt-3);margin:22px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--linea);
+  font:600 13px var(--texto);letter-spacing:0;text-transform:none;
+  color:var(--txt-2);margin:24px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--linea);
 }
 .bit-dia:first-child{margin-top:4px}
 .bit-suceso{
@@ -1449,17 +1745,17 @@ body[data-filtro="1"] .puerta-visor::before{
 /* `bit-` adelante y no `.panel`/`.puerta` a secas: `.puerta` ya existe en
    esta hoja —es la pantalla del molinete, con max-width y margin auto— y
    las filas de la puerta salían centradas adentro de la bitácora. */
-.bit-suceso.bit-panel{border-left-color:var(--rojo)}
+.bit-suceso.bit-panel{border-left-color:var(--acento)}
 .bit-suceso.bit-puerta{border-left-color:var(--txt-3)}
 .bit-hora{
-  font-family:var(--dato);font-size:12px;color:var(--txt-3);
+  font-family:var(--dato);font-size:13px;color:var(--txt-3);
   flex:0 0 44px;padding-top:1px;font-variant-numeric:tabular-nums;
 }
 .bit-cuerpo{min-width:0;display:grid;gap:3px}
 .bit-que{font-size:14px;line-height:1.4;color:var(--txt-2)}
 .bit-que b{color:var(--txt);font-weight:600}
 .bit-motivo{font-size:14px;line-height:1.45;color:var(--txt);max-width:74ch}
-.bit-nota,.bit-quien{font-family:var(--dato);font-size:11.5px;color:var(--txt-3)}
+.bit-nota,.bit-quien{font-family:var(--dato);font-size:12px;color:var(--txt-3)}
 
 
 /* ══ el teléfono ══════════════════════════════════════════════════
@@ -1491,8 +1787,20 @@ body[data-filtro="1"] .puerta-visor::before{
   /* El chico deja de ser chico de alto y sigue siendo chico de ancho: lo
      que lo distingue del botón normal es el peso tipográfico, no la
      superficie que ocupa el dedo. */
-  .btn.chico{padding-top:10px;padding-bottom:10px}
+  .btn.chico{min-height:44px;padding-top:8px;padding-bottom:8px}
   .arte-controles input[type="file"]::file-selector-button{min-height:36px}
+}
+
+/* ─── sin zoom en iOS ───
+   Safari agranda la página al enfocar cualquier campo de menos de 16px, y
+   no la vuelve a achicar: el organizador que tocaba el buscador quedaba
+   con el panel ampliado y scrolleando de costado. Con :is() para que pese
+   lo mismo que el más pesado de la lista y le gane a cada campo que fija
+   su propio tamaño (la grilla, el buscador, el del equipo). */
+@media (max-width:760px), (pointer:coarse){
+  :is(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]),select,textarea){font-size:16px}
+  /* La puerta tenía el suyo más grande todavía; no se achica. */
+  #pCodigo{font-size:17px}
 }
 
 /* ─── la cabecera ───
@@ -1504,15 +1812,58 @@ body[data-filtro="1"] .puerta-visor::before{
    scrollear sola sin perder nada: con dos pestañas no scrollea, con
    cuatro sí, y en los dos casos «Salir» sigue estando donde estaba. */
 @media (max-width:760px){
-  .cab{gap:10px;padding:0 12px}
-  .marca{font-size:16px;letter-spacing:.04em;flex:0 0 auto}
+  .cab{gap:8px;padding:0 12px}
+  .marca{font-size:18px;flex:0 0 auto}
+  /* El borde derecho se desvanece: es lo que dice que la tira sigue y
+     scrollea. Sin eso la última pestaña quedaba cortada («Equi») y parecía
+     un error de dibujo, no algo que se corre con el dedo. */
   .tabs{
     flex:1 1 auto;min-width:0;overflow-x:auto;
     scrollbar-width:none;-ms-overflow-style:none;
+    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);
+    mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);
+    padding-right:20px;
   }
   .tabs::-webkit-scrollbar{display:none}
-  .tabs button{flex:0 0 auto;padding:7px 12px;font-size:11px}
+  .tabs button{flex:0 0 auto;padding:6px 10px;font-size:14px}
   #btnSalir{flex:0 0 auto;margin-left:0}
+}
+/* En los teléfonos más angostos «Salir» pasa a ser un ícono: son 50px que
+   la tira de pestañas necesita más. El texto sigue en el botón (sólo con
+   tamaño cero), así que un lector de pantalla lo sigue nombrando «Salir». */
+@media (max-width:420px){
+  #btnSalir{font-size:0;width:40px;padding:0;gap:0}
+  #btnSalir::before{
+    content:"";width:20px;height:20px;background:currentColor;
+    -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4'/%3E%3Cpath d='M16 17l5-5-5-5'/%3E%3Cpath d='M21 12H9'/%3E%3C/svg%3E") center/contain no-repeat;
+    mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4'/%3E%3Cpath d='M16 17l5-5-5-5'/%3E%3Cpath d='M21 12H9'/%3E%3C/svg%3E") center/contain no-repeat;
+  }
+}
+
+/* ─── la cabecera del evento en el teléfono ───
+   Ocupaba el 36% de la primera pantalla antes del primer número: volver,
+   título, estado en otro renglón, la fecha, dos botones con marco y las
+   pestañas. Ahora todo más junto, los dos botones como texto en el renglón
+   de la fecha, y las pestañas con el mismo desvanecido de arriba. */
+@media (max-width:760px){
+  .ev-cab{padding:10px 16px 0}
+  .evc-fila{margin:0}
+  .evc-fila .btn.plano{min-height:32px}
+  .evc-titulo{align-items:center;gap:4px 12px}
+  .evc-titulo h2{font-size:20px;gap:8px}
+  .evc-meta{font-size:13px;margin-top:2px}
+  .evc-acciones{gap:4px;margin-left:-10px}
+  .evc-acciones .btn{
+    min-height:32px;padding:0 10px;border:0;box-shadow:none;background:transparent;
+    color:var(--acento);font-size:13px;
+  }
+  .evc-tabs{
+    margin-top:6px;gap:18px;
+    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);
+    mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent);
+    padding-right:20px;
+  }
+  .app.en-evento main{padding-top:16px}
 }
 
 /* En columna el bloque tiene que ocupar el ancho, no encogerse a su
@@ -1541,7 +1892,7 @@ body[data-filtro="1"] .puerta-visor::before{
    columna; sin columnas, son una lista. */
 @media (max-width:760px){
   .grilla-envoltorio{
-    overflow-x:visible;border:0;background:transparent;border-radius:0;
+    overflow-x:visible;border:0;background:transparent;border-radius:0;box-shadow:none;
   }
   .grilla,.grilla thead,.grilla tbody,.grilla tr,
   .grilla thead th,.grilla tbody th,.grilla td{display:block}
@@ -1563,7 +1914,7 @@ body[data-filtro="1"] .puerta-visor::before{
     display:grid;grid-template-columns:minmax(0,1fr) auto;
     align-items:center;gap:5px 12px;
     background:var(--sup);border:1px solid var(--linea);
-    border-radius:var(--r);padding:14px 16px;
+    border-radius:var(--r);padding:14px 16px;box-shadow:var(--sombra-1);
   }
   .fase-titulo,.th-fase em{grid-column:1/-1}
   .fase-estado{grid-column:1;justify-self:start;margin-top:4px}
@@ -1575,7 +1926,7 @@ body[data-filtro="1"] .puerta-visor::before{
   .grilla tbody{display:grid;gap:10px}
   .grilla tbody tr{
     background:var(--sup);border:1px solid var(--linea);
-    border-radius:var(--r);overflow:hidden;
+    border-radius:var(--r);overflow:hidden;box-shadow:var(--sombra-1);
   }
   .grilla tbody tr:hover td{background:var(--sup)}
   .grilla tbody th{padding:15px 16px 0;border-bottom:0}
@@ -1597,13 +1948,11 @@ body[data-filtro="1"] .puerta-visor::before{
   }
   .grilla tbody td::before{
     content:attr(data-fase);grid-area:1/1;
-    font-family:var(--display);font-size:18px;
-    letter-spacing:.01em;line-height:1;overflow-wrap:anywhere;
+    font:600 15px/1.2 var(--texto);overflow-wrap:anywhere;
   }
   .grilla tbody td::after{
-    content:"cupo";grid-area:3/1;
-    font-family:var(--dato);font-size:10.5px;letter-spacing:.11em;
-    text-transform:uppercase;color:var(--txt-3);
+    content:"Cupo";grid-area:3/1;
+    font:500 12px var(--texto);letter-spacing:0;text-transform:none;color:var(--txt-3);
   }
   .grilla td .celda-precio{grid-area:1/2;width:116px}
   .celda-paga{grid-area:2/1/2/3;margin-top:0;min-height:0}
@@ -1639,6 +1988,7 @@ body[data-filtro="1"] .puerta-visor::before{
     display:flex;flex-wrap:wrap;gap:10px 20px;align-items:baseline;
     padding:14px 16px;margin-bottom:8px;
     background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
+    box-shadow:var(--sombra-1);
   }
   .ficha-tabla tbody tr:hover td,.ficha-tabla tr.apagada:hover td{background:transparent}
   .ficha-tabla td{padding:0;border:0;background:transparent;vertical-align:baseline}
@@ -1648,8 +1998,7 @@ body[data-filtro="1"] .puerta-visor::before{
   .ficha-tabla td[data-rot]{flex:0 0 auto;text-align:left}
   .ficha-tabla td[data-rot]::before{
     content:attr(data-rot);display:block;margin-bottom:3px;
-    font-family:var(--dato);font-size:10px;letter-spacing:.1em;
-    text-transform:uppercase;color:var(--txt-3);font-weight:400;
+    font:500 12px var(--texto);letter-spacing:0;text-transform:none;color:var(--txt-3);
   }
   /* El `!important` de la columna de acciones pinta una banda más clara
      al costado del botón, que en la ficha no separa nada: era el fondo de
@@ -1662,14 +2011,22 @@ body[data-filtro="1"] .puerta-visor::before{
      ficha: es lo que se abre debajo de una, y pintarla como tarjeta la
      desprende de la manilla que la abrió. */
   .ficha-tabla tr:has(>td[colspan]){
-    display:block;padding:0;margin:-8px 0 8px;background:transparent;border:0;
+    display:block;padding:0;margin:-8px 0 8px;background:transparent;border:0;box-shadow:none;
   }
   .ficha-tabla td[colspan]{padding:0}
   .ficha-tabla .sin-nada{padding:24px 14px;text-align:center}
 
   /* Canal y estado: siguen siendo tabla, con el aire justo para entrar. */
-  .dos-tablas .tabla th,.dos-tablas .tabla td{padding:9px 8px}
-  .dos-tablas .tabla thead th{white-space:normal;font-size:9.5px;letter-spacing:.05em}
+  .dos-tablas .tabla th,.dos-tablas .tabla td{padding:10px 8px;font-size:13px}
+  .dos-tablas .tabla thead th{white-space:normal;font-size:12px}
+  .dos-tablas .tabla td:first-child{white-space:normal}
+  /* Siguen siendo tabla y siguen en su caja: el envoltorio se vuelve
+     transparente para las fichas de arriba, y sin esto «Por estado» sacaba
+     la página de cuadro. Si no entra, scrollea adentro de su tarjeta. */
+  .dos-tablas .grilla-envoltorio{
+    overflow-x:auto;background:var(--sup);border:1px solid var(--linea);
+    border-radius:var(--r);box-shadow:var(--sombra-1);
+  }
 }
 
 /* ─── los compradores ───
@@ -1699,6 +2056,7 @@ body[data-filtro="1"] .puerta-visor::before{
       "acc      acc";
     gap:11px 14px;padding:14px 16px;margin-bottom:8px;
     background:var(--sup);border:1px solid var(--linea);border-radius:var(--r);
+    box-shadow:var(--sombra-1);
   }
   .tabla-compras>tbody>tr:not(.fila-detalle):hover>td{background:transparent}
   .tabla-compras>tbody>tr:not(.fila-detalle)>td{
@@ -1709,14 +2067,13 @@ body[data-filtro="1"] .puerta-visor::before{
   .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(3){grid-area:compro;max-width:none}
   .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(4){grid-area:manillas;text-align:right}
   .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(5){
-    grid-area:pago;text-align:right;font-size:16px;color:var(--txt);
+    grid-area:pago;text-align:right;font-size:16px;font-weight:600;color:var(--txt);
   }
   .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(6){grid-area:rrpp;text-align:right}
   .tabla-compras>tbody>tr:not(.fila-detalle)>td:nth-child(7){grid-area:acc}
   .tabla-compras>tbody>tr>td[data-rot]::before{
     content:attr(data-rot);display:block;margin-bottom:3px;
-    font-family:var(--dato);font-size:10px;letter-spacing:.1em;
-    text-transform:uppercase;color:var(--txt-3);
+    font:500 12px var(--texto);letter-spacing:0;text-transform:none;color:var(--txt-3);
   }
 
   /* `width:auto` porque la columna de acciones de escritorio mide 1% —lo
@@ -1760,16 +2117,19 @@ body[data-filtro="1"] .puerta-visor::before{
    se lee igual de rápido, porque un número grande con un rótulo pegado
    sigue siendo un número grande. */
 @media (max-width:760px){
+  .cifras{gap:8px}
   .cifra-grande{
     display:grid;grid-template-columns:auto minmax(0,1fr);
     align-items:center;gap:1px 14px;padding:14px 16px;
   }
-  .cifra-grande .valor{grid-row:1/3;font-size:34px}
-  .cifra-grande.plata .valor{font-size:26px}
-  .cifra-grande .valor i{font-size:.55em}
-  .cifra-grande .rotulo{grid-column:2;align-self:end}
-  .cifra-grande .pie{grid-column:2;align-self:start}
-  .cifra-grande .avance{grid-column:1/-1;margin-top:9px}
+  /* Las tres posiciones escritas: el `order` del rótulo es para la tarjeta
+     parada de la compu y acá no tiene que decidir nada. */
+  .cifra-grande .valor{grid-column:1;grid-row:1/3;font-size:26px}
+  .cifra-grande.plata .valor{font-size:24px}
+  .cifra-grande .valor i{font-size:.6em}
+  .cifra-grande .rotulo{grid-column:2;grid-row:1;align-self:end}
+  .cifra-grande .pie{grid-column:2;grid-row:2;align-self:start}
+  .cifra-grande .avance{grid-column:1/-1;grid-row:3;margin-top:9px}
 }
 
 /* ─── la puerta, en una mano ───
@@ -1853,7 +2213,7 @@ body[data-filtro="1"] .puerta-visor::before{
 
 /* El foco de teclado tiene que verse en la pastilla entera y no en el
    tilde de 17px que lleva adentro: lo que se aprieta es la pastilla. */
-.cartelera:has(input:focus-visible){outline:2px solid var(--dorado);outline-offset:2px}
+.cartelera:has(input:focus-visible){outline:2px solid var(--acento);outline-offset:2px}
 
 /* La regla general de arriba apaga transiciones, no animaciones. Con el
    cartel a pantalla completa, entrar con un `scale` es toda la pantalla
@@ -1878,20 +2238,17 @@ body[data-filtro="1"] .puerta-visor::before{
    que hace el que entra es buscar a alguien, y el campo tiene que estar
    donde el ojo ya está.
 
-   Solo tamaño: el aspecto —fondo hundido, borde, foco rojo— lo pone la
-   regla global de `input`. Repetirlo acá sería un segundo lugar donde
-   cambiar el color el día que cambie la paleta, y ya nos pasó con Amstel.
+   Solo tamaño: el aspecto —fondo, borde, foco— lo pone la regla global
+   de `input`. Repetirlo acá sería un segundo lugar donde cambiar el color
+   el día que cambie la paleta, y ya nos pasó con Amstel (y con el claro).
 
    Crece con el espacio que sobra y cede antes que el botón de dar de alta,
    que es el que no puede desaparecer. */
-.busca-equipo{
-  flex:1 1 240px;min-width:170px;max-width:380px;
-  padding:9px 12px;font-family:var(--dato);font-size:13.5px;
-}
+.busca-equipo{flex:1 1 240px;min-width:170px;max-width:380px}
 /* Cuánta gente se está viendo. En voz baja: es una referencia al pasar, no
    un dato que haya que leer. Se va en pantallas angostas, donde el espacio
    lo necesita el campo. */
-.equipo-cuenta{font-family:var(--dato);font-size:12px;color:var(--txt-3);white-space:nowrap}
+.equipo-cuenta{font:13px var(--texto);color:var(--txt-3);white-space:nowrap;font-variant-numeric:tabular-nums}
 @media (max-width:620px){ .equipo-cuenta{display:none} }
 
 /* ── lo que falta para armar los precios ──
@@ -1901,7 +2258,7 @@ body[data-filtro="1"] .puerta-visor::before{
    refiere, y separarlas las desconecta. */
 .falta-armar{
   margin:0 0 14px;padding:14px 16px;
-  border:1px solid var(--aviso);border-left-width:3px;border-radius:var(--r-chico);
+  border:1px solid var(--aviso-borde);border-left:3px solid var(--aviso);border-radius:var(--r);
   background:var(--aviso-bg);color:var(--txt);
   font-size:14px;line-height:1.6;max-width:720px;
 }
@@ -1923,7 +2280,14 @@ body[data-filtro="1"] .puerta-visor::before{
 /* «Renombrar» y «Borrar» van juntos a la derecha, y «Borrar» último,
    contra el borde. Agrupados para que en el celular, cuando el renglón no
    alcanza, bajen los dos juntos y no quede «Borrar» solo a la izquierda. */
-.tipo-acciones{margin-left:auto;display:flex;gap:8px}
+.tipo-acciones{margin-left:auto;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:2px;margin-right:-6px}
+/* Sin marco: son tres acciones que se usan una vez por tipo, al lado del
+   tilde que se usa siempre. Con marco no entraban en la columna del tipo
+   y «Borrar» se salía encima de la primera fase. */
+.tipo-acciones .btn.plano{border:0;box-shadow:none;background:transparent;padding:0 6px;color:var(--txt-2)}
+.tipo-acciones .btn.plano.peligrosa{color:var(--peligro)}
+.tipo-acciones .btn.plano:hover:not(:disabled){background:var(--sup-3);color:var(--txt)}
+.tipo-acciones .btn.plano.peligrosa:hover:not(:disabled){background:var(--peligro-bg);color:var(--peligro)}
 
 /* ══ el movimiento y la profundidad ═══════════════════════════════
    Repaso de 01/10/2026. Nada de acá cambia qué hay en una pantalla ni
@@ -1939,20 +2303,18 @@ body[data-filtro="1"] .puerta-visor::before{
    ══════════════════════════════════════════════════════════════════ */
 
 /* ─── la superficie ───
-   Un filo de luz de un pixel arriba de cada tarjeta. Es la pila de
-   superficies del encabezado llevada un paso más: el borde dice dónde
-   termina la tarjeta, el filo dice que está ENCIMA del fondo. */
-.fila,.tarjeta,.cifra-grande,.alerta,.publicar,.grilla-envoltorio,.caja,
-.tabla-scroll,.puerta-conteo,.rev-tarjeta{
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
-}
-.alerta.hecha,.persona.inactiva{box-shadow:none}
+   Acá vivía el filo de luz de un pixel que ponía la tarjeta ENCIMA del
+   fondo oscuro. En claro eso lo hace una sombra de un pixel, y va en la
+   regla de cada tarjeta, arriba: puesta acá, después del bloque del
+   teléfono, le ganaba por orden a las fichas que allá se vuelven
+   transparentes y les dibujaba un contorno fantasma. */
 
-/* El campo se aclara un punto al pasarle por encima: avisa que se puede
-   escribir antes del clic, no después. */
+/* El borde del campo se oscurece un punto al pasarle por encima: avisa que
+   se puede escribir antes del clic, no después. */
 @media (hover:hover) and (pointer:fine){
-  input:not(:focus):not(:disabled):hover,select:not(:focus):not(:disabled):hover{
-    border-color:rgba(236,236,238,.24);
+  input:not(:focus):not(:disabled):hover,select:not(:focus):not(:disabled):hover,
+  textarea:not(:focus):not(:disabled):hover{
+    border-color:var(--linea-3);
   }
 }
 select{transition:border-color .15s ease,box-shadow .15s ease}
@@ -1963,14 +2325,17 @@ select{transition:border-color .15s ease,box-shadow .15s ease}
    corre dos pixeles al pasar por encima: el gesto de "por acá". */
 .fila[data-ev]::after{
   content:"›";flex:0 0 auto;margin-left:4px;
-  font-size:20px;line-height:1;color:var(--txt-3);
+  font-size:20px;line-height:1;color:var(--txt-placeholder);
   transition:transform .2s var(--sale),color .2s ease;
 }
 @media (hover:hover) and (pointer:fine){
   .fila[data-ev]:hover::after{transform:translateX(2px);color:var(--txt-2)}
 }
 .fila{transition:background .15s ease,border-color .15s ease,transform .16s var(--sale)}
-.fila:not(.quieta):active{transform:scale(.99)}
+/* Dentro de una lista agrupada la fila no se encoge: se encogería separada
+   de sus vecinas y con las esquinas cuadradas. Se oscurece, como un
+   renglón de tabla. */
+.fila:not(.quieta):active{transform:none;background:var(--sup-3)}
 
 /* ─── la pantalla que llega ───
    Sólo cuando se llegó navegando (#main[data-nav], lo pone admin.js). Los
@@ -1994,11 +2359,9 @@ select{transition:border-color .15s ease,box-shadow .15s ease}
 #main[data-nav] .lista > .fila:nth-child(n+8){animation-delay:.175s}
 
 /* ─── esperando ───
-   El "Cargando…" late en vez de quedarse quieto: un texto inmóvil es
-   indistinguible de una pantalla colgada, y lo que el que espera necesita
-   saber es que algo sigue andando. */
-@keyframes late{50%{opacity:.45}}
-.cargando{animation:late 1.4s ease-in-out infinite}
+   Acá latía el "Cargando…". Ahora gira una rueda al lado del texto (ver
+   .cargando, arriba), que dice lo mismo —algo sigue andando— sin que el
+   texto mismo parpadee. */
 
 /* ─── lo que se abre abajo de una fila ───
    La anulación, el link de una compra, las manillas. Bajan cuatro pixeles
@@ -2019,7 +2382,6 @@ select{transition:border-color .15s ease,box-shadow .15s ease}
    del panel y aparece armada, no de golpe. */
 @keyframes caja-llega{from{opacity:0;transform:translateY(8px) scale(.99)}}
 .caja{animation:caja-llega .4s var(--sale) both}
-.caja h1{letter-spacing:-.025em}
 
 /* ─── el interruptor de la puerta ───
    Con la curva del resto: la bolita llega rápido y se asienta, en vez de
@@ -2033,9 +2395,9 @@ select{transition:border-color .15s ease,box-shadow .15s ease}
    de la lista —ese evento está vendiendo ahora— y el punto se encuentra en
    una columna de veinte sin leer las palabras. */
 .pastilla.verde::before{
-  content:"";display:inline-block;width:6px;height:6px;margin:0 6px 1px 0;
+  content:"";display:inline-block;flex:0 0 auto;width:6px;height:6px;margin:0;
   border-radius:50%;background:currentColor;vertical-align:middle;
-  box-shadow:0 0 0 2px rgba(76,175,125,.2);
+  box-shadow:0 0 0 2px var(--ok-borde);
 }
 
 /* ─── por fase ───
@@ -2046,7 +2408,7 @@ select{transition:border-color .15s ease,box-shadow .15s ease}
 /* La ventana y lo que se llevó cada tipo van en dos renglones apagados
    abajo del nombre: se leen cuando se buscan, el nombre se lee siempre. */
 .tabla-fases td em+em{margin-top:2px}
-.tabla-fases td .pastilla{display:inline-block}
+.tabla-fases td .pastilla{display:inline-flex}
 .tabla-fases td.n i{font-style:normal;color:var(--txt-3);font-size:12px}
 /* El cupo como barra además de cifra: «38 de 55» es una cuenta, la barra
    se lee de reojo. Misma barra que «Ya entraron» del tablero. */
@@ -2055,16 +2417,16 @@ select{transition:border-color .15s ease,box-shadow .15s ease}
   border-radius:999px;background:var(--sup-3);overflow:hidden;
 }
 .fase-avance i{
-  display:block;height:100%;border-radius:999px;background:var(--ok);
+  display:block;height:100%;border-radius:999px;background:var(--acento);
   transform-origin:left;animation:llena .7s var(--sale) .1s both;
 }
 .tabla-fases tfoot td{
   border-top:1px solid var(--linea-2);background:var(--sup-2);
-  font-family:var(--dato);font-size:13px;color:var(--txt-2);
+  font:13px var(--texto);color:var(--txt-2);
 }
 .tabla-fases tfoot td.n{color:var(--txt)}
 .tabla-fases tfoot td em{
-  display:block;margin-top:3px;font-style:normal;font-size:10.5px;color:var(--txt-3);
+  display:block;margin-top:3px;font-style:normal;font-size:12px;color:var(--txt-3);
 }
 @media (max-width:760px){
   .fase-avance{margin-left:0}
@@ -2081,7 +2443,7 @@ select{transition:border-color .15s ease,box-shadow .15s ease}
    PARTE de la fase y no como una fase más. */
 .tabla-fases .fase-cab td{background:var(--sup-2);border-top:1px solid var(--linea-2)}
 .tabla-fases tbody:first-of-type .fase-cab td{border-top:0}
-.tabla-fases .fase-cab .pastilla{margin-left:8px;vertical-align:2px;font-size:10px;padding:3px 8px}
+.tabla-fases .fase-cab .pastilla{margin-left:8px;vertical-align:1px;min-height:20px;font-size:11px;padding:1px 7px}
 .tabla-fases .fase-tipo td:first-child{padding-left:32px}
 .tabla-fases .tipo-nombre{font-size:14px;color:var(--txt)}
 .tabla-fases .fase-tipo td.n{color:var(--txt-2)}
@@ -2106,49 +2468,47 @@ select{transition:border-color .15s ease,box-shadow .15s ease}
   .tabla-fases .fase-cab td{background:transparent;border-top:0}
   .tabla-fases .fase-tipo td:first-child{padding-left:0}
   .tabla-fases td.vacia{display:none}
+  /* El pie es una ficha más: el gris va en la ficha entera y no celda por
+     celda, que en claro dejaba un parche gris debajo de cada número. */
+  .tabla-fases tfoot tr,.tabla-porteros tfoot tr{background:var(--sup-2)}
+  .tabla-fases tfoot td,.tabla-porteros tfoot td{background:transparent;border-top:0}
 }
 
 /* ─── la descripción de un tipo ───
    «Incluye» en la grilla con el mismo rótulo que ve el comprador: así el
    organizador lee lo que está prometiendo, no un campo de la base. */
 .grilla tbody th em.tipo-incluye-adm{margin-top:6px;color:var(--txt-2);-webkit-line-clamp:3}
-.tipo-incluye-adm b{
-  font-family:var(--dato);font-size:9.5px;font-weight:500;letter-spacing:.1em;
-  text-transform:uppercase;color:var(--dorado);margin-right:4px;
-}
+.tipo-incluye-adm b{font:600 12px var(--texto);color:var(--acento);margin-right:4px}
 .form-tipo textarea{
-  width:100%;padding:11px 13px;resize:vertical;min-height:64px;
-  font:inherit;font-size:14px;line-height:1.45;
-  background:var(--hundido);color:var(--txt);
+  width:100%;padding:10px 12px;resize:vertical;min-height:64px;
+  font:14px/1.45 var(--texto);
+  background:var(--hundido);color:var(--txt);box-shadow:var(--sombra-1);
   border:1px solid var(--linea-2);border-radius:var(--r-chico);
   transition:border-color .15s ease,box-shadow .15s ease;
 }
-.form-tipo textarea:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--rojo-suave)}
 .form-tipo label .ayuda{margin-top:2px}
 
 /* Socios (0106): la fila propia resaltada, porque la pregunta que trae a
    cada uno a esta tarjeta es "¿cuánto me queda a mí?". */
 .plat-socios{margin-top:18px}
-.plat-socios tr.yo td{background:var(--sup-2)}
-.plat-socios .aviso-caja{margin-top:12px;color:var(--dorado)}
+.plat-socios .tabla-scroll{margin-top:14px}
+.plat-socios tr.yo td{background:var(--acento-suave)}
+.plat-socios .aviso-caja{margin-top:12px;color:var(--aviso)}
 
 /* ─── mesas y combos (0107) ───
-   La marca va en dorado como el «Incluye»: es lo que se le promete al
+   La marca va en ámbar como el «Incluye»: es lo que se le promete al
    comprador, no un dato interno. Una línea sola: personas, cuántas hay y
    la comisión, en ese orden, que es el orden en que se pregunta. */
 .grilla tbody th em.marca-mesa{
-  margin-top:5px;font-family:var(--dato);font-size:10.5px;letter-spacing:.04em;
+  margin-top:5px;font:500 12px/1.4 var(--texto);
   color:var(--dorado);-webkit-line-clamp:2;
 }
 /* Las fases donde se vende, como casillas en fila. El input de .form-fase
    es de ancho completo: acá tiene que volver a ser un tilde. */
 .form-mesa .fases-mesa{display:flex;flex-wrap:wrap;align-items:center;gap:4px 18px}
-.form-mesa .fases-mesa .rotulo{
-  flex-basis:100%;font-family:var(--dato);font-size:11px;text-transform:uppercase;
-  letter-spacing:.08em;color:var(--txt-3);
-}
+.form-mesa .fases-mesa .rotulo{flex-basis:100%;font:500 13px/1.4 var(--texto);color:var(--txt)}
 .form-mesa .fases-mesa label{flex-direction:row;align-items:center;gap:8px;min-height:44px;cursor:pointer}
-.form-mesa .fases-mesa input{width:20px;height:20px;padding:0;margin:0;accent-color:var(--rojo)}
+.form-mesa .fases-mesa input{width:18px;height:18px;padding:0;margin:0;accent-color:var(--acento)}
 /* «Mesa a nombre de …» debajo de lo que compró: es la línea que se lee en
    la puerta cuando llega alguien que no es el comprador. */
-.tabla td em.titular-compra{color:var(--dorado);font-size:11px}
+.tabla td em.titular-compra{color:var(--dorado);font-size:12px}

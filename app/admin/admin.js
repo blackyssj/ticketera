@@ -188,7 +188,7 @@ const PANTALLAS = [
 function arrancarApp() {
   $("#pantallaEntrar").hidden = true;
   $("#app").hidden = false;
-  $("#yo").textContent = `${S.yo.nombre} · ${S.yo.rol}`;
+  $("#yo").textContent = `${S.yo.nombre} · ${ROLES_TXT[S.yo.rol] || S.yo.rol}`;
   let mias = PANTALLAS.filter(p =>
     p.roles.includes(S.yo.rol) && (!p.plataforma || S.plataforma));
   /* Para una cuenta de TICKETAZO, Plataforma va primera y es la que abre.
@@ -279,12 +279,17 @@ function cablearNuevoCliente() {
     slug.value = slug.value.toLowerCase().replace(/[^a-z0-9-]/g, "");
     eco();
   };
-  btn.onclick = () => {
-    f.hidden = !f.hidden;
-    btn.textContent = f.hidden ? "Nuevo cliente" : "Cerrar";
-    if (!f.hidden) nombre.focus();
+  /* Abierto, el botón pasa a plano: un «Cerrar» en el violeta del primario
+     compite con «Crear cliente», que es el que hay que apretar. */
+  const abrir = si => {
+    f.hidden = !si;
+    btn.textContent = si ? "Cerrar" : "Nuevo cliente";
+    btn.classList.toggle("primario", !si);
+    btn.classList.toggle("plano", si);
+    if (si) nombre.focus();
   };
-  $("#btnNcNo").onclick = () => { f.hidden = true; btn.textContent = "Nuevo cliente"; };
+  btn.onclick = () => abrir(f.hidden);
+  $("#btnNcNo").onclick = () => abrir(false);
   f.onsubmit = e => { e.preventDefault(); conBoton($("#btnCrearCliente"), "Creando…", crearCliente); };
 }
 
@@ -356,6 +361,13 @@ function pintarOperando() {
 }
 
 function mostrar(p) {
+  /* La oficina es clara y la puerta es oscura: el portero mira el teléfono
+     de noche, en la fila, y una pantalla blanca lo encandila a él y a los
+     de adelante. El CSS cambia la paleta entera colgándose de esta marca
+     (body[data-pantalla="puerta"]), y la barra del navegador acompaña. */
+  document.body.dataset.pantalla = p;
+  const tema = document.querySelector('meta[name="theme-color"]');
+  if (tema) tema.content = p === "puerta" ? "#131316" : "#FFFFFF";
   salirEvento();
   S.pantalla = p;
   document.querySelectorAll("#tabs button").forEach(b =>
@@ -1366,11 +1378,11 @@ function estadoFase(f, F, vigenteId, proximaId, limitadas) {
   const ahora = Date.now();
   const abrio = !f.desde || Date.parse(f.desde) <= ahora;
   const cerro = f.hasta && Date.parse(f.hasta) <= ahora;
-  if (!f.activo) return { cls: "gris", txt: "inactiva" };
-  if (f.id === vigenteId) return { cls: "verde", txt: "vende ahora" };
-  if (cerro) return { cls: "gris", txt: `cerró ${fechaBO(f.hasta)}` };
+  if (!f.activo) return { cls: "gris", txt: "Inactiva" };
+  if (f.id === vigenteId) return { cls: "verde", txt: "Vende ahora" };
+  if (cerro) return { cls: "gris", txt: `Cerró ${fechaBO(f.hasta)}` };
   if (!abrio) return { cls: "dorada",
-    txt: `${f.id === proximaId ? "próxima · " : ""}abre ${fechaHoraBO(f.desde)}` };
+    txt: `${f.id === proximaId ? "Próxima · abre" : "Abre"} ${fechaHoraBO(f.desde)}` };
   /* Está en ventana y no es la vigente: la tapa otra. Se la nombra, porque
      "tapada" sin decir por quién obliga a mirar las cinco columnas y
      comparar fechas a ojo, que es exactamente lo que nadie hace. */
@@ -1388,9 +1400,9 @@ function estadoFase(f, F, vigenteId, proximaId, limitadas) {
         (!x.desde || Date.parse(x.desde) <= ahora) && !(x.hasta && Date.parse(x.hasta) <= ahora))
       .sort((a, b) => a.orden - b.orden);
     if (antes.length && antes.every(x => limitadas.has(x.id)))
-      return { cls: "dorada", txt: `abre al agotarse «${antes[antes.length - 1].nombre}»` };
+      return { cls: "dorada", txt: `Abre al agotarse «${antes[antes.length - 1].nombre}»` };
   }
-  return { cls: "roja", txt: gana ? `tapada por «${gana.nombre}»` : "no vende" };
+  return { cls: "roja", txt: gana ? `Tapada por «${gana.nombre}»` : "No vende" };
 }
 
 function cabezaFase(f, vigenteId, proximaId, F, limitadas) {
@@ -5384,6 +5396,12 @@ async function cambiarActivo(id) {
   try {
     if (await cargarPerfil()) arrancarApp();
   } catch { /* sesión vieja o cuenta deshabilitada: queda la pantalla de entrar */ }
+  finally {
+    /* Se suelta la caja de entrar que el HTML tenía escondida mientras se
+       revisaba la sesión. Si arrancó el panel, la pantalla de entrar ya
+       está oculta y esto no se ve. */
+    delete document.documentElement.dataset.sesion;
+  }
 })();
 
 /* `bitacora` se expone para la puerta: el portero necesita poder revisar
@@ -5439,7 +5457,33 @@ async function pantallaPlataforma() {
 
   $("#main").innerHTML = `
     <div class="cab-seccion"><h2>Plataforma</h2>
-      <span class="conteo">${cl.length} ${cl.length === 1 ? "cliente" : "clientes"}</span></div>
+      <span class="conteo">${cl.length} ${cl.length === 1 ? "cliente" : "clientes"}</span>
+      <button type="button" class="btn primario" id="btnNuevoCliente">Nuevo cliente</button></div>
+    <!-- El alta arriba de todo y en primario, como «Nuevo evento»: abajo de
+         las tarjetas del cuadre, chico y gris al lado de un título, los
+         operadores no lo encontraban. El formulario se abre acá mismo,
+         pegado al botón que lo abre. -->
+    <form class="tarjeta form-nuevo-cliente" id="formNuevoCliente" hidden>
+      <h3>Nuevo cliente</h3>
+      <p class="ayuda">Crea el cliente con su cuenta de administrador y te deja
+        operando como él para cargarle el evento. La comisión se suma al precio
+        y la paga el comprador. La cuenta bancaria y el giro automático se
+        completan después, desde su panel.</p>
+      <label><span>Nombre</span>
+        <input id="ncNombre" required maxlength="80" autocomplete="off" placeholder="Dark Garden"></label>
+      <label><span>Usuario</span>
+        <input id="ncSlug" required maxlength="30" autocomplete="off" autocapitalize="off"
+               spellcheck="false" placeholder="darkgarden">
+        <em class="ayuda">Entra al panel con este usuario y es su link:
+          ticketazo.com.bo/<b id="ncLink">darkgarden</b></em></label>
+      <label><span>Comisión %</span>
+        <input id="ncFee" required inputmode="decimal" value="7" size="4"></label>
+      <div class="acciones">
+        <button type="submit" class="btn primario" id="btnCrearCliente">Crear cliente</button>
+        <button type="button" class="btn plano" id="btnNcNo">Cancelar</button>
+      </div>
+      <p class="error" id="ncError"></p>
+    </form>
 
     <section class="tarjeta plat-cuadre">
       <div>
@@ -5525,31 +5569,7 @@ async function pantallaPlataforma() {
         del monedero de hoy: ahí lo que hay es de los clientes.</p>` : ""}
     </section>` : ""}
 
-    <div class="cab-bloque">
-      <h3 class="titulo-bloque">Por cliente</h3>
-      <button type="button" class="btn plano chico" id="btnNuevoCliente">Nuevo cliente</button>
-    </div>
-    <form class="tarjeta form-nuevo-cliente" id="formNuevoCliente" hidden>
-      <h3>Nuevo cliente</h3>
-      <p class="ayuda">Crea el cliente con su cuenta de administrador y te deja
-        operando como él para cargarle el evento. La comisión se suma al precio
-        y la paga el comprador. La cuenta bancaria y el giro automático se
-        completan después, desde su panel.</p>
-      <label><span>Nombre</span>
-        <input id="ncNombre" required maxlength="80" autocomplete="off" placeholder="Dark Garden"></label>
-      <label><span>Usuario</span>
-        <input id="ncSlug" required maxlength="30" autocomplete="off" autocapitalize="off"
-               spellcheck="false" placeholder="darkgarden">
-        <em class="ayuda">Entra al panel con este usuario y es su link:
-          ticketazo.com.bo/<b id="ncLink">darkgarden</b></em></label>
-      <label><span>Comisión %</span>
-        <input id="ncFee" required inputmode="decimal" value="7" size="4"></label>
-      <div class="acciones">
-        <button type="submit" class="btn primario" id="btnCrearCliente">Crear cliente</button>
-        <button type="button" class="btn plano" id="btnNcNo">Cancelar</button>
-      </div>
-      <p class="error" id="ncError"></p>
-    </form>
+    <h3 class="titulo-bloque sep">Por cliente</h3>
     <div class="tabla-scroll">
       <table class="tabla">
         <thead><tr><th>Cliente</th><th>Tarifa</th><th class="num">Entradas</th>
@@ -5571,8 +5591,8 @@ async function pantallaPlataforma() {
             <td class="num">${bs(c.girado)}</td>
             <td class="num${falta > 0 ? " plat-falta" : ""}">${bs(falta)}</td>
             <td>${c.automatico
-              ? `<span class="pastilla verde">auto ${bs(c.minimo)}</span>`
-              : `<span class="pastilla amarilla">a mano</span>`}${
+              ? `<span class="pastilla verde">Auto ${bs(c.minimo)}</span>`
+              : `<span class="pastilla amarilla">A mano</span>`}${
               Number(c.rechazados) ? ` <span class="pastilla roja">${c.rechazados} rech.</span>` : ""}</td>
             <td><button type="button" class="btn plano chico" data-operar="${esc(c.slug)}"
                   >Entrar como ${esc(c.organizador)}</button></td>

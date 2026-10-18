@@ -7,15 +7,33 @@
 <meta name="robots" content="noindex">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Big+Shoulders+Display:wght@700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/admin/admin.css?v=55">
 <link rel="manifest" href="/admin/manifest.json">
-<meta name="theme-color" content="#0d0d0f">
+<!-- La tinta de la marca: es lo que hay arriba de todo en la pantalla de
+     entrar del teléfono. Adentro del panel lo cambia mostrar() (admin.js):
+     blanco en la oficina, casi negro en la puerta. -->
+<meta name="theme-color" content="#180E3A">
 <!-- El service worker es lo que hace que esta pantalla ABRA sin internet.
      Sin el, en una feria sin senal el portero no ve ni el HTML. Se registra
      aca y no en admin.js para que empiece a guardar el shell aunque el
      usuario todavia no haya entrado. Si el navegador no lo soporta, la
      puerta funciona como siempre: online. -->
+<!-- Con una sesión guardada, el formulario de entrar no se dibuja hasta que
+     admin.js sepa si la sesión sigue viva: sin esto, cada recarga mostraba
+     la caja de usuario y clave entrando con su animación, y medio segundo
+     después la cambiaba por el panel. El reloj de 1,5 s es el seguro del
+     portero sin señal: si la consulta no vuelve, la caja aparece igual y
+     nadie se queda mirando una pantalla vacía. Sin sesión guardada no se
+     espera nada. -->
+<script>
+  try {
+    if (Object.keys(localStorage).some(k => /^sb-.+-auth-token$/.test(k))) {
+      document.documentElement.dataset.sesion = "revisando";
+      setTimeout(() => { delete document.documentElement.dataset.sesion; }, 1500);
+    }
+  } catch (e) { /* sin localStorage no hay sesión guardada que esperar */ }
+</script>
 <script>
   /* Ruta ABSOLUTA. Con "sw.js" a secas, quien entra por /admin (sin
      barra final) lo pide en /sw.js, que no existe: no se registra nada y
@@ -27,22 +45,32 @@
 </head>
 <body>
 
+<!-- La marca a la izquierda (arriba en el teléfono) y el formulario solo.
+     Antes era una caja gris con la palabra TICKETAZO en la letra del texto:
+     nada decía de quién era el panel, y un organizador nuevo que llega por
+     un link de WhatsApp tiene que reconocer dónde está antes de escribir
+     su clave. -->
 <section class="entrar" id="pantallaEntrar">
+  <div class="entrar-marca">
+    <span class="logo" aria-hidden="true">TICKET<span>AZO</span></span>
+    <p class="entrar-lema">Tus eventos, tus ventas y tu puerta, en un solo panel.</p>
+  </div>
   <form class="caja" id="formEntrar">
-    <h1>TICKETAZO</h1>
-    <p class="sub">Administración</p>
+    <h1>Entrá a tu panel</h1>
+    <p class="sub">Usá el usuario y la clave que te dio tu organizador.</p>
     <label><span>Usuario</span>
-      <input id="eUsuario" autocomplete="username" autocapitalize="none" required></label>
+      <input id="eUsuario" autocomplete="username" autocapitalize="none" enterkeyhint="next" required></label>
     <label><span>Clave</span>
-      <input id="eClave" type="password" autocomplete="current-password" required></label>
+      <input id="eClave" type="password" autocomplete="current-password" enterkeyhint="go" required></label>
     <button class="btn primario ancho" id="btnEntrar">Entrar</button>
-    <p class="error" id="eError"></p>
+    <p class="error" id="eError" role="alert"></p>
+    <p class="entrar-ayuda">¿Perdiste la clave? Pedile a tu administrador que la resetee desde Equipo.</p>
   </form>
 </section>
 
 <div class="app" id="app" hidden>
   <header class="cab">
-    <span class="marca">TICKETAZO</span>
+    <span class="marca">TICKET<span>AZO</span></span>
     <nav class="tabs" id="tabs"></nav>
     <span class="yo" id="yo"></span>
     <button class="btn plano chico" id="btnSalir">Salir</button>
