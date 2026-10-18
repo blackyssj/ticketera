@@ -13,11 +13,13 @@ begin
   -- a uno sería el error. retiro_plataforma (0088) son los retiros de
   -- NUESTRA comisión: tampoco son de un cliente. puerta_config (0103) es
   -- el interruptor del espejo con Plataforma Puerta, que cubre a Bowie y a
-  -- BurTown a la vez. Todo lo demás lleva organizador_id not null.
+  -- BurTown a la vez. socio_corte (0106) son los repartos de la ganancia
+  -- entre los socios de TICKETAZO, igual que los retiros. Todo lo demás
+  -- lleva organizador_id not null.
   where t.schemaname = 'public'
     and t.tablename not in ('organizadores', 'contactos', 'cuenta_intentos',
                             'plataforma_operador', 'plataforma_config',
-                            'retiro_plataforma', 'puerta_config')
+                            'retiro_plataforma', 'puerta_config', 'socio_corte')
     and not exists (select 1 from information_schema.columns c
                      where c.table_schema = 'public' and c.table_name = t.tablename
                        and c.column_name = 'organizador_id' and c.is_nullable = 'NO');
