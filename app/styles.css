@@ -462,6 +462,34 @@ input{font:inherit}
 .campo.tc .tc-texto{font:inherit;font-size:14px;letter-spacing:0;text-transform:none;color:var(--tinta);line-height:1.45}
 .tc-texto a{color:var(--tinta);text-underline-offset:3px;padding:14px 0}
 
+/* ─── a nombre de quién va la mesa (0107) ───
+   Un recuadro y no tres campos sueltos más: es OTRA persona, no más datos
+   de quien paga, y si se lee como parte de "tus datos" el comprador pone
+   su carnet y en la puerta la mesa aparece a nombre de quien no vino. */
+.titular{
+  margin:4px 0 0;padding:14px 14px 10px;min-width:0;
+  border:1.5px solid var(--tinta-16);border-radius:4px;gap:8px;
+}
+.titular legend{
+  padding:0 6px;font-family:var(--dato);font-size:12px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--tinta);
+}
+.titular-nota{margin:0;font-size:13px;color:var(--tinta-60)}
+.titular-yo .tc-texto{font-size:14px;letter-spacing:0;text-transform:none;color:var(--tinta)}
+/* Carnet ancho, complemento y extensión angostos: el número es lo que se
+   escribe entero; los otros dos son dos letras o una lista. */
+.titular-ci{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px}
+.titular-ci .campo{min-width:0}
+.campo select{
+  padding:12px 10px;border:1.5px solid var(--tinta-16);border-radius:3px;
+  background:var(--tarjeta);color:var(--tinta);font:inherit;min-height:46px;
+}
+.campo select:focus{border-color:var(--tinta);outline:none}
+@media (max-width:420px){
+  .titular-ci{grid-template-columns:1fr 1fr}
+  .titular-ci .campo:first-child{grid-column:1 / -1}
+}
+
 /* Ayuda por WhatsApp en los pasos 2 y 3. Un renglón de texto, no un botón:
    está para el que se trabó, no para todos. */
 .ayuda-wa{margin-top:22px;font-family:var(--dato);font-size:12px;color:var(--tinta-60)}

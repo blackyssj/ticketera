@@ -1125,15 +1125,21 @@ begin
 
   -- dos ventas pagadas, cada una de su relacionador, por el camino real
   v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 1)),
-                       '{"nombre":"Juan Perez"}'::jsonb, null::uuid, null::text, v_a)->>'orden')::uuid;
+                       jsonb_build_object('nombre', 'Juan Perez',
+                                          'titular_nombre', 'Juan Perez', 'titular_ci', '4567891'),
+                       null::uuid, null::text, v_a)->>'orden')::uuid;
   perform emitir_orden(v_o1);
   v_o2 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 1)),
-                       '{"nombre":"Sofia Rojas"}'::jsonb, null::uuid, null::text, v_b)->>'orden')::uuid;
+                       jsonb_build_object('nombre', 'Sofia Rojas',
+                                          'titular_nombre', 'Sofia Rojas', 'titular_ci', '5678912'),
+                       null::uuid, null::text, v_b)->>'orden')::uuid;
   perform emitir_orden(v_o2);
   -- una tercera que quedó pendiente: con ella se ve que la mesa queda
   -- 'reservada' y no 'pagada' cuando todavía nadie pagó
   v_o3 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_tipo, 'cantidad', 1)),
-                       '{"nombre":"Pendiente"}'::jsonb, null::uuid, null::text, v_a)->>'orden')::uuid;
+                       jsonb_build_object('nombre', 'Pendiente',
+                                          'titular_nombre', 'Pendiente Sin Pagar', 'titular_ci', '6789123'),
+                       null::uuid, null::text, v_a)->>'orden')::uuid;
 
   -- ── 1) el reparto es del equipo: ningun relacionador asigna ──
   -- Ni siquiera la mesa de una orden que vendió él. Dos personas
@@ -1413,7 +1419,8 @@ begin
   perform set_config('request.jwt.claim.sub', '', true);
 
   v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_combo, 'cantidad', 1)),
-                       jsonb_build_object('nombre', 'Cliente A1', 'telefono', '70000001'),
+                       jsonb_build_object('nombre', 'Cliente A1', 'telefono', '70000001',
+                                          'titular_nombre', 'Titular Uno', 'titular_ci', '1234561'),
                        null::uuid, null::text, v_a)->>'orden')::uuid;
   perform emitir_orden(v_o1);
   -- A: dos generales (2 unidades, 2 manillas, 200)
@@ -1423,7 +1430,8 @@ begin
   perform emitir_orden(v_o2);
   -- B: un combo (1 unidad, 10 manillas, 1000)
   v_o3 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_combo, 'cantidad', 1)),
-                       jsonb_build_object('nombre', 'Cliente B1', 'telefono', '70000003'),
+                       jsonb_build_object('nombre', 'Cliente B1', 'telefono', '70000003',
+                                          'titular_nombre', 'Titular Dos', 'titular_ci', '1234562'),
                        null::uuid, null::text, v_b)->>'orden')::uuid;
   perform emitir_orden(v_o3);
   -- venta pública, sin relacionador (1 unidad, 1 manilla, 100)
@@ -1434,7 +1442,8 @@ begin
   -- A: otro combo que queda PAGADO y SIN MESA ASIGNADA (el número que
   -- hay que llevar a cero antes de que abra la puerta)
   v_o7 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_combo, 'cantidad', 1)),
-                       jsonb_build_object('nombre', 'Cliente A3', 'telefono', '70000007'),
+                       jsonb_build_object('nombre', 'Cliente A3', 'telefono', '70000007',
+                                          'titular_nombre', 'Titular Tres', 'titular_ci', '1234563'),
                        null::uuid, null::text, v_a)->>'orden')::uuid;
   perform emitir_orden(v_o7);
 
@@ -2211,7 +2220,8 @@ begin
                        null::uuid, null::text, null::uuid)->>'orden')::uuid;
   perform emitir_orden(v_o2);
   v_o3 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_combo, 'cantidad', 1)),
-                       jsonb_build_object('nombre', 'Cliente Mesa', 'telefono', '70000003'),
+                       jsonb_build_object('nombre', 'Cliente Mesa', 'telefono', '70000003',
+                                          'titular_nombre', 'Titular Mesa', 'titular_ci', '1234564'),
                        null::uuid, null::text, null::uuid)->>'orden')::uuid;
   perform emitir_orden(v_o3);
   v_o6 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 2)),
@@ -3623,6 +3633,307 @@ begin
   end if;
 
   raise notice 'OK una fase se programa a futuro sin vender hoy, el hasta se mueve y guarda la hora de Bolivia, dos fases pisadas las gana la de orden menor, y borrar_fase() frena la que tiene una cortesia detras';
+end $$;
+
+
+-- ============================================================
+-- 0107 — mesas desde el panel, una por compra y a nombre de alguien
+--
+-- Lo que se prueba es lo que cuesta plata o deja entrar a quien no es:
+--   1) guardar_mesa: sólo admin/staff, y nunca en un espejo de Puerta.
+--   2) crear_orden: una mesa por orden, con titular y carnet válidos; una
+--      orden de entradas sola queda exactamente como antes (sin titular).
+--   3) el tope del evento (cupo_total) corta entre fases, y una mesa sin
+--      vender NO traba la fase de las entradas.
+--   4) la comisión: por mesa y no por manilla; las entradas sueltas, con
+--      la cuenta de siempre.
+--   5) el carnet: completo en el panel y en la puerta en línea; en el
+--      padrón offline, enmascarado.
+--   6) personas y categoría no se cambian con ventas hechas.
+-- ============================================================
+do $$
+declare v_org   uuid := '01070107-0107-4107-8107-000000000001';
+        v_admin uuid := '01070107-0107-4107-8107-000000000002';
+        v_a     uuid := '01070107-0107-4107-8107-000000000003';  -- relacionador A
+        v_b     uuid := '01070107-0107-4107-8107-000000000004';  -- relacionador B
+        v_c     uuid := '01070107-0107-4107-8107-000000000005';  -- C: solo entradas
+        v_ev    uuid := '01070107-0107-4107-8107-000000000006';
+        v_ev2   uuid := '01070107-0107-4107-8107-000000000007';  -- espejo de Puerta
+        v_f1    uuid := '01070107-0107-4107-8107-000000000008';
+        v_f2    uuid := '01070107-0107-4107-8107-000000000009';
+        v_gen   uuid := '01070107-0107-4107-8107-00000000000a';
+        v_vip uuid; v_lounge uuid;
+        v_o1 uuid; v_o2 uuid; v_o3 uuid; v_o4 uuid; v_o5 uuid; v_o6 uuid;
+        v_r jsonb; v_f jsonb; v_n int; v_code text; v_ok boolean;
+        v_tit text; v_ci text; v_ext text;
+begin
+  insert into organizadores (id, slug, nombre, fee_pct, fee_fijo_transaccion, fee_piso)
+  values (v_org, 'prueba-0107', 'Prueba 0107', 0, 0, 0);
+  insert into auth.users (id, email) values
+    (v_admin, 'admin-0107@prueba.test'), (v_a, 'rrpp-a-0107@prueba.test'),
+    (v_b, 'rrpp-b-0107@prueba.test'), (v_c, 'rrpp-c-0107@prueba.test');
+  insert into perfiles (id, organizador_id, nombre, rol, slug) values
+    (v_admin, v_org, 'Admin 0107', 'admin', null),
+    (v_a,     v_org, 'Ana 0107',   'rrpp',  'ana-0107'),
+    (v_b,     v_org, 'Beto 0107',  'rrpp',  'beto-0107'),
+    (v_c,     v_org, 'Ceci 0107',  'rrpp',  'ceci-0107');
+  insert into eventos (id, organizador_id, slug, nombre, fecha, estado, comision_entrada) values
+    (v_ev,  v_org, 'evento-0107',  'Evento 0107',        current_date + 10, 'publicado', 15),
+    (v_ev2, v_org, 'evento-0107b', 'Evento 0107 espejo', current_date + 11, 'publicado', 15);
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta, orden) values
+    (v_f1, v_org, v_ev, 'Preventa', now() - interval '1 hour', now() + interval '10 days', 1),
+    (v_f2, v_org, v_ev, 'General',  now() - interval '1 hour', now() + interval '10 days', 2);
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre, categoria, manillas, orden) values
+    (v_gen, v_org, v_ev, 'General 0107', 'entrada', 1, 1);
+  -- la Preventa termina por cantidad: dos generales
+  insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo) values
+    (v_org, v_f1, v_gen, 100, 2),
+    (v_org, v_f2, v_gen, 150, 50);
+  insert into puerta_evento (evento_id, organizador_id, club) values (v_ev2, v_org, 'prueba');
+
+  -- ── 1) guardar_mesa: quién puede y dónde ───────────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_a::text, true);
+  begin
+    v_r := guardar_mesa(v_ev, null, '{"nombre":"Mesa Pirata","personas":4,"precio":1}'::jsonb);
+    raise exception 'TEST_FAIL: un relacionador creo una mesa';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  v_r := guardar_mesa(v_ev2, null, '{"nombre":"Mesa Bowie","personas":4,"precio":500}'::jsonb);
+  if coalesce((v_r->>'ok')::boolean, true) or v_r->>'motivo' not like '%Plataforma Puerta%' then
+    raise exception 'TEST_FAIL: guardar_mesa acepto una mesa en un espejo de Puerta: %', v_r;
+  end if;
+  if not espejo_de_puerta(v_ev2) or espejo_de_puerta(v_ev) then
+    raise exception 'TEST_FAIL: espejo_de_puerta no distingue el espejo del evento propio';
+  end if;
+
+  v_r := guardar_mesa(v_ev, null, '{"nombre":"Mesa Rota","personas":0,"precio":100}'::jsonb);
+  if coalesce((v_r->>'ok')::boolean, true) then
+    raise exception 'TEST_FAIL: una mesa de 0 personas se guardo: %', v_r;
+  end if;
+
+  -- sin fases: todas las activas. Dos mesas en todo el evento, 50 Bs al
+  -- relacionador por mesa.
+  v_r := guardar_mesa(v_ev, null, jsonb_build_object(
+           'nombre', 'Mesa VIP', 'personas', 6, 'precio', 900, 'cantidad', 2,
+           'comision', 50, 'incluye', 'Una botella y piqueos'));
+  if not (v_r->>'ok')::boolean then raise exception 'TEST_FAIL: no se creo la mesa: %', v_r; end if;
+  v_vip := (v_r->>'tipo_id')::uuid;
+  -- y otra solo en la fase General, sin comisión propia
+  v_r := guardar_mesa(v_ev, null, jsonb_build_object(
+           'nombre', 'Lounge', 'personas', 4, 'precio', 500,
+           'fases', jsonb_build_array(v_f2)));
+  if not (v_r->>'ok')::boolean then raise exception 'TEST_FAIL: no se creo el lounge: %', v_r; end if;
+  v_lounge := (v_r->>'tipo_id')::uuid;
+  reset role;
+
+  select count(*) into v_n from fase_precio where tipo_id = v_vip and cupo = 2 and precio = 900;
+  if v_n <> 2 then raise exception 'TEST_FAIL: la mesa tenia que quedar en las dos fases, quedo en %', v_n; end if;
+  if (select (categoria, manillas, cupo_total, comision_rrpp) from tipo_entrada where id = v_vip)
+     is distinct from ('mesa'::text, 6, 2, 50::numeric(12,2)) then
+    raise exception 'TEST_FAIL: la mesa no quedo como se pidio';
+  end if;
+  if exists (select 1 from fase_precio where tipo_id = v_lounge and fase_id = v_f1) then
+    raise exception 'TEST_FAIL: el lounge quedo en una fase que no se marco';
+  end if;
+  -- guardar_mesa no toca los precios de los demás
+  if (select count(*) from fase_precio where tipo_id = v_gen) <> 2 then
+    raise exception 'TEST_FAIL: guardar_mesa toco los precios de la General';
+  end if;
+  raise notice 'OK guardar_mesa: solo admin/staff, no en espejos, y toca solo los precios de su mesa';
+
+  -- ── 2) crear_orden: una mesa por compra, a nombre de alguien ──
+  perform set_config('request.jwt.claim.sub', '', true);
+  begin
+    perform crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_vip, 'cantidad', 1)),
+                        '{"nombre":"Sin Titular"}'::jsonb, null::uuid, null::text, v_a);
+    raise exception 'TEST_FAIL: se reservo una mesa sin titular';
+  exception when others then
+    if sqlerrm not like 'FALTA_TITULAR%' then raise; end if;
+  end;
+  begin
+    perform crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_vip, 'cantidad', 1)),
+                        '{"nombre":"Con Titular","titular_nombre":"Ana Paz","titular_ci":"12AB"}'::jsonb,
+                        null::uuid, null::text, v_a);
+    raise exception 'TEST_FAIL: se acepto un carnet roto';
+  exception when others then
+    if sqlerrm not like 'CI_INVALIDO%' then raise; end if;
+  end;
+  begin
+    perform crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_vip, 'cantidad', 2)),
+                        '{"nombre":"Dos Mesas","titular_nombre":"Ana Paz","titular_ci":"1234567"}'::jsonb,
+                        null::uuid, null::text, v_a);
+    raise exception 'TEST_FAIL: se reservaron dos mesas en una compra';
+  exception when others then
+    if sqlerrm not like 'UNA_MESA%' then raise; end if;
+  end;
+
+  -- una mesa y una General, con el carnet como lo escribe la gente
+  v_o1 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_vip, 'cantidad', 1),
+                                               jsonb_build_object('tipo_id', v_gen, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Quien Paga', 'titular_nombre', '  juana   perez ',
+                                          'titular_ci', '1.234.567', 'titular_ci_ext', 'sc'),
+                       null::uuid, null::text, v_a)->>'orden')::uuid;
+  select titular_nombre, titular_ci, titular_ci_ext into v_tit, v_ci, v_ext from ordenes where id = v_o1;
+  if (v_tit, v_ci, v_ext) is distinct from ('juana perez'::text, '1234567'::text, 'SC'::text) then
+    raise exception 'TEST_FAIL: el titular no quedo normalizado: % / % / %', v_tit, v_ci, v_ext;
+  end if;
+  perform emitir_orden(v_o1);
+  if (select count(*) from entradas where orden_id = v_o1) <> 7 then
+    raise exception 'TEST_FAIL: una mesa de 6 y una General tenian que emitir 7 manillas';
+  end if;
+
+  -- una orden de entradas sola: aunque el navegador mande titular, no se guarda
+  v_o2 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Solo Entrada', 'titular_nombre', 'Otro Nombre',
+                                          'titular_ci', '7654321'),
+                       null::uuid, null::text, v_a)->>'orden')::uuid;
+  if exists (select 1 from ordenes where id = v_o2
+              and (titular_nombre is not null or titular_ci is not null)) then
+    raise exception 'TEST_FAIL: una orden sin mesa guardo un titular';
+  end if;
+  perform emitir_orden(v_o2);
+  raise notice 'OK una mesa por compra, con titular normalizado; las entradas solas no guardan titular';
+
+  -- ── 3) la fase no se traba por una mesa, y el tope es del evento ──
+  -- La Preventa vendió sus dos generales y le queda una mesa: se pasa a
+  -- General igual.
+  if fase_vigente(v_ev) is distinct from v_f2 then
+    raise exception 'TEST_FAIL: una mesa sin vender trabo la Preventa (vigente %)', fase_vigente(v_ev);
+  end if;
+  v_r := evento_publico('prueba-0107', 'evento-0107');
+  if (select x->>'estado' from jsonb_array_elements(v_r->'fases') x where x->>'nombre' = 'Preventa')
+     <> 'agotada' then
+    raise exception 'TEST_FAIL: la Preventa sin generales tenia que verse agotada: %', v_r->'fases';
+  end if;
+  -- quedan 1 de 2 mesas VIP en todo el evento, aunque la fase General tenga cupo 2
+  if disponibilidad_tipo(v_f2, v_vip) <> 1 then
+    raise exception 'TEST_FAIL: el tope del evento no resto la mesa vendida en la otra fase: %',
+      disponibilidad_tipo(v_f2, v_vip);
+  end if;
+  v_o3 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_vip, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Beto Compra', 'titular_nombre', 'Luis Rojas',
+                                          'titular_ci', 'E-9876543'),
+                       null::uuid, null::text, v_b)->>'orden')::uuid;
+  perform emitir_orden(v_o3);
+  begin
+    perform crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_vip, 'cantidad', 1)),
+                        jsonb_build_object('nombre', 'Tarde', 'titular_nombre', 'Tarde Mucho',
+                                           'titular_ci', '5555555'), null::uuid, null::text, null::uuid);
+    raise exception 'TEST_FAIL: se vendio una tercera mesa de dos';
+  exception when others then
+    if sqlerrm not like 'SIN_CUPO%' then raise; end if;
+  end;
+  -- B vende un lounge (sin comisión propia) y C, dos generales sueltas
+  v_o4 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_lounge, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Lounge Compra', 'titular_nombre', 'Maria Lopez',
+                                          'titular_ci', '3333333-1A', 'titular_ci_ext', 'pa'),
+                       null::uuid, null::text, v_b)->>'orden')::uuid;
+  perform emitir_orden(v_o4);
+  if (select titular_ci_ext from ordenes where id = v_o4) <> 'PD' then
+    raise exception 'TEST_FAIL: la extension PA tenia que quedar como PD';
+  end if;
+  v_o5 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_gen, 'cantidad', 2)),
+                       '{"nombre":"Ceci Vende"}'::jsonb, null::uuid, null::text, v_c)->>'orden')::uuid;
+  perform emitir_orden(v_o5);
+  raise notice 'OK la mesa no traba la fase y el tope del evento corta entre fases';
+
+  -- ── 4) la comisión ─────────────────────────────────────────
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  v_r := ventas_por_rrpp(v_ev);
+  reset role;
+  -- A: una mesa VIP (50) + dos generales (2 × 15) = 80. Con la cuenta de
+  -- antes eran 8 manillas × 15 = 120.
+  select x into v_f from jsonb_array_elements(v_r) x where (x->>'perfil_id')::uuid = v_a;
+  if (v_f->>'comision')::numeric <> 80 or (v_f->>'entradas')::int <> 8
+     or (v_f->>'mesas')::int <> 1 or (v_f->>'sueltas')::int <> 2 then
+    raise exception 'TEST_FAIL: la comision de A tenia que ser 50 + 2 x 15 = 80: %', v_f;
+  end if;
+  -- B: una VIP (50) + un lounge sin comisión propia (su 15, una vez)
+  select x into v_f from jsonb_array_elements(v_r) x where (x->>'perfil_id')::uuid = v_b;
+  if (v_f->>'comision')::numeric <> 65 or (v_f->>'mesas')::int <> 2 then
+    raise exception 'TEST_FAIL: la comision de B tenia que ser 50 + 15 = 65: %', v_f;
+  end if;
+  -- C vendió solo entradas: exactamente la cuenta de siempre
+  select x into v_f from jsonb_array_elements(v_r) x where (x->>'perfil_id')::uuid = v_c;
+  if (v_f->>'comision')::numeric <> 30 or (v_f->>'entradas')::int <> 2
+     or (v_f->>'mesas')::int <> 0 then
+    raise exception 'TEST_FAIL: las entradas sueltas cambiaron de cuenta: %', v_f;
+  end if;
+  -- la mesa entera anulada no paga comisión
+  update entradas set estado = 'anulada' where orden_id = v_o4;
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  select x into v_f from jsonb_array_elements(ventas_por_rrpp(v_ev)) x where (x->>'perfil_id')::uuid = v_b;
+  reset role;
+  if (v_f->>'comision')::numeric <> 50 then
+    raise exception 'TEST_FAIL: una mesa anulada entera siguio pagando comision: %', v_f;
+  end if;
+  raise notice 'OK la mesa paga una comision por mesa y las entradas sueltas la de siempre';
+
+  -- ── 5) el carnet: completo en el panel, enmascarado sin señal ──
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  select x into v_f from jsonb_array_elements(compradores_evento(v_ev, false)) x
+   where (x->>'orden_id')::uuid = v_o1;
+  if v_f->>'titular_nombre' <> 'juana perez' or v_f->>'titular_ci' <> '1234567'
+     or v_f->>'titular_ci_ext' <> 'SC' then
+    raise exception 'TEST_FAIL: el panel no muestra el titular de la mesa: %', v_f;
+  end if;
+  v_r := padron_puerta(v_ev);
+  select count(*) into v_n from jsonb_array_elements(v_r->'entradas') x
+   where x->>'tn' = 'juana perez' and x->>'td' = '••4567 SC';
+  if v_n <> 6 then
+    raise exception 'TEST_FAIL: las 6 manillas de la mesa tenian que llevar el titular enmascarado, llevan %', v_n;
+  end if;
+  if exists (select 1 from jsonb_array_elements(v_r->'entradas') x
+              where x->>'td' like '%1234567%' or (x ? 'tn' and x->>'t' = 'General 0107')) then
+    raise exception 'TEST_FAIL: el padron offline lleva el carnet completo o el titular en una General';
+  end if;
+  select code into v_code from entradas e where e.orden_id = v_o1 and e.tipo_id = v_vip limit 1;
+  v_r := validar_entrada(v_ev, v_code);
+  if v_r->>'titular' <> 'juana perez' or v_r->>'titular_ci' <> '1234567 SC' then
+    raise exception 'TEST_FAIL: la puerta en linea no muestra el titular: %', v_r;
+  end if;
+  -- el relacionador B no ve el titular de una venta de A
+  perform set_config('request.jwt.claim.sub', v_b::text, true);
+  if exists (select 1 from jsonb_array_elements(compradores_evento(v_ev, false)) x
+              where (x->>'orden_id')::uuid = v_o1) then
+    raise exception 'TEST_FAIL: un relacionador vio el titular de una venta ajena';
+  end if;
+  reset role;
+  raise notice 'OK el carnet completo en el panel y en la puerta en linea, enmascarado en el padron';
+
+  -- ── 6) con ventas, personas y categoria quedan quietas ──────
+  begin
+    update tipo_entrada set manillas = 3 where id = v_vip;
+    raise exception 'TEST_FAIL: se cambiaron las personas de una mesa vendida';
+  exception when others then
+    if sqlerrm not like 'TIPO_CON_VENTAS%' then raise; end if;
+  end;
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  v_r := guardar_mesa(v_ev, v_vip, jsonb_build_object('nombre', 'Mesa VIP', 'personas', 8,
+                                                      'precio', 900, 'cantidad', 2));
+  if coalesce((v_r->>'ok')::boolean, true) or v_r->>'codigo' <> 'MESA_CON_VENTAS' then
+    raise exception 'TEST_FAIL: guardar_mesa cambio las personas de una mesa vendida: %', v_r;
+  end if;
+  -- el precio y la descripción sí se cambian
+  v_r := guardar_mesa(v_ev, v_vip, jsonb_build_object('nombre', 'Mesa VIP', 'personas', 6,
+                                                      'precio', 1000, 'cantidad', 3,
+                                                      'fases', jsonb_build_array(v_f2)));
+  reset role;
+  if not (v_r->>'ok')::boolean then raise exception 'TEST_FAIL: no se pudo cambiar el precio: %', v_r; end if;
+  if exists (select 1 from fase_precio where tipo_id = v_vip and fase_id = v_f1)
+     or (select precio from fase_precio where tipo_id = v_vip and fase_id = v_f2) <> 1000 then
+    raise exception 'TEST_FAIL: editar la mesa no dejo el precio solo en la fase marcada';
+  end if;
+  perform set_config('request.jwt.claim.sub', '', true);
+  raise notice 'OK con ventas hechas, una mesa no cambia de personas ni de categoria';
 end $$;
 
 rollback;

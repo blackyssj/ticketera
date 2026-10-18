@@ -950,7 +950,7 @@ function estadoVacio(T, F) {
 async function pantallaEntradas(eventoId) {
   $("#main").innerHTML = `<p class="cargando">Cargando…</p>`;
 
-  const [ev, tipos, fases, vig] = await Promise.all([
+  const [ev, tipos, fases, vig, esp] = await Promise.all([
     sb.from("eventos").select("id,nombre,estado,slug").eq("id", eventoId).single(),
     sb.from("tipo_entrada").select("*").eq("evento_id", eventoId).order("orden"),
     sb.from("evento_fase").select("*").eq("evento_id", eventoId).order("orden"),
@@ -959,9 +959,14 @@ async function pantallaEntradas(eventoId) {
        sería una segunda opinión, y el día que las dos discrepen la
        pantalla va a estar tranquilizando sobre algo que no está pasando. */
     sb.rpc("fase_vigente", { p_evento: eventoId }),
+    /* Bowie y BurTown venden sus mesas en Plataforma Puerta (0103): ahí no
+       se ofrece crear una. Si la consulta falla, se ofrece igual y
+       guardar_mesa contesta con la frase de por qué no. */
+    sb.rpc("espejo_de_puerta", { p_evento: eventoId }),
   ]);
   const T = tipos.data || [], F = fases.data || [];
   const vigente = vig.data || null;
+  const espejo = esp.data === true;
   const proxima = proximaFase(F);
   /* fase_precio sin filtro traía las de TODO el organizador, y PostgREST
      corta en 1000 filas sin avisar: un precio fuera del corte desaparecía
@@ -1011,17 +1016,23 @@ async function pantallaEntradas(eventoId) {
           <th class="col-accion"><button class="btn plano chico" id="btnFase">Crear fase</button></th>
         </tr></thead>
         <tbody>
-          ${T.map(t => `<tr data-tipo="${t.id}">
-            <th>${esc(t.nombre)}<em>${esc(t.descripcion || "")}</em>${t.incluye
+          ${T.map(t => `<tr data-tipo="${t.id}"${t.categoria === "mesa" ? ' class="es-mesa"' : ""}>
+            <th>${esc(t.nombre)}${marcaMesa(t)}<em>${esc(t.descripcion || "")}</em>${t.incluye
               ? `<em class="tipo-incluye-adm"><b>Incluye</b> ${esc(t.incluye)}</em>` : ""}
               <div class="tipo-pie">
                 ${marcaCartelera(t)}
                 <span class="tipo-acciones">
-                  <button type="button" class="btn plano chico"
+                  ${t.categoria === "mesa" && !espejo
+                    /* Una mesa se edita entera en su formulario —nombre,
+                       personas, precio, fases—, que es donde se ve todo lo
+                       que se está prometiendo junto. */
+                    ? `<button type="button" class="btn plano chico"
+                               data-editar-mesa="${esc(t.id)}">Editar mesa</button>`
+                    : `<button type="button" class="btn plano chico"
                           data-renombrar-tipo="${esc(t.id)}"
                           data-nombre="${esc(t.nombre)}">Renombrar</button>
                   <button type="button" class="btn plano chico"
-                          data-describir-tipo="${esc(t.id)}">Descripción</button>
+                          data-describir-tipo="${esc(t.id)}">Descripción</button>`}
                   <button type="button" class="btn plano chico peligrosa"
                           data-borrar-tipo="${esc(t.id)}"
                           data-nombre="${esc(t.nombre)}">Borrar</button>
@@ -1049,6 +1060,7 @@ async function pantallaEntradas(eventoId) {
         </tbody>
       </table>
     </div>
+    ${avisoMesasSinFase(T, F, P)}
     <section id="zonaFase"></section>
     <section id="zonaTipo"></section>
     <p class="ayuda explica nota-fee">${cfgFee.comision_modo === "adentro"
@@ -1063,8 +1075,10 @@ async function pantallaEntradas(eventoId) {
          ? "cuánto te queda" : "cuánto va a pagar"}.</p>
     <div class="acciones">
       <button class="btn plano" id="btnTipo">Crear tipo de entrada</button>
+      ${espejo ? "" : `<button class="btn plano" id="btnMesa">Crear mesa o combo</button>`}
       <button class="btn primario" id="btnGuardarGrilla">Guardar precios</button>
     </div>
+    ${espejo ? `<p class="ayuda">Las mesas de este evento se venden en Plataforma Puerta.</p>` : ""}
     <p class="ayuda">Precio vacío = ese tipo no se vende en esa fase. Cupo vacío = sin tope.</p>
     <p class="ayuda explica">«En la cartelera» decide si ese producto entra en el
        «desde» y en el «agotado» que la portada muestra del evento. Sacá de la
@@ -1075,6 +1089,10 @@ async function pantallaEntradas(eventoId) {
 
   $("#btnVolver").onclick = () => abrirEvento(eventoId);
   $("#btnTipo").onclick = () => nuevoTipo(eventoId);
+  if ($("#btnMesa")) $("#btnMesa").onclick = () => formMesa(eventoId, null, F, P);
+  document.querySelectorAll("#main [data-editar-mesa]").forEach(b => {
+    b.onclick = () => formMesa(eventoId, T.find(t => t.id === b.dataset.editarMesa), F, P);
+  });
   document.querySelectorAll("#main [data-renombrar-tipo]").forEach(b => {
     b.onclick = () => renombrarTipo(eventoId, b.dataset.renombrarTipo, b.dataset.nombre);
   });
@@ -1495,6 +1513,135 @@ function describirTipo(eventoId, t) {
   };
   z.scrollIntoView({ block: "start", behavior: QUIETO.matches ? "auto" : "smooth" });
   desc.focus({ preventScroll: true });
+}
+
+/* ── las mesas y combos (0107) ──
+   Una mesa es un tipo con categoria 'mesa': se vende por la misma tubería
+   que una entrada, emite una manilla por persona y al comprarla se pide a
+   nombre de quién va (nombre y carnet). Antes se creaba solo por SQL; acá
+   se arma entera en un formulario, porque lo que se promete al comprador
+   —cuántos entran, qué trae, cuánto sale, cuántas hay— se tiene que ver
+   junto para no prometer de más.
+
+   La marca en la grilla dice lo que la fila no dice sola: que es una mesa,
+   cuántos entran y cuántas hay en todo el evento. El cupo de cada celda es
+   por fase; el de la marca es el que manda. */
+function marcaMesa(t) {
+  if (t.categoria !== "mesa") return "";
+  const partes = [`Mesa · entran ${num(t.manillas)}`];
+  if (t.cupo_total != null) partes.push(`${num(t.cupo_total)} en todo el evento`);
+  if (t.comision_rrpp != null) partes.push(`${bs(t.comision_rrpp)} al relacionador`);
+  return `<em class="marca-mesa">${esc(partes.join(" · "))}</em>`;
+}
+
+/* El precio vive por fase: una mesa sin precio en la fase que abre
+   desaparece de la página sin que nadie lo note — típico al crear una fase
+   nueva después de la mesa. Se avisa arriba de los botones, con la fase y
+   la mesa por su nombre. Solo las fases que todavía pueden vender. */
+function avisoMesasSinFase(T, F, P) {
+  const ahora = Date.now();
+  const vivas = F.filter(f => f.activo !== false && !(f.hasta && Date.parse(f.hasta) <= ahora));
+  const faltas = T.filter(t => t.categoria === "mesa" && t.activo !== false)
+    .map(t => ({ t, sin: vivas.filter(f => !P.has(`${f.id}|${t.id}`)) }))
+    .filter(x => x.sin.length);
+  if (!faltas.length) return "";
+  return faltas.map(({ t, sin }) => `<p class="falta-armar">«${esc(t.nombre)}» no tiene precio en
+      ${sin.map(f => `«${esc(f.nombre)}»`).join(", ")}. Si esa fase vende, la mesa no se ve en la
+      página. Tocá <b>Editar mesa</b> y marcala, o cargale el precio en la grilla.</p>`).join("");
+}
+
+function formMesa(eventoId, t, F, P) {
+  const z = $("#zonaTipo");
+  if (!z) return;
+  /* Editando, el precio que se muestra es el de la primera fase que lo
+     tiene; las fases marcadas, las que tienen precio hoy. Nueva, todas las
+     fases activas: si la fase avanza y la mesa no tiene precio en la
+     siguiente, se deja de vender sin aviso. */
+  const precioDe = f => P.get(`${f.id}|${t.id}`);
+  const conPrecio = t ? F.filter(f => precioDe(f)) : [];
+  const precio = conPrecio.length ? Number(precioDe(conPrecio[0]).precio) : "";
+  const marcada = f => t ? !!precioDe(f) : f.activo !== false;
+  const val = v => v == null ? "" : esc(String(v));
+  z.innerHTML = `
+    <form class="form-fase form-tipo form-mesa" id="formMesa">
+      <h3>${t ? `Mesa «${esc(t.nombre)}»` : "Mesa o combo nuevo"}</h3>
+      <label class="ancha"><span>Nombre</span>
+        <input id="mNombre" maxlength="60" required value="${val(t && t.nombre)}"
+               placeholder="Mesa VIP, Lounge, Combo para 4…"></label>
+      <label><span>Cuántas personas entran</span>
+        <input id="mPersonas" type="number" min="1" max="50" step="1" required
+               value="${val(t ? t.manillas : 4)}">
+        <em class="ayuda">Una manilla por persona.</em></label>
+      <label><span>Precio (Bs)</span>
+        <input id="mPrecio" type="number" min="0" step="1" required value="${val(precio)}">
+        <em class="ayuda" id="mPaga"></em></label>
+      <label><span>Cuántas hay</span>
+        <input id="mCantidad" type="number" min="1" step="1" placeholder="sin tope"
+               value="${val(t && t.cupo_total)}">
+        <em class="ayuda">En todo el evento, sumando las fases.</em></label>
+      <label><span>Comisión por mesa (Bs)</span>
+        <input id="mComision" type="number" min="0" step="1" placeholder="la de cada relacionador"
+               value="${val(t && t.comision_rrpp)}">
+        <em class="ayuda">Lo que cobra el relacionador por cada mesa. Vacía: su comisión de siempre, una vez por mesa.</em></label>
+      <label class="ancha"><span>La frase que vende (va debajo del nombre)</span>
+        <textarea id="mDesc" rows="2" maxlength="220"
+          placeholder="Ej.: La mejor vista de la pista, con atención en la mesa toda la noche."
+          >${esc((t && t.descripcion) || "")}</textarea></label>
+      <label class="ancha"><span>Incluye (lo que se lleva quien compra)</span>
+        <textarea id="mIncluye" rows="2" maxlength="220"
+          placeholder="Ej.: 1 botella de whisky · 6 gaseosas · hielo · piqueos"
+          >${esc((t && t.incluye) || "")}</textarea>
+        <em class="ayuda">Se muestra con el rótulo «Incluye» adelante. Separá cada cosa con « · ».</em></label>
+      <div class="fases-mesa">
+        <span class="rotulo">Se vende en</span>
+        ${F.length ? F.map(f => `<label><input type="checkbox" value="${esc(f.id)}"${
+            marcada(f) ? " checked" : ""}> ${esc(f.nombre)}</label>`).join("")
+          : `<span class="ayuda">Todavía no hay fases: la mesa se crea sin precio. Creá una fase y volvé a editarla.</span>`}
+      </div>
+      <p class="ayuda ancha">El mismo precio en todas las fases que marques; para precios distintos
+         por fase, cambialos después en la grilla. Al comprar se pide el nombre y el carnet de
+         la persona a cuyo nombre va la mesa, y es una mesa por compra.</p>
+      <p class="error" id="mError"></p>
+      <div class="acciones">
+        <button type="submit" class="btn primario" id="mGuardar">${t ? "Guardar mesa" : "Crear mesa"}</button>
+        <button type="button" class="btn plano" id="mCancelar">Cancelar</button>
+      </div>
+    </form>`;
+  const precioInp = $("#mPrecio");
+  // El mismo eco que la grilla: lo que paga el comprador (o lo que te queda).
+  const eco = () => { $("#mPaga").textContent = textoPaga(Number(precioInp.value)); };
+  precioInp.oninput = eco; eco();
+  $("#mCancelar").onclick = () => { z.innerHTML = ""; };
+  $("#formMesa").onsubmit = async e => {
+    e.preventDefault();
+    const fases = Array.from(z.querySelectorAll(".fases-mesa input:checked")).map(i => i.value);
+    if (F.length && !fases.length) {
+      $("#mError").textContent = "Marcá al menos una fase: sin precio, la mesa no se vende.";
+      return;
+    }
+    const n = id => $(id).value.trim() === "" ? null : Number($(id).value);
+    const datos = {
+      nombre: $("#mNombre").value.trim(),
+      personas: n("#mPersonas"), precio: n("#mPrecio"),
+      cantidad: n("#mCantidad"), comision: n("#mComision"),
+      descripcion: $("#mDesc").value.trim(), incluye: $("#mIncluye").value.trim(),
+      fases,
+    };
+    await conBoton($("#mGuardar"), "Guardando…", async () => {
+      const { data, error } = await sb.rpc("guardar_mesa",
+        { p_evento: eventoId, p_tipo: t ? t.id : null, p_datos: datos });
+      if (error) { $("#mError").textContent = sinCodigo(error.message); return; }
+      // Las validaciones vuelven con su motivo, escrito para el organizador.
+      if (!data || !data.ok) {
+        $("#mError").textContent = (data && data.motivo) || "No se pudo guardar. Recargá y probá de nuevo.";
+        return;
+      }
+      avisar(data.motivo || "Mesa guardada.");
+      pantallaEntradas(eventoId);
+    });
+  };
+  z.scrollIntoView({ block: "start", behavior: QUIETO.matches ? "auto" : "smooth" });
+  $("#mNombre").focus({ preventScroll: true });
 }
 
 /* Borrar un tipo. Hermano de borrarFase() y por los mismos motivos: la
@@ -2376,13 +2523,33 @@ function cuadroDiferencia(foto, hoy) {
     </div>`;
 }
 
+/* Cómo se llega a una comisión, en una línea (0107). Hasta las mesas era
+   siempre "manillas × lo de cada una". Ahora una mesa paga UNA comisión
+   aunque traiga diez manillas, así que con mesas se dice "sueltas × lo de
+   cada una + N mesas"; mostrar "10 × 15" al lado de un 15 sería una
+   cuenta que no da. La liquidación es una foto (no trae el desglose):
+   ahí la multiplicación se muestra solo si cierra. */
+const cuentaCierra = v =>
+  Math.abs(Number(v.entradas || 0) * Number(v.comision_unitaria || 0) - Number(v.comision || 0)) < 0.005;
+
+function desgloseComision(v) {
+  const mesas = Number(v.mesas || 0);
+  if (mesas > 0) {
+    const sueltas = Number(v.sueltas || 0);
+    return [sueltas ? `${sueltas} × ${bs(v.comision_unitaria)}` : "",
+            `${mesas} ${mesas === 1 ? "mesa" : "mesas"}: ${bs(v.comision_mesas)}`]
+      .filter(Boolean).join(" + ");
+  }
+  return cuentaCierra(v) ? `${v.entradas} × ${bs(v.comision_unitaria)}` : "con mesas";
+}
+
 function filaLinea(l) {
   return `
     <li class="fila quieta liq-linea${l.pagada ? " pagada" : ""}">
       <span class="fila-nombre">${esc(l.nombre)}
         <em>${l.slug ? "?r=" + esc(l.slug) + " · " : ""}${l.entradas}
-          ${Number(l.entradas) === 1 ? "manilla" : "manillas"} ×
-          ${bs(l.comision_unitaria)}</em></span>
+          ${Number(l.entradas) === 1 ? "manilla" : "manillas"}${
+          cuentaCierra(l) ? ` × ${bs(l.comision_unitaria)}` : " · con mesas"}</em></span>
       <span class="cifra destacada">${bs(l.comision)}</span>
       ${l.pagada
         ? `<span class="pastilla verde">Pagada</span>
@@ -2513,7 +2680,7 @@ async function pantallaMisVentas() {
           <span class="cifra">${v.entradas}<em>entradas</em></span>
           <span class="cifra">${bs(v.recaudado)}<em>recaudado</em></span>
           <span class="cifra destacada">${bs(v.comision)}
-            <em>${v.entradas} × ${bs(v.comision_unitaria)}</em></span>
+            <em>${esc(desgloseComision(v))}</em></span>
         </li>`).join("")}</ul>
       <div class="total">
         <div>
@@ -2626,7 +2793,7 @@ async function pantallaRelacionadores(eventoId) {
           <span class="cifra">${v.entradas}<em>entradas</em></span>
           <span class="cifra">${bs(v.recaudado)}<em>recaudado</em></span>
           <span class="cifra destacada">${bs(v.comision)}
-            <em>${v.entradas} × ${bs(v.comision_unitaria)}</em></span>
+            <em>${esc(desgloseComision(v))}</em></span>
         </li>`).join("")}</ul>
       <div class="total">
         <div>
@@ -2946,10 +3113,10 @@ function bloqueCifras(r) {
    de "acá no hay dato". Y ninguno de estos montos se suma a lo recaudado:
    son plata que no entró, o que entró mal. */
 function bloqueAlertas(a) {
-  /* Acá arriba iba «Mesas sin asignar». No se muestra más: en esta
-     ticketera solo se venden entradas y las reservas de mesa las maneja
-     el local por fuera del sistema, así que era una tarea que nadie iba a
-     hacer nunca — y una alerta en rojo permanente enseña a no mirar
+  /* Acá arriba iba «Mesas sin asignar». No se muestra más: las mesas que
+     se venden (0107) no esperan un lugar del plano —el lugar lo da el
+     equipo en la noche, sin sistema—, así que era una tarea que nadie iba
+     a hacer nunca — y una alerta en rojo permanente enseña a no mirar
      ninguna. resumen_evento() SIGUE devolviendo `alertas.mesas_sin_asignar`
      y así queda: la función está en producción y cambiarla por un campo
      de más es mover algo que anda. Un campo que la pantalla ignora no
@@ -3380,9 +3547,11 @@ function bloqueDesgloses(r, porFase) {
    está en puede_editar() del lado del SQL.
 
    Este bloque compartía estado con el plano de mesas —por eso se llama
-   «salón»— y el plano ya no está: acá solo se venden entradas y las
-   reservas de mesa las maneja el local por fuera del sistema. Lo que
-   quedó es la lista, que es lo que se usa todas las noches. */
+   «salón»— y el plano ya no está. Las mesas volvieron como producto
+   (0107): se venden como cualquier tipo, sin elegir lugar, y cada compra
+   con mesa trae a nombre de quién va (titular_nombre y su carnet), que se
+   muestra en la fila, se busca y sale en el CSV. Lo que quedó es la
+   lista, que es lo que se usa todas las noches. */
 const SALON = { evento: null, editar: false, compras: [],
                 busca: "", alCambiar: null,
                 anulando: null, abierta: null, manillas: {}, anulandoEntrada: null };
@@ -3433,11 +3602,13 @@ async function refrescarSalon() {
 function pintarCompradores(error) {
   const z = $("#zonaCompradores");
   if (!z) return;
+  // Con mesas vendidas se busca también por el carnet del titular (0107).
+  const conMesas = SALON.compras.some(c => c.titular_nombre);
   z.innerHTML = `
     <div class="cab-bloque sep">
       <h3 class="titulo-bloque">Compradores</h3>
       ${SALON.compras.length ? `<input id="buscaComprador" class="buscador" type="search"
-         autocomplete="off" placeholder="Buscar por nombre o teléfono"
+         autocomplete="off" placeholder="${conMesas ? "Buscar por nombre, teléfono o carnet" : "Buscar por nombre o teléfono"}"
          value="${esc(SALON.busca)}" aria-label="Buscar comprador por nombre o teléfono">` : ""}
       <span class="conteo" id="conteoCompradores"></span>
       ${SALON.compras.length ? `<span class="bajadas">
@@ -3482,10 +3653,21 @@ function filtrarCompras() {
   // guiones o +591 adelante.
   const soloNum = s => String(s || "").replace(/\D/g, "");
   const qn = soloNum(q);
+  // El titular de la mesa también (0107): en la puerta llega la persona a
+  // cuyo nombre está la mesa, no la que pagó, y muestra su carnet.
   return SALON.compras.filter(c =>
     String(c.comprador || "").toLowerCase().includes(q) ||
     String(c.telefono || "").toLowerCase().includes(q) ||
-    (qn.length >= 3 && soloNum(c.telefono).includes(qn)));
+    String(c.titular_nombre || "").toLowerCase().includes(q) ||
+    (qn.length >= 3 && soloNum(c.telefono).includes(qn)) ||
+    (qn.length >= 3 && soloNum(c.titular_ci).includes(qn)));
+}
+
+/* "Juana Pérez · CI 1234567 SC". Null si la compra no tiene mesa. */
+function titularTxt(c) {
+  if (!c.titular_nombre) return null;
+  const ci = [c.titular_ci, c.titular_ci_ext].filter(Boolean).join(" ");
+  return `${c.titular_nombre}${ci ? ` · CI ${ci}` : ""}`;
 }
 
 function pintarFilasCompradores() {
@@ -3499,7 +3681,7 @@ function pintarFilasCompradores() {
   tb.innerHTML = filas.length
     ? filas.map(filaCompra).join("")
     : `<tr><td class="sin-nada" colspan="7">
-         Nadie con ese nombre ni ese teléfono en este evento.</td></tr>`;
+         Nadie con ese nombre, ese teléfono ni ese carnet en este evento.</td></tr>`;
 }
 
 /* ── los dos CSV de esta lista ──
@@ -3514,12 +3696,15 @@ function pintarFilasCompradores() {
    Un relacionador que aprieta este botón baja SUS compras, porque eso es
    lo que la función le dio; el recorte no lo hace este archivo. */
 function bajarCompradores() {
-  // Sin columna «Mesa»: salía de cruzar la compra contra el plano, que ya
-  // no está. Acá solo se venden entradas.
+  // Sin columna «Mesa» del plano: salía de cruzar la compra contra el plano
+  // de mesas físicas, que ya no está. Las mesas que se venden como producto
+  // (0107) sí traen a nombre de quién van, y esa lista es la que se imprime
+  // para la puerta: nombre, carnet y extensión, en columnas separadas para
+  // poder ordenarlas.
   const cab = ["Comprador", "Teléfono", "Correo", "Compró", "Unidades", "Manillas",
                "Manillas usadas", "Manillas anuladas", "Pagó (Bs)", "Servicio (Bs)",
                "Total (Bs)", "Relacionador", "Canal", "Fecha de la compra",
-               "Link de recuperación"];
+               "Link de recuperación", "Mesa a nombre de", "Carnet", "Extensión"];
   const filas = SALON.compras.map(c => [
     c.comprador || "", c.telefono || "", c.email || "", c.detalle || "",
     CSV.ent(c.unidades), CSV.ent(c.manillas),
@@ -3527,6 +3712,7 @@ function bajarCompradores() {
     CSV.bs(c.pagado), CSV.bs(c.fee), CSV.bs(c.total),
     c.rrpp_nombre || "", c.canal === "rrpp" ? "Relacionador" : "Público",
     CSV.fh(c.fecha), linkOrden(c.orden_id),
+    c.titular_nombre || "", c.titular_ci || "", c.titular_ci_ext || "",
   ]);
   CSV.bajar(CSV.nombre("compradores", SALON.ev), [cab, ...filas]);
   avisar(`Bajaron ${filas.length} ${filas.length === 1 ? "compra" : "compras"}.`);
@@ -3563,7 +3749,8 @@ function filaCompraFila(c) {
     <td><span class="prod-nombre">${esc(c.comprador || "Sin nombre")}</span>
       <em>${esc(fmtFH(c.fecha))}</em></td>
     <td class="dato">${esc(c.telefono || "—")}${c.email ? `<em title="${esc(c.email)}">${esc(c.email)}</em>` : ""}</td>
-    <td class="detalle">${esc(c.detalle || "—")}</td>
+    <td class="detalle">${esc(c.detalle || "—")}${titularTxt(c)
+        ? `<em class="titular-compra">Mesa a nombre de ${esc(titularTxt(c))}</em>` : ""}</td>
     <td class="n" data-rot="Manillas">${num(c.manillas)}${c.manillas_usadas
         ? `<em>${num(c.manillas_usadas)} usadas</em>` : ""}</td>
     <td class="n" data-rot="Pagó">${bs(c.pagado)}</td>
@@ -3854,8 +4041,9 @@ async function anularManilla(entradaId, motivo, incluirUsadas) {
 /* ── el plano de mesas: no está, y no es un olvido ──
    Acá vivían pintarPlano(), la ficha, asignarMesa() y liberarMesa(): un
    plano del salón donde se repartían las mesas de a una. Se fue entero
-   porque esta ticketera vende SOLO entradas — las reservas de mesa las
-   arregla el local por fuera del sistema, así que el plano mostraba un
+   porque nadie reparte mesas en un plano: las mesas se venden como
+   producto (0107, «Crear mesa o combo» en Entradas), a nombre de alguien,
+   y el lugar exacto lo da el equipo en la noche. El plano mostraba un
    trabajo que nadie iba a hacer.
 
    La maquinaria de la base SIGUE ENTERA y sin uso a propósito:
@@ -3865,8 +4053,8 @@ async function anularManilla(entradaId, motivo, incluirUsadas) {
    dirección que hoy no gana nada. Si algún día vuelven las mesas, se
    vuelve a colgar una pantalla de eso; no hay que rehacer el SQL.
 
-   Si estás por reescribir el plano: preguntá primero si el evento vende
-   mesas. Si no las vende, esto tiene que seguir sin existir. */
+   Si estás por reescribir el plano: preguntá primero si alguien va a
+   repartir lugares en él. Vender mesas ya no lo necesita. */
 /* ══ la bitácora ══════════════════════════════════════════════════
    Todo lo que se decidió y todo lo que pasó en la puerta ya estaba
    guardado con autor, hora y motivo, en dos tablas append-only que nadie

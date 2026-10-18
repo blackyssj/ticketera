@@ -104,6 +104,11 @@ const S = {
   paso: "entradas",
   cant: {},                    // tipo_id → cantidad
   comprador: { nombre:"", telefono:"", email:"" },
+  /* A nombre de quién va la mesa (0107). Vive solo en memoria: viaja en
+     crear-orden y nada más. NO va a localStorage —ni con el comprador
+     recordado ni con la compra guardada—: es el carnet de otra persona en
+     el teléfono de quien pagó. */
+  titular: { nombre:"", ci:"" },
   orden: null,
   entradas: [],
   restan: HOLD_SEG,
@@ -130,6 +135,32 @@ function avisar(txt) {
 
 const tipoDe = id => D.tipos.find(t => t.id === id);
 const esperar = ms => new Promise(r => setTimeout(r, ms));
+
+/* ── mesas en el carrito (0107) ──
+   Una mesa por compra: la orden lleva UN titular, y con dos mesas la
+   segunda quedaría a nombre de alguien que no la reservó. Las entradas
+   sueltas se siguen sumando a la misma compra. crear_orden repite la regla
+   en la base; esto es para no dejar llegar hasta ahí. */
+const mesasEnCarrito = () => D.tipos.filter(t => t.categoria === "mesa")
+                                    .reduce((a, t) => a + (S.cant[t.id] || 0), 0);
+const hayMesa = () => mesasEnCarrito() > 0;
+const UNA_MESA = "Una mesa por compra. Si querés otra, hacé otra compra.";
+
+/* El carnet como lo escribe la gente —con puntos, espacios, la E pegada—
+   llevado a la forma que guarda la base: 5 a 10 números, "E-" adelante si
+   es de extranjero. Las mismas reglas que crear-orden y crear_orden. */
+const normCi = v => String(v || "").toUpperCase().replace(/[\s.]/g, "")
+  .replace(/^-+|-+$/g, "").replace(/^E(?=\d)/, "E-");
+const CI_OK = /^(E-)?\d{5,10}(-[0-9A-Z]{2})?$/;
+
+function titularDelForm() {
+  return {
+    nombre: $("#fTitNombre").value.replace(/\s+/g, " ").trim(),
+    ci: normCi($("#fTitCi").value),
+    complemento: $("#fTitComp").value.toUpperCase().replace(/[\s.-]/g, ""),
+    ext: $("#fTitExt").value
+  };
+}
 const linkDeOrden = () => `${location.origin}/orden/?id=${S.orden.id}`;
 
 /* 9999 es como la función `evento` dice "este tipo no tiene tope" (cupo nulo
@@ -208,6 +239,11 @@ function apiDemo() {
     async evento() { return { ok: true, ...window.DATOS_DEMO }; },
     async crearOrden(items, comprador) {
       await esperar(220);
+      /* Las mismas dos reglas que crear-orden (0107), para que la demo no
+         deje pasar lo que el servidor rechaza. */
+      if (mesasEnCarrito() > 1) throw new Error(UNA_MESA);
+      if (hayMesa() && !(comprador.titular && comprador.titular.ci))
+        throw new Error("Para reservar una mesa poné el nombre y el carnet de la persona a cuyo nombre va.");
       const { subtotal, fee, total } = cotizar();
       return { id: crypto.randomUUID(), subtotal, fee, total, gratis: total === 0,
                expira_at: Date.now() + HOLD_SEG * 1000, comprador };
@@ -715,7 +751,7 @@ function marcarDesborde() {
 const GRUPOS = [
   { cat: "entrada", titulo: null },
   { cat: "mesa", titulo: "Mesas y lounges",
-    nota: "El lugar exacto te lo asigna el equipo el día del evento." },
+    nota: "Una mesa por compra, a nombre de quien la reserva. El lugar exacto te lo asigna el equipo el día del evento." },
 ];
 
 function pintarTipos() {
@@ -864,7 +900,8 @@ function listaFases() {
 function tarjetaTipo(t, tope, usadas) {
   const q = S.cant[t.id];
   const esMesa = (t.categoria || "entrada") === "mesa";
-  const topeMas = q >= t.cupo || usadas >= tope;
+  // Con una mesa en el carrito, el + de todas las mesas se apaga (0107).
+  const topeMas = q >= t.cupo || usadas >= tope || (esMesa && hayMesa());
 
   /* El renglón del cupo dice el número real o no dice nada. Sin tope en la
      base llegaba el 9999 de la función y la tarjeta anunciaba "9999
@@ -1056,6 +1093,9 @@ function irA(paso, { quieto = false } = {}) {
   // dejar los datos y pagar. Antes sobra (están las dudas) y después ya está
   // el link de la orden.
   $("#ayudaWa").hidden = !(paso === "datos" || paso === "pago");
+  // El titular de la mesa se pide sólo si hay una mesa en el carrito: al
+  // que compra entradas sueltas no se le pide el carnet de nadie (0107).
+  if (paso === "datos") $("#bloqueTitular").hidden = !hayMesa();
   pintarPasos();
   if (paso === "entradas") pintarTipos();
   pintarRail();
@@ -1083,21 +1123,44 @@ const REGLAS = {
   // también en modo demo: la validación es del front.
   fTc: { e:"#eTc", k:null,
     ok: (v, el) => el.checked,
-    msg:"Necesitamos que aceptes los términos." }
+    msg:"Necesitamos que aceptes los términos." },
+  /* El titular de la mesa (0107). `cuando` dice si la regla corre: sin mesa
+     en el carrito el bloque está escondido y no se le exige nada a nadie.
+     `en` dice dónde se guarda: en S.titular, que nunca se escribe en el
+     teléfono, y no en S.comprador, que sí se recuerda. */
+  fTitNombre: { e:"#eTitNombre", k:"nombre", en:"titular", cuando: hayMesa,
+    ok: v => /^\S+( \S+)+$/.test(v.replace(/\s+/g, " ").trim()),
+    msg:"Poné nombre y apellido de quien reserva." },
+  fTitCi: { e:"#eTitCi", k:"ci", en:"titular", cuando: hayMesa,
+    ok: v => CI_OK.test(normCi(v)) &&
+             /^([0-9A-Z]{2})?$/.test($("#fTitComp").value.toUpperCase().replace(/[\s.-]/g, "")),
+    msg:"Revisá el carnet: de 5 a 10 números, y el complemento de 2 si tiene." }
 };
+/* Dónde guarda cada regla lo que validó. */
+const destino = r => r.en === "titular" ? S.titular : S.comprador;
+
 function validarCampo(id) {
   const r = REGLAS[id], el = $("#" + id);
   if (!r || !el) return false;
+  if (r.cuando && !r.cuando()) {
+    el.removeAttribute("aria-invalid");
+    $(r.e).textContent = "";
+    return true;
+  }
   const bien = r.ok(el.value, el);
   el.setAttribute("aria-invalid", String(!bien));
   $(r.e).textContent = bien ? "" : r.msg;
-  if (bien && r.k) S.comprador[r.k] = el.value.trim();
+  if (bien && r.k) destino(r)[r.k] = el.value.trim();
   return bien;
 }
 
 function formValido(mostrar) {
   let ok = true;
   for (const [id, r] of Object.entries(REGLAS)) {
+    // Una regla que no corre no cuenta, ni para bien ni para mal: antes un
+    // campo que no estaba era "inválido", y con el bloque de la mesa
+    // escondido eso trababa "Ir a pagar" a todos los que no compran mesa.
+    if (r.cuando && !r.cuando()) continue;
     const el = $("#" + id);
     if (!el) return false;
     const bien = r.ok(el.value, el);
@@ -1106,9 +1169,28 @@ function formValido(mostrar) {
       el.setAttribute("aria-invalid", String(!bien));
       $(r.e).textContent = bien ? "" : r.msg;
     }
-    if (bien && r.k) S.comprador[r.k] = el.value.trim();
+    if (bien && r.k) destino(r)[r.k] = el.value.trim();
   }
   return ok;
+}
+
+/* "Es para mí": copia el nombre de quien paga y lo deja quieto mientras
+   está tildado, así no quedan dos versiones del mismo nombre. El carnet se
+   escribe igual: el de quien paga no lo pedimos en ningún otro lado. */
+function copiarTitular() {
+  const yo = $("#fTitYo").checked, n = $("#fTitNombre");
+  if (yo) n.value = $("#fNombre").value;
+  n.readOnly = yo;
+}
+function limpiarTitular() {
+  $("#fTitYo").checked = false;
+  ["fTitNombre", "fTitCi", "fTitComp"].forEach(id => {
+    const el = $("#" + id);
+    el.value = ""; el.readOnly = false; el.removeAttribute("aria-invalid");
+  });
+  $("#fTitExt").value = "";
+  $("#eTitNombre").textContent = ""; $("#eTitCi").textContent = "";
+  S.titular = { nombre: "", ci: "" };
 }
 
 /* ── pago ────────────────────────────────────────────────────────
@@ -1154,7 +1236,11 @@ async function pagar() {
     Object.entries(S.cant).forEach(([id, q]) => { if (q) items.push({ tipo_id: id, cantidad: q }); });
     // Sólo si está tildado: formValido ya lo exigió, pero lo que se manda
     // es lo que el casillero dice, no lo que la validación supone.
-    S.orden = await API.crearOrden(items, { ...S.comprador },
+    // El titular va sólo con una mesa en el carrito (0107). Como es parte
+    // del comprador que se manda, claveDeCompra lo mete en la huella: si
+    // cambia el titular, es otra compra y otra client_key.
+    const titular = hayMesa() ? titularDelForm() : undefined;
+    S.orden = await API.crearOrden(items, { ...S.comprador, titular },
                                    $("#fTc").checked ? TC_VERSION : undefined);
 
     /* El precio que se cobra lo decide la base al crear la orden, con la
@@ -1462,8 +1548,11 @@ async function mostrarListo() {
   irA("listo");
   pararReloj();
   olvidarClave();   // la próxima compra es otra compra
+  // El nombre del titular sí (lo escribió quien está mirando); el carnet no.
+  const tit = S.orden && S.orden.comprador && S.orden.comprador.titular;
   $("#listoNota").textContent =
-    `${S.entradas.length} ${S.entradas.length === 1 ? "entrada" : "entradas"} a nombre de ${S.comprador.nombre}.`;
+    `${S.entradas.length} ${S.entradas.length === 1 ? "entrada" : "entradas"} a nombre de ${S.comprador.nombre}.` +
+    (tit && tit.nombre ? ` La mesa va a nombre de ${tit.nombre}.` : "");
   // Al que no le cobraron nada no le vendiste nada: consiguió un lugar.
   $("#btnOtra").textContent = cotizar().total === 0 ? "Conseguir otra" : "Comprar otra";
 
@@ -1688,6 +1777,8 @@ function olvidarComprador() {
   // La aceptación de los términos es de la persona, no del teléfono: la
   // que sigue tiene que aceptar por su cuenta.
   $("#fTc").checked = false; $("#fTc").removeAttribute("aria-invalid");
+  // El titular también: con "Es para mí" tildado era el nombre del de antes.
+  limpiarTitular();
   $$("#form .error").forEach(e => e.textContent = "");
   S.comprador = { nombre: "", telefono: "", email: "" };
   $("#precargado").hidden = true;
@@ -1787,6 +1878,10 @@ $("#tipos").addEventListener("click", e => {
   const nueva = S.cant[t.id] + Number(b.dataset.pasoT);
   const usadas = Object.values(S.cant).reduce((a, x) => a + x, 0);
   if (nueva < 0 || nueva > t.cupo) return;
+  if (Number(b.dataset.pasoT) > 0 && t.categoria === "mesa" && hayMesa()) {
+    avisar(UNA_MESA);
+    return;
+  }
   if (Number(b.dataset.pasoT) > 0 && usadas >= D.evento.tope_entradas_orden) {
     avisar(`Máximo ${D.evento.tope_entradas_orden} entradas por compra.`);
     return;
@@ -1850,10 +1945,28 @@ $("#railTirador").addEventListener("click", () => {
   $("#railTirador").setAttribute("aria-expanded", String(!abierto));
 });
 
+/* El titular de la mesa (0107). "Es para mí" copia el nombre de quien paga
+   y lo sigue mientras está tildado; el complemento y la extensión vuelven
+   a mirar el carnet, que es la regla que los incluye. */
+$("#fTitYo").addEventListener("change", () => {
+  copiarTitular();
+  if ($("#fTitNombre").value) validarCampo("fTitNombre");
+  pintarRail();
+});
+$("#fNombre").addEventListener("input", () => {
+  if ($("#fTitYo").checked) { copiarTitular(); pintarRail(); }
+});
+["fTitComp", "fTitExt"].forEach(id => $("#" + id).addEventListener("change", () => {
+  if ($("#fTitCi").value) validarCampo("fTitCi");
+  pintarRail();
+}));
+
 $("#btnDescargar").addEventListener("click", descargar);
 $("#btnOtra").addEventListener("click", () => {
   D.tipos.forEach(t => S.cant[t.id] = 0);
   S.orden = null; S.entradas = [];
+  // La próxima puede ser otra mesa a nombre de otro: el carnet no se arrastra.
+  limpiarTitular();
   pintarTipos(); irA("entradas");
 });
 

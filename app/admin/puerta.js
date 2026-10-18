@@ -707,7 +707,11 @@ function resolverLocal(code) {
   const e = P.ix.get(code);
   if (!e) return { resultado: "no_existe", code, offline: true };
 
-  const ficha = { code, cliente: e.n, tipo: e.t, offline: true };
+  /* tn/td solo vienen en las manillas de una mesa (0107): el titular y su
+     carnet ENMASCARADO. El completo no viaja al padrón, que queda guardado
+     en este teléfono. */
+  const ficha = { code, cliente: e.n, tipo: e.t, offline: true,
+                  titular: e.tn || null, titular_ci: e.td || null };
   /* 'usada' y 'anulada' son los dos estados que puede tener acá una
      entrada que no sirve, y el cartel ya sabe dibujar los dos con su
      motivo. Se pasa el estado tal cual: traducirlo sería inventar un
@@ -1039,7 +1043,7 @@ function armarDeshacer(d) {
   caja.dataset.on = "1";
   caja.innerHTML = `
     <span class="puerta-deshacer-txt">Dejaste entrar a
-      <b>${esc(d.cliente || "#" + d.code)}</b></span>
+      <b>${esc(d.titular ? `la mesa de ${d.titular}` : (d.cliente || "#" + d.code))}</b></span>
     <button type="button" class="btn plano chico" id="pBtnDeshacer">
       Deshacer <span id="pDeshacerSeg"></span></button>`;
   $("#pBtnDeshacer").onclick = correrDeshacer;
@@ -1133,6 +1137,12 @@ function mostrarCartel(r) {
   const detalle = [];
   if (r.cliente) detalle.push(`<strong>${esc(r.cliente)}</strong>`);
   if (r.tipo)    detalle.push(esc(r.tipo));
+  /* La mesa va a nombre de alguien que puede no ser quien pagó (0107): el
+     portero compara este nombre y este carnet con el que le muestran. En
+     línea llega el carnet completo; sin señal, los últimos cuatro. */
+  const mesa = r.titular
+    ? `Mesa a nombre de <b>${esc(r.titular)}</b>${r.titular_ci ? ` · CI ${esc(r.titular_ci)}` : ""}`
+    : "";
 
   let motivo = "";
   if (r.resultado === "usada")
@@ -1161,6 +1171,7 @@ function mostrarCartel(r) {
     <span class="puerta-titulo">${c.titulo}</span>
     ${r.offline ? `<span class="puerta-sinsenal">sin señal</span>` : ""}
     ${detalle.length ? `<span class="puerta-quien">${detalle.join(" · ")}</span>` : ""}
+    ${mesa ? `<span class="puerta-mesa">${mesa}</span>` : ""}
     ${motivo ? `<span class="puerta-motivo">${motivo}</span>` : ""}
     ${r.code ? `<span class="puerta-code">#${esc(r.code)}</span>` : ""}`;
 

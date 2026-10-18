@@ -67,7 +67,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&family=Inter:wght@500&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=46">
+<link rel="stylesheet" href="/styles.css?v=47">
 </head>
 <body>
 
@@ -273,6 +273,46 @@
                      placeholder="vos@correo.com">
               <em class="error" id="eMail"></em>
             </label>
+            <!-- La mesa va a nombre de alguien (0107): en la puerta preguntan
+                 por esa persona y su carnet, y puede no ser quien paga. Se ve
+                 sólo con una mesa en el carrito (app.js, hayMesa) y viaja en
+                 crear-orden; el carnet NO se recuerda en este teléfono. -->
+            <fieldset class="campo ancho titular" id="bloqueTitular" hidden>
+              <legend>¿A nombre de quién va la mesa?</legend>
+              <p class="titular-nota">En la puerta van a pedir este carnet.</p>
+              <label class="tc-fila titular-yo" for="fTitYo">
+                <input id="fTitYo" type="checkbox">
+                <span class="tc-texto">Es para mí</span>
+              </label>
+              <label class="campo ancho">
+                <span>Nombre y apellido</span>
+                <input id="fTitNombre" name="titular_nombre" type="text" autocomplete="off"
+                       placeholder="Como figura en su carnet">
+                <em class="error" id="eTitNombre"></em>
+              </label>
+              <div class="titular-ci">
+                <label class="campo">
+                  <span>Carnet</span>
+                  <input id="fTitCi" name="titular_ci" type="text" inputmode="numeric"
+                         autocomplete="off" placeholder="Número de carnet">
+                </label>
+                <label class="campo">
+                  <span>Complemento</span>
+                  <input id="fTitComp" name="titular_complemento" type="text" maxlength="2"
+                         autocomplete="off" autocapitalize="characters" placeholder="Si tiene">
+                </label>
+                <label class="campo">
+                  <span>Extensión</span>
+                  <select id="fTitExt" name="titular_ext">
+                    <option value="">Sin extensión</option>
+                    <option>LP</option><option>CB</option><option>SC</option>
+                    <option>OR</option><option>PT</option><option>CH</option>
+                    <option>TJ</option><option>BN</option><option>PD</option>
+                  </select>
+                </label>
+              </div>
+              <em class="error" id="eTitCi"></em>
+            </fieldset>
             <!-- Obligatorio: crear-orden exige `tc` (la versión vigente, TC_VERSION
                  en app.js) y sin eso no hay orden. Los links abren aparte para no
                  perder lo ya escrito. Clic en un link no tilda el casillero: el
@@ -415,6 +455,6 @@
 <!-- La sesión del comprador. Antes de app.js: crearOrden le pide el token
      y la pantalla "listo" le pide crear/entrar/vincular. -->
 <script src="/cuenta.js?v=4"></script>
-<script src="/app.js?v=54"></script>
+<script src="/app.js?v=55"></script>
 </body>
 </html>

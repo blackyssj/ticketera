@@ -78,7 +78,48 @@ function traducir(m: string) {
   if (m.includes("EVENTO_NO_PUBLICADO")) return "El evento todavía no está a la venta.";
   if (m.includes("SIN_FASE")) return "No hay ninguna fase de venta abierta.";
   if (m.includes("TIPO_NO_VENDIBLE")) return "Ese tipo de entrada no se vende en esta fase.";
+  if (m.includes("UNA_MESA")) return UNA_MESA;
+  if (m.includes("FALTA_TITULAR"))
+    return "Para reservar una mesa poné el nombre y el carnet de la persona a cuyo nombre va.";
+  if (m.includes("CI_INVALIDO")) return "El número de carnet no es válido.";
   return "No se pudo reservar. Probá de nuevo.";
+}
+
+const UNA_MESA = "Una mesa por compra. Si querés otra, hacé otra compra.";
+
+/* ── el titular de la mesa (0107) ──
+   Una mesa es una reserva para un grupo y en la puerta preguntan por la
+   persona a cuyo nombre está, con su carnet. Se normaliza igual que en
+   crear_orden —la base repite todo esto y tiene CHECK con la misma forma—
+   para que un carnet mal escrito vuelva con una frase y no con un error
+   de constraint.
+
+   Carnet boliviano: 5 a 10 dígitos (sin puntos ni espacios), "E-" adelante
+   si es de extranjero, y un complemento opcional de 2 caracteres (los
+   duplicados del SEGIP, "1A") que se guarda pegado: 1234567-1A. La
+   extensión es opcional porque los carnets nuevos de número único no la
+   llevan; se aceptan los alias que la gente escribe (BE, PA, PN). */
+const EXTENSIONES = new Set(["LP", "CB", "SC", "OR", "PT", "CH", "TJ", "BN", "PD"]);
+const ALIAS_EXT: Record<string, string> = { BE: "BN", PA: "PD", PN: "PD" };
+
+type Titular = { titular_nombre: string; titular_ci: string; titular_ci_ext: string | null };
+
+function leerTitular(t: any): Titular | string {
+  const nombre = String(t?.nombre ?? "").replace(/\s+/g, " ").trim().slice(0, 80).trim();
+  if (!/^\S+( \S+)+$/.test(nombre))
+    return "Poné nombre y apellido de la persona a cuyo nombre va la mesa.";
+  // "E1234567" es el mismo carnet que "E-1234567"; y si el complemento
+  // vino pegado al número (1234567-1A) también vale.
+  const ci = String(t?.ci ?? "").toUpperCase().replace(/[\s.]/g, "").replace(/^-+|-+$/g, "")
+    .replace(/^E(?=\d)/, "E-");
+  const m = /^((?:E-)?[0-9]{5,10})(?:-([0-9A-Z]{2}))?$/.exec(ci);
+  const comp = String(t?.complemento ?? "").toUpperCase().replace(/[\s.-]/g, "") || m?.[2] || "";
+  let ext = String(t?.ext ?? "").toUpperCase().trim();
+  ext = ALIAS_EXT[ext] ?? ext;
+  if (!m || (comp && !/^[0-9A-Z]{2}$/.test(comp)) || (ext && !EXTENSIONES.has(ext)))
+    return "Revisá el carnet de quien reserva la mesa.";
+  return { titular_nombre: nombre, titular_ci: comp ? `${m[1]}-${comp}` : m[1],
+           titular_ci_ext: ext || null };
 }
 
 /* Fechas de Bowie y BurTown (espejo de Plataforma Puerta, 0103): allá las
@@ -138,23 +179,48 @@ Deno.serve(async (req) => {
     // un id: si mandara el id, cualquiera con la consola abierta se
     // acreditaría las ventas de otro. Y se busca dentro del organizador del
     // evento, porque el mismo slug puede existir en otro tenant.
-    let rrpp_id: string | null = null;
     const r = String(b.r ?? "").trim().toLowerCase();
-    if (r && /^[a-z0-9-]{2,30}$/.test(r)) {
-      const p = await uno(
-        `perfiles?organizador_id=eq.${o.id}&slug=eq.${q(r)}&activo=is.true&select=id`);
-      rrpp_id = p?.id ?? null;   // un slug que no existe no rompe la venta
-    }
+    /* Las mesas del evento (0107) se piden junto con el relacionador, en
+       paralelo: casi siempre vuelve vacío y no le suma una vuelta a la
+       compra. Sirve para contestar "una mesa por compra" y "falta el
+       titular" con una frase antes de tocar la base; la que manda igual
+       es crear_orden, que repite las dos reglas. */
+    const [p, mesasEv] = await Promise.all([
+      r && /^[a-z0-9-]{2,30}$/.test(r)
+        ? uno(`perfiles?organizador_id=eq.${o.id}&slug=eq.${q(r)}&activo=is.true&select=id`)
+        : Promise.resolve(null),
+      // Si esta consulta falla, la compra no se cae por eso: decide la base.
+      rest(`tipo_entrada?evento_id=eq.${e.id}&categoria=eq.mesa&select=id`).catch(() => null),
+    ]);
+    // La atribución, como siempre: un slug que no existe no rompe la venta.
+    const rrpp_id: string | null = p?.id ?? null;
 
     const limpios = items.map((it) => it.mesa_id
       ? { mesa_id: String(it.mesa_id) }
       : { tipo_id: String(it.tipo_id), cantidad: Math.max(1, Math.min(50, Number(it.cantidad) || 1)) });
 
+    const sabe = Array.isArray(mesasEv);
+    const idsMesa = new Set((sabe ? mesasEv : []).map((t: { id: string }) => t.id));
+    const mesas = limpios.reduce((n: number, it: any) =>
+      n + (it.mesa_id ? 1 : idsMesa.has(it.tipo_id) ? it.cantidad : 0), 0);
+    if (mesas > 1) return json({ ok: false, motivo: UNA_MESA }, 400);
+    /* El titular viaja a la base solo si hay mesa: una compra de entradas
+       no guarda el carnet de nadie aunque el navegador lo mande (y si lo
+       mandara igual, crear_orden lo descarta). Sin la lista de mesas se
+       pasa el que vino bien escrito y la base decide si hacía falta. */
+    let titular: Titular | null = null;
+    if (mesas === 1 || (!sabe && comprador?.titular)) {
+      const t = leerTitular(comprador?.titular);
+      if (typeof t !== "string") titular = t;
+      else if (mesas === 1) return json({ ok: false, motivo: t }, 400);
+    }
+
     let data;
     try {
       data = await rpc("crear_orden", {
         p_evento: e.id, p_items: limpios,
-        p_comprador: { nombre, email, telefono: String(comprador?.telefono ?? "").slice(0, 30) },
+        p_comprador: { nombre, email, telefono: String(comprador?.telefono ?? "").slice(0, 30),
+                       ...(titular ?? {}) },
         p_client_key: client_key ?? null, p_ip_hash: await hashIp(req), p_rrpp: rrpp_id,
       });
     } catch (err) {

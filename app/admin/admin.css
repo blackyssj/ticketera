@@ -1121,6 +1121,10 @@ select:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--ro
 }
 .puerta-quien{font-size:clamp(17px,4.4vw,23px);font-weight:600;line-height:1.2}
 .puerta-motivo{font-size:14.5px;opacity:.9;max-width:30ch;line-height:1.35}
+/* La mesa a nombre de quién (0107), entre quién es y por qué: el portero
+   la lee contra el carnet que le muestran, así que va grande y sola. */
+.puerta-mesa{font-size:clamp(15px,4vw,19px);line-height:1.3;max-width:32ch}
+.puerta-mesa b{font-weight:700}
 .puerta-code{font-family:var(--dato);font-size:12px;letter-spacing:.1em;opacity:.72}
 
 .puerta-cartel.neutro{background:var(--sup-3);color:var(--txt)}
@@ -2127,3 +2131,24 @@ select{transition:border-color .15s ease,box-shadow .15s ease}
 .plat-socios{margin-top:18px}
 .plat-socios tr.yo td{background:var(--sup-2)}
 .plat-socios .aviso-caja{margin-top:12px;color:var(--dorado)}
+
+/* ─── mesas y combos (0107) ───
+   La marca va en dorado como el «Incluye»: es lo que se le promete al
+   comprador, no un dato interno. Una línea sola: personas, cuántas hay y
+   la comisión, en ese orden, que es el orden en que se pregunta. */
+.grilla tbody th em.marca-mesa{
+  margin-top:5px;font-family:var(--dato);font-size:10.5px;letter-spacing:.04em;
+  color:var(--dorado);-webkit-line-clamp:2;
+}
+/* Las fases donde se vende, como casillas en fila. El input de .form-fase
+   es de ancho completo: acá tiene que volver a ser un tilde. */
+.form-mesa .fases-mesa{display:flex;flex-wrap:wrap;align-items:center;gap:4px 18px}
+.form-mesa .fases-mesa .rotulo{
+  flex-basis:100%;font-family:var(--dato);font-size:11px;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--txt-3);
+}
+.form-mesa .fases-mesa label{flex-direction:row;align-items:center;gap:8px;min-height:44px;cursor:pointer}
+.form-mesa .fases-mesa input{width:20px;height:20px;padding:0;margin:0;accent-color:var(--rojo)}
+/* «Mesa a nombre de …» debajo de lo que compró: es la línea que se lee en
+   la puerta cuando llega alguien que no es el comprador. */
+.tabla td em.titular-compra{color:var(--dorado);font-size:11px}
