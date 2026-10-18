@@ -1413,7 +1413,7 @@ select{max-width:100%;padding-right:8px;cursor:pointer}
   font-family:var(--dato);font-size:12px;color:var(--txt-3);line-height:1.5;
 }
 .puerta-conteo-pie b{color:var(--txt-2);font-weight:500}
-body[data-filtro="1"] .puerta-conteo{border-color:rgba(246,180,74,.35)}
+body[data-pantalla="puerta"][data-filtro="1"] .puerta-conteo{border-color:rgba(246,180,74,.35)}
 
 /* ─── el giro automático ───
    Dentro de la tarjeta de pago, separado por una línea arriba: es una
@@ -1556,18 +1556,24 @@ body[data-pantalla="plataforma"] main{max-width:1440px}
    tiene puesto. Un tilde en un rincón se olvida en diez minutos y el
    portero pasa la noche creyendo que deja entrar gente. Así que el color
    se come el fondo, la barra de arriba y el marco del visor — no hay
-   ángulo desde el que la pantalla parezca normal. */
-body[data-filtro="1"]{background:#1E1503}
-body[data-filtro="1"] .cab{
+   ángulo desde el que la pantalla parezca normal.
+   Cada regla va colgada también de data-pantalla="puerta": el naranja
+   oscuro está pensado para la paleta oscura de la puerta, y si la marca
+   del body quedara puesta en otra pestaña (puerta.js la limpia en
+   apagar(), pero sin cámara apagar() no corría al irse) la oficina clara
+   quedaba con texto oscuro sobre marrón, ilegible. Así el filtro no puede
+   pintar nada fuera de la puerta aunque la marca se escape. */
+body[data-pantalla="puerta"][data-filtro="1"]{background:#1E1503}
+body[data-pantalla="puerta"][data-filtro="1"] .cab{
   background:#2E2005;border-bottom-color:rgba(246,180,74,.45);
 }
-body[data-filtro="1"] .marca{color:var(--aviso)}
-body[data-filtro="1"] .puerta-visor{
+body[data-pantalla="puerta"][data-filtro="1"] .marca{color:var(--aviso)}
+body[data-pantalla="puerta"][data-filtro="1"] .puerta-visor{
   border-color:var(--aviso);box-shadow:0 0 0 3px rgba(246,180,74,.22);
 }
 /* Franja diagonal arriba del visor: es la señal que se reconoce sin leer
    nada, la misma de una cinta de obra. */
-body[data-filtro="1"] .puerta-visor::before{
+body[data-pantalla="puerta"][data-filtro="1"] .puerta-visor::before{
   content:"";position:absolute;inset:0 0 auto 0;height:7px;z-index:3;
   background:repeating-linear-gradient(115deg,
     var(--aviso) 0 13px, #231703 13px 26px);

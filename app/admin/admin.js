@@ -366,6 +366,15 @@ function mostrar(p) {
      de adelante. El CSS cambia la paleta entera colgándose de esta marca
      (body[data-pantalla="puerta"]), y la barra del navegador acompaña. */
   document.body.dataset.pantalla = p;
+  /* Irse de la puerta la apaga acá y no sólo desde su bucle. El bucle se
+     da cuenta solo de que el <video> quedó huérfano, pero si la cámara
+     nunca arrancó (permiso negado, sin jsQR, sin https) no hay bucle:
+     quedaban vivos el refresco del padrón y la marca del modo filtro en
+     el body, que pintaba de marrón la oficina clara. apagar() no toca
+     P.filtro, así que al volver a la puerta el filtro sigue como el
+     portero lo dejó. A la puerta misma no hace falta: su pantalla()
+     arranca apagando. */
+  if (p !== "puerta" && window.PUERTA) window.PUERTA.apagar();
   const tema = document.querySelector('meta[name="theme-color"]');
   if (tema) tema.content = p === "puerta" ? "#131316" : "#FFFFFF";
   salirEvento();
