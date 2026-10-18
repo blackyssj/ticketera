@@ -992,11 +992,16 @@ async function pantallaEntradas(eventoId) {
     : { data: [] };
   const P = new Map((precios.data || [])
     .map(p => [`${p.fase_id}|${p.tipo_id}`, p]));
-  /* Las fases que terminan por cantidad: todos sus precios tienen cupo.
-     Son las únicas que fase_vigente() (0060) deja atrás al agotarse. */
+  /* Las fases que terminan por cantidad: todo lo que las sostiene tiene
+     tope. Son las únicas que fase_vigente() (0060) deja atrás al agotarse.
+     Se cuenta lo mismo que cuenta ella (filasQueSostienen): una mesa sin
+     tope en «Welcome» no la mantiene abierta, y contarla pintaba «First»
+     en rojo, tapada, cuando en realidad espera a que se agote «Welcome». */
+  const tipoDe = new Map(T.map(t => [t.id, t]));
   const limitadas = new Set(F.filter(f => {
-    const ps = (precios.data || []).filter(p => p.fase_id === f.id);
-    return ps.length > 0 && ps.every(p => p.cupo != null);
+    const ps = filasQueSostienen((precios.data || []).filter(p => p.fase_id === f.id), tipoDe);
+    return ps.length > 0 &&
+      ps.every(p => p.cupo != null || tipoDe.get(p.tipo_id).cupo_total != null);
   }).map(f => f.id));
 
   $("#main").innerHTML = `
@@ -1337,6 +1342,22 @@ function proximaFase(F) {
   return futuras.length ? futuras[0].id : null;
 }
 
+/* Las filas de precio que mantienen abierta una fase, con la regla de
+   fase_vigente (0107): solo lo activo y en cartelera, y si la fase vende
+   entradas, solo las entradas. Una mesa sin vender no sostiene la fase de
+   las Generales; en una fase de solo mesas, la sostienen las mesas. El
+   panel tiene que contar igual que la base: si suma las mesas, la fase
+   que vendió sus 50 Generales no dice «Agotada» y la siguiente del
+   escalonado sale en rojo. */
+function filasQueSostienen(ps, tipoDe) {
+  const vivos = ps.filter(p => {
+    const t = tipoDe.get(p.tipo_id);
+    return t && t.activo && t.en_cartelera;
+  });
+  const entradas = vivos.filter(p => tipoDe.get(p.tipo_id).categoria === "entrada");
+  return entradas.length ? entradas : vivos;
+}
+
 /* Cinco estados, y el que justifica la función es `tapada`: una fase
    dentro de su ventana que igual no vende, porque otra de `orden` menor
    también lo está. Las otras cuatro se pueden deducir de las fechas;
@@ -1562,6 +1583,17 @@ function formMesa(eventoId, t, F, P) {
   const precio = conPrecio.length ? Number(precioDe(conPrecio[0]).precio) : "";
   const marcada = f => t ? !!precioDe(f) : f.activo !== false;
   const val = v => v == null ? "" : esc(String(v));
+  /* La grilla deja poner un precio distinto en cada fase y este formulario
+     muestra uno solo. Si no se dice, el organizador entra a corregir el
+     «Incluye», guarda, y la General que valía 1200 queda a 900 sin que
+     nadie se entere. Se listan los de hoy y el precio solo viaja a las
+     fases que ya tenían uno si lo cambió (tocar_precio en guardar_mesa). */
+  const distintos = new Set(conPrecio.map(f => Number(precioDe(f).precio))).size > 1;
+  const notaPrecios = distintos
+    ? `<em class="ayuda">Hoy tiene precios distintos por fase (${conPrecio.map(f =>
+        `${esc(f.nombre)} ${esc(bs(precioDe(f).precio))}`).join(" · ")}). Si no tocás el
+        precio, quedan así; si lo cambiás, va el mismo en todas las marcadas.</em>`
+    : "";
   z.innerHTML = `
     <form class="form-fase form-tipo form-mesa" id="formMesa">
       <h3>${t ? `Mesa «${esc(t.nombre)}»` : "Mesa o combo nuevo"}</h3>
@@ -1574,7 +1606,7 @@ function formMesa(eventoId, t, F, P) {
         <em class="ayuda">Una manilla por persona.</em></label>
       <label><span>Precio (Bs)</span>
         <input id="mPrecio" type="number" min="0" step="1" required value="${val(precio)}">
-        <em class="ayuda" id="mPaga"></em></label>
+        <em class="ayuda" id="mPaga"></em>${notaPrecios}</label>
       <label><span>Cuántas hay</span>
         <input id="mCantidad" type="number" min="1" step="1" placeholder="sin tope"
                value="${val(t && t.cupo_total)}">
@@ -1598,8 +1630,12 @@ function formMesa(eventoId, t, F, P) {
             marcada(f) ? " checked" : ""}> ${esc(f.nombre)}</label>`).join("")
           : `<span class="ayuda">Todavía no hay fases: la mesa se crea sin precio. Creá una fase y volvé a editarla.</span>`}
       </div>
-      <p class="ayuda ancha">El mismo precio en todas las fases que marques; para precios distintos
-         por fase, cambialos después en la grilla. Al comprar se pide el nombre y el carnet de
+      <p class="ayuda ancha">${t
+         ? `El precio de acá entra en las fases que marques recién, y en todas las marcadas
+            solo si lo cambiás: si no lo tocás, cada fase se queda con el suyo. Los topes por
+            fase que pusiste en la grilla tampoco se pisan.`
+         : `El mismo precio en todas las fases que marques; para precios distintos
+            por fase, cambialos después en la grilla.`} Al comprar se pide el nombre y el carnet de
          la persona a cuyo nombre va la mesa, y es una mesa por compra.</p>
       <p class="error" id="mError"></p>
       <div class="acciones">
@@ -1626,6 +1662,10 @@ function formMesa(eventoId, t, F, P) {
       cantidad: n("#mCantidad"), comision: n("#mComision"),
       descripcion: $("#mDesc").value.trim(), incluye: $("#mIncluye").value.trim(),
       fases,
+      /* Sin esto guardar_mesa pone este precio en todas las fases marcadas,
+         y las que tenían otro desde la grilla se aplanan. Se compara el
+         número y no el texto: «900» y «900.0» son el mismo precio. */
+      tocar_precio: !t || !conPrecio.length || n("#mPrecio") !== precio,
     };
     await conBoton($("#mGuardar"), "Guardando…", async () => {
       const { data, error } = await sb.rpc("guardar_mesa",
@@ -3194,7 +3234,7 @@ function estadoFaseVenta(f) {
      perdía el único dato que el organizador quiere ver de un vistazo: que
      se vendió entera. La ventana no se esconde: sigue escrita abajo del
      nombre. */
-  if (f.cupo != null && f.unidades >= f.cupo) return { txt: "Agotada", cls: "dorada" };
+  if (f.agotada) return { txt: "Agotada", cls: "dorada" };
   if (f.hasta && Date.parse(f.hasta) <= ahora) return { txt: "Terminó", cls: "gris" };
   return { txt: "En espera", cls: "gris" };
 }
@@ -3218,6 +3258,9 @@ function ventanaFaseVenta(f) {
    · manillas, de entradas no anuladas, cortesías con fase incluidas;
    · el cupo de la fase es la suma de sus cupos, y si un precio no tiene
      tope la fase tampoco: sumar «sin tope» como cero inventaría un agotado.
+     Solo de lo que sostiene la fase (filasQueSostienen, la regla de 0107):
+     en una fase con entradas las mesas no cuentan, o la General vendida
+     entera no diría «Agotada» por una mesa que nadie compró.
 
    Lo que no tiene fase va aparte en `sin_fase` y no se reparte: asignarlo
    a una fase sería inventar de dónde vino. */
@@ -3250,7 +3293,8 @@ async function ventasPorFase(eventoId) {
     leerTodas(() => sb.from("evento_fase")
       .select("id,nombre,desde,hasta,activo,orden").eq("evento_id", eventoId)),
     leerTodas(() => sb.from("tipo_entrada")
-      .select("id,nombre,activo,manillas,orden").eq("evento_id", eventoId)),
+      .select("id,nombre,activo,manillas,orden,categoria,en_cartelera,cupo_total")
+      .eq("evento_id", eventoId)),
     sb.rpc("fase_vigente", { p_evento: eventoId }),
     /* `!inner` para que el filtro por la orden recorte los ítems, y no que
        sólo vacíe la columna embebida dejando pasar los de órdenes impagas. */
@@ -3270,9 +3314,12 @@ async function ventasPorFase(eventoId) {
 
   const clave = (f, t) => f + "|" + t;
   const venta = new Map(), ordenesFase = new Map(), man = new Map();
+  // Lo pagado de cada tipo en todo el evento: contra eso se mide cupo_total.
+  const vendidoTipo = new Map();
   items.forEach(i => {
     const k = clave(i.fase_id, i.tipo_id);
     const v = venta.get(k) || { unidades: 0, recaudado: 0 };
+    vendidoTipo.set(i.tipo_id, (vendidoTipo.get(i.tipo_id) || 0) + Number(i.cantidad));
     v.unidades += Number(i.cantidad);
     v.recaudado += Number(i.cantidad) * Number(i.precio_unitario);
     venta.set(k, v);
@@ -3293,6 +3340,7 @@ async function ventasPorFase(eventoId) {
     man.set(k, m);
   });
   const precioDe = new Map(precios.map(p => [clave(p.fase_id, p.tipo_id), p]));
+  const tipoDe = new Map(tipos.map(t => [t.id, t]));
   const porOrden = (a, b) => (a.orden - b.orden) || String(a.nombre).localeCompare(b.nombre);
   const T = tipos.slice().sort(porOrden);
   const redondo = n => Math.round(n * 100) / 100;
@@ -3326,11 +3374,27 @@ async function ventasPorFase(eventoId) {
            de los tipos listados: una cortesía con fase y sin tipo cuenta. */
         const mf = [...man.entries()].filter(([k]) => k.startsWith(f.id + "|")).map(([, m]) => m);
         const suma = (arr, c) => arr.reduce((a, x) => a + Number(x[c] || 0), 0);
+        /* El cupo y el «Agotada» salen de lo que sostiene la fase, igual
+           que en fase_vigente: una fila se termina por su cupo en la fase
+           o por el cupo_total del producto (lo pagado en todo el evento).
+           Sin cupo en la fase, el de la mesa es cupo_total: es lo más que
+           puede vender. Unidades y recaudado siguen siendo de todo. */
+        const cuentan = filasQueSostienen(ps, tipoDe);
+        const enFase = p => (venta.get(clave(f.id, p.tipo_id)) || {}).unidades || 0;
+        const topeDe = p => p.cupo != null ? Number(p.cupo)
+          : tipoDe.get(p.tipo_id).cupo_total != null ? Number(tipoDe.get(p.tipo_id).cupo_total) : null;
+        const termino = p => {
+          const t = tipoDe.get(p.tipo_id);
+          return (p.cupo != null && enFase(p) >= Number(p.cupo)) ||
+                 (t.cupo_total != null && (vendidoTipo.get(t.id) || 0) >= Number(t.cupo_total));
+        };
         return {
           fase_id: f.id, nombre: f.nombre, desde: f.desde, hasta: f.hasta, activo: f.activo,
           vigente: f.id === vig.data,
-          cupo: !ps.length || ps.some(p => p.cupo == null)
-            ? null : ps.reduce((a, p) => a + Number(p.cupo), 0),
+          cupo: !cuentan.length || cuentan.some(p => topeDe(p) == null)
+            ? null : cuentan.reduce((a, p) => a + topeDe(p), 0),
+          unidades_cupo: cuentan.reduce((a, p) => a + enFase(p), 0),
+          agotada: cuentan.length > 0 && cuentan.every(termino),
           precios: ps.length,
           ordenes: ordenesFase.has(f.id) ? ordenesFase.get(f.id).size : 0,
           unidades: suma(filasTipo, "unidades"),
@@ -3445,7 +3509,7 @@ function bloqueFases(v) {
               ? `<em>${num(f.ordenes)} ${Number(f.ordenes) === 1 ? "orden" : "órdenes"}</em>` : ""}</td>
           <td class="n" data-rot="Manillas">${num(f.manillas)}${Number(f.manillas_anuladas)
               ? `<em>${num(f.manillas_anuladas)} anuladas</em>` : ""}</td>
-          <td class="n" data-rot="Cupo">${cupoCelda(f.unidades, f.cupo)}</td>
+          <td class="n" data-rot="Cupo">${cupoCelda(f.unidades_cupo, f.cupo)}</td>
           <td class="n" data-rot="Recaudado">${bs(f.recaudado)}</td>
           <td class="n" data-rot="Del total">${pct(parte.toFixed(1))}</td>
         </tr>

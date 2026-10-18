@@ -619,7 +619,7 @@ declare
   v_t tipo_entrada;
   v_nombre text; v_desc text; v_incluye text;
   v_personas int; v_precio numeric(12,2); v_cantidad int; v_comision numeric(12,2);
-  v_fases uuid[]; v_malas int; v_id uuid;
+  v_fases uuid[]; v_malas int; v_id uuid; v_tocar_precio boolean;
 begin
   if not puede_editar() then raise exception 'Sin permiso'; end if;
   -- El mismo mensaje para "no es tuyo" que para "no existe": si no, esta
@@ -651,6 +651,9 @@ begin
     v_precio   := (p_datos->>'precio')::numeric(12,2);
     v_cantidad := nullif(btrim(coalesce(p_datos->>'cantidad', '')), '')::int;
     v_comision := nullif(btrim(coalesce(p_datos->>'comision', '')), '')::numeric(12,2);
+    -- Sin el dato, como antes: el precio va a todas las fases marcadas.
+    -- El panel lo manda en false cuando el organizador no tocó el precio.
+    v_tocar_precio := coalesce((p_datos->>'tocar_precio')::boolean, true);
     if jsonb_typeof(p_datos->'fases') = 'array' then
       select coalesce(array_agg(distinct x::uuid), '{}') into v_fases
         from jsonb_array_elements_text(p_datos->'fases') x;
@@ -735,10 +738,23 @@ begin
      and fp.tipo_id = v_id
      and not (fp.fase_id = any(v_fases));
 
+  -- Una fase recién marcada entra con el precio y el tope del formulario.
+  -- Una que ya tenía fila NO se aplana: la grilla deja poner precio y cupo
+  -- distintos por fase, y el formulario muestra uno solo. Pisar sin
+  -- preguntar hacía que «Editar mesa» para corregir el «Incluye» dejara la
+  -- General a 900 en vez de 1200 (se cobraba de menos), y con «Cuántas hay»
+  -- vacío borraba el tope de 3 puesto en la grilla: con los dos topes en
+  -- null, disponibilidad_tipo da null y crear_orden deja de contar stock.
+  --   · el precio cambia solo si el organizador lo cambió (tocar_precio);
+  --   · el cupo de la fase sigue al nuevo cupo_total solo si era el espejo
+  --     del anterior (lo que puso este formulario); uno escrito a mano en
+  --     la grilla se respeta. v_t es la mesa ANTES del update.
   insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo)
   select v_org, f, v_id, v_precio, v_cantidad from unnest(v_fases) f
   on conflict (fase_id, tipo_id) do update
-    set precio = excluded.precio, cupo = excluded.cupo;
+    set precio = case when v_tocar_precio then excluded.precio else fase_precio.precio end,
+        cupo   = case when fase_precio.cupo is not distinct from v_t.cupo_total
+                      then excluded.cupo else fase_precio.cupo end;
 
   return jsonb_build_object('ok', true, 'tipo_id', v_id,
     'motivo', case when p_tipo is null then format('Listo: «%s» ya está en la grilla.', v_nombre)
@@ -748,7 +764,7 @@ revoke execute on function guardar_mesa(uuid, uuid, jsonb) from public, anon;
 grant execute on function guardar_mesa(uuid, uuid, jsonb) to authenticated;
 
 comment on function guardar_mesa(uuid, uuid, jsonb) is
-  'Crea (p_tipo null) o edita una mesa o combo: tipo_entrada con categoria mesa, personas (manillas), descripcion, incluye, cupo_total, comision_rrpp y su precio en las fases de p_datos.fases (todas las activas si no viene). Toca solo los precios de esa mesa. Exige puede_editar(); rechaza espejos de Puerta y cambiar personas con compras hechas (0107).';
+  'Crea (p_tipo null) o edita una mesa o combo: tipo_entrada con categoria mesa, personas (manillas), descripcion, incluye, cupo_total, comision_rrpp y su precio en las fases de p_datos.fases (todas las activas si no viene). Toca solo los precios de esa mesa. Editando, una fase que ya tenia fila conserva su precio si p_datos.tocar_precio es false (sin el dato vale true y lo pisa), y su cupo solo sigue a cupo_total si era el espejo del anterior: lo puesto a mano en la grilla no se aplana. Exige puede_editar(); rechaza espejos de Puerta y cambiar personas con compras hechas (0107).';
 
 -- ── 8. personas y categoría quedan quietas después de vender ──
 -- La misma regla que guardar_mesa, para el que escribe directo por la API
