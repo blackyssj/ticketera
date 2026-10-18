@@ -2121,3 +2121,9 @@ select{transition:border-color .15s ease,box-shadow .15s ease}
 }
 .form-tipo textarea:focus{outline:none;border-color:var(--rojo);box-shadow:0 0 0 3px var(--rojo-suave)}
 .form-tipo label .ayuda{margin-top:2px}
+
+/* Socios (0106): la fila propia resaltada, porque la pregunta que trae a
+   cada uno a esta tarjeta es "¿cuánto me queda a mí?". */
+.plat-socios{margin-top:18px}
+.plat-socios tr.yo td{background:var(--sup-2)}
+.plat-socios .aviso-caja{margin-top:12px;color:var(--dorado)}

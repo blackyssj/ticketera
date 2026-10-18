@@ -5153,11 +5153,12 @@ async function cambiarActivo(id) {
    muestra grande y solo, no escondido en una fila de una tabla. */
 async function pantallaPlataforma() {
   $("#main").innerHTML = `<p class="cargando">Cargando el tablero…</p>`;
-  const [rp, rg, re, rr] = await Promise.all([
+  const [rp, rg, re, rr, rs] = await Promise.all([
     sb.rpc("panel_plataforma"),
     sb.rpc("pagos_plataforma", { p_limite: 25 }),
     sb.rpc("eventos_plataforma"),
     sb.rpc("retiros_plataforma", { p_limite: 25 }),
+    sb.rpc("socios_plataforma"),
   ]);
   if (rp.error) { $("#main").innerHTML = `<p class="error">${esc(rp.error.message)}</p>`; return; }
 
@@ -5168,6 +5169,11 @@ async function pantallaPlataforma() {
      wallet quedaba corrido por ese monto. */
   const retiros = rr.error ? [] : (rr.data || []);
   const disponible = Number(t.disponible ?? t.margen ?? 0);
+  /* La parte de cada socio (0106). Si falla no se cae el tablero: es una
+     tarjeta más, y el cuadre de la caja no depende de ella. */
+  const soc = rs.error ? null : (rs.data || null);
+  const socios = (soc && soc.socios) || [];
+  const yoSocio = socios.find(x => x.id === S.yo.id);
   /* La plata no se liquida por cliente, se liquida por evento: cada fecha
      tiene su tope del 70%, su disponible y sus giros. Sin esta tabla, para
      saber cuál de las dos noches de un cliente tiene plata lista había que
@@ -5217,8 +5223,13 @@ async function pantallaPlataforma() {
       </dl>
       <label class="liq-auto-min">
         <span>Retiré</span>
-        <input id="montoRetiro" inputmode="decimal" value="${disponible > 0 ? disponible.toFixed(2) : ""}" size="8">
-        <span>Bs</span>
+        <input id="montoRetiro" inputmode="decimal" value="${yoSocio && Number(yoSocio.queda) > 0
+          ? Number(yoSocio.queda).toFixed(2) : ""}" size="8">
+        <span>Bs para</span>
+        <select id="socioRetiro">
+          ${socios.map(x => `<option value="${esc(x.id)}"${x.id === S.yo.id ? " selected" : ""}>${esc(x.nombre)}</option>`).join("")}
+          <option value="">Nadie (no es de un socio)</option>
+        </select>
         <input id="notaRetiro" type="text" placeholder="nota o referencia (opcional)" size="28">
         <button type="button" class="btn plano chico" id="btnRetiro">Anotar retiro</button>
       </label>
@@ -5235,6 +5246,32 @@ async function pantallaPlataforma() {
         Cuando lo empiece a retener, el número del cuadre de arriba se va a
         mover y va a ser por esto.</p>
     </section>
+
+    ${soc ? `
+    <section class="tarjeta plat-socios">
+      <h3>Socios</h3>
+      <p class="ayuda">${soc.corte
+        ? `En el cierre del ${fechaBO(soc.corte.al)} se repartieron
+           ${bs(soc.corte.repartido)}. Desde ahí la ganancia nueva es
+           <b>${bs(soc.ganancia_nueva)}</b> y se suma sola, en partes iguales.`
+        : `La ganancia se reparte en partes iguales entre los ${num(soc.cantidad)} socios.`}
+        Cada retiro se anota a nombre de quien lo cobró.</p>
+      <div class="tabla-scroll">
+        <table class="tabla">
+          <thead><tr><th>Socio</th><th class="num">Le toca</th><th class="num">Cobró</th>
+            <th class="num">Le queda</th></tr></thead>
+          <tbody>${socios.map(x => `<tr${x.id === S.yo.id ? ' class="yo"' : ""}>
+            <td><b>${esc(x.nombre)}</b>${x.id === S.yo.id ? ` <em class="ayuda">vos</em>` : ""}</td>
+            <td class="num">${bs(x.le_toca)}</td>
+            <td class="num tenue">−${bs(x.cobro)}</td>
+            <td class="num${Number(x.queda) > 0.99 ? " ok" : ""}"><b>${bs(x.queda)}</b></td>
+          </tr>`).join("")}</tbody>
+        </table>
+      </div>
+      ${disponible < 0 ? `<p class="ayuda aviso-caja">Ojo: ya se retiró ${bs(-disponible)} más de la
+        ganancia que entró. Lo que falta cobrar sale de la ganancia que venga, no
+        del monedero de hoy: ahí lo que hay es de los clientes.</p>` : ""}
+    </section>` : ""}
 
     <div class="cab-bloque">
       <h3 class="titulo-bloque">Por cliente</h3>
@@ -5343,7 +5380,7 @@ async function pantallaPlataforma() {
 
     <h3 class="titulo-bloque sep">Retiros de TICKETAZO</h3>
     ${retiros.length ? `<ul class="lista">${retiros.map(r => `<li class="fila quieta liq-linea">
-        <span class="fila-nombre">${esc(r.quien || "—")}
+        <span class="fila-nombre">${r.socio ? `Para ${esc(r.socio)}` : esc(r.quien || "—")}
           <em>${esc(r.nota || "")}${r.referencia ? " · ref " + esc(r.referencia) : ""}</em></span>
         <span class="cifra destacada">${bs(r.monto)}</span>
         <span class="fila-dato tenue">${fmtFH(r.cuando)}</span>
@@ -5370,10 +5407,12 @@ async function pantallaPlataforma() {
   if (br) br.onclick = async () => {
     const v = Number(String($("#montoRetiro").value).replace(",", "."));
     if (!(v > 0)) { avisar("Poné el monto que retiraste."); return; }
-    if (!confirm(`Anotar un retiro de ${bs(v)} de nuestra comisión.\n\n` +
-                 `No mueve plata: sólo queda registrado que ya lo sacamos del monedero.`)) return;
+    const sel = $("#socioRetiro"), socio = sel ? sel.value : "";
+    const para = socio ? (socios.find(x => x.id === socio) || {}).nombre : null;
+    if (!confirm(`Anotar un retiro de ${bs(v)}${para ? ` para ${para}` : " que no es de ningún socio"}.\n\n` +
+                 `No mueve plata: sólo queda registrado que ya salió del monedero.`)) return;
     const { data, error } = await sb.rpc("registrar_retiro_plataforma",
-      { p_monto: v, p_nota: $("#notaRetiro").value || null });
+      { p_monto: v, p_nota: $("#notaRetiro").value || null, p_socio: socio || null });
     if (error) { avisar(sinCodigo(error.message)); return; }
     avisar(data.motivo || (data.ok ? "Anotado." : "No se pudo anotar."));
     if (data.ok) pantallaPlataforma();
