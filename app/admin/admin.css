@@ -1388,6 +1388,17 @@ select{max-width:100%;padding-right:8px;cursor:pointer}
 .puerta-code{font-family:var(--dato);font-size:12px;letter-spacing:.1em;opacity:.72}
 
 .puerta-cartel.neutro{background:var(--sup-3);color:var(--txt)}
+/* El recibo de una mesa (0108): no deja pasar ni es un rechazo. Azul, que
+   no se confunde de lejos ni con el verde ni con el rojo, y el título más
+   chico porque son tres palabras y abajo hay que leer. */
+.puerta-cartel.recibo{background:#1D3A8F;color:#EEF3FF}
+.puerta-cartel.recibo .puerta-titulo{font-size:clamp(34px,10.5vw,62px)}
+/* "Ya se presentó a las 23:40": lo que delata una captura reenviada. Va
+   en caja propia para que se vea aunque nadie lea el resto. */
+.puerta-aviso{
+  font-weight:800;font-size:clamp(16px,4.6vw,21px);line-height:1.2;
+  padding:7px 12px;border-radius:8px;background:#FFE24B;color:#1A1300;
+}
 
 /* ─── el conteo ───
    Un número grande arriba del escáner y nada más. La tentación es una

@@ -55,6 +55,16 @@ const LECTURA_MS = 120;
 
 /* Cuánto queda el cartel antes de volver a mostrar la cámara. */
 const CARTEL_MS = 3800;
+/* El recibo de una mesa se LEE: tipo, lo que incluye, nombre, carnet y
+   correo, que el guardia compara contra el carnet en la mano. En 3,8 s no
+   se lee eso. Se saca antes tocándolo, como cualquier cartel. */
+const CARTEL_RECIBO_MS = 12000;
+
+/* El recibo de una mesa (0108) lleva un código que empieza con MESA. Los
+   de las entradas salen de un alfabeto sin vocales, así que nunca empiezan
+   así: con mirar el código ya se sabe que no es una entrada, con señal o
+   sin ella. El QR es el mismo EVT:<evento>:<code>. */
+const esRecibo = code => /^MESA/.test(String(code || ""));
 
 /* Cuánto dura el botón de deshacer. Corto a propósito: deshacer sirve para
    el error que se acaba de cometer y se vio. Una lista de ingresos con un
@@ -81,6 +91,7 @@ const P = {
   /* Lo de trabajar sin señal (ver el bloque "la puerta sin señal"). */
   padron: null,       // la lista bajada, tal cual la devolvió la base
   ix: null,           // code -> entrada, para no recorrer la lista por QR
+  rx: null,           // code -> recibo de mesa (0108), aparte de las entradas
   cola: [],           // ingresos hechos a ciegas, pendientes de subir
   conflictos: [],     // los que al subir resultaron ya usados por otra puerta
   red: true,          // lo que sabemos de la conexión por cómo fue la última llamada
@@ -171,6 +182,10 @@ const CARTELES = {
   otro_evento: { cls: "no",     titulo: "OTRA NOCHE" },
   ajeno:       { cls: "no",     titulo: "NO ES UNA ENTRADA" },
   error:       { cls: "no",     titulo: "NO SE PUDO" },
+  /* Ni verde ni rojo: un recibo no deja pasar a nadie (para entrar se usa
+     una entrada) y tampoco es un rechazo. Azul, distinto de todo lo demás,
+     para que nadie lo lea como PASA de lejos. */
+  recibo_mesa: { cls: "recibo", titulo: "RECIBO DE MESA" },
   /* Ni verde ni rojo: deshacer no es dejar pasar ni rechazar. En verde
      leería como "pasá" justo cuando se le está sacando el ingreso. */
   devuelta:    { cls: "neutro", titulo: "DEVUELTA" },
@@ -551,6 +566,13 @@ async function resolver(code, { aMano }) {
     }
     P.red = true;
     mostrarCartel(data || { resultado: "no_existe", code });
+    /* El recibo que se acaba de presentar con señal queda presentado
+       también en la lista de este teléfono: si la señal se corta antes del
+       próximo refresco, el segundo que lo muestre ve "ya se presentó". */
+    if (data && data.resultado === "recibo_mesa" && data.presentado_at && P.rx) {
+      const r = P.rx.get(code);
+      if (r && !r.p) { r.p = data.presentado_at; guardarJSON(llavePadron(P.evento.id), P.padron); }
+    }
     /* El deshacer se arma solo cuando ESTE escaneo consumió la entrada.
        Con filtro no hay nada que deshacer, y sobre una 'usada' el botón
        devolvería un ingreso que hizo otro. */
@@ -648,6 +670,15 @@ function indexar(padron) {
   return ix;
 }
 
+/* Los recibos de mesa van en su propia lista del padrón (0108) y en su
+   propio índice: si estuvieran en `entradas`, una puerta con el JavaScript
+   viejo les daría PASA. */
+function indexarRecibos(padron) {
+  const rx = new Map();
+  ((padron && padron.recibos) || []).forEach(r => rx.set(r.c, r));
+  return rx;
+}
+
 /* Lee del teléfono lo que haya guardado de ESTE evento. Se llama antes
    de pedir nada a la red: si el portero abre la puerta ya sin señal,
    tiene la lista de la última vez y puede trabajar desde el primer QR. */
@@ -656,6 +687,7 @@ function cargarPadronLocal() {
   if (!id) return;
   P.padron = leerJSON(llavePadron(id));
   P.ix = indexar(P.padron);
+  P.rx = indexarRecibos(P.padron);
   P.cola = leerJSON(llaveCola(id)) || [];
   pintarEstado();
 }
@@ -674,11 +706,16 @@ async function bajarPadron({ callado } = {}) {
     P.red = true;
     P.padron = data;
     P.ix = indexar(data);
+    P.rx = indexarRecibos(data);
     /* Los ingresos que todavía no se subieron se vuelven a aplicar
        sobre el padrón recién bajado. Sin esto, el portero escanea sin
        señal, el padrón se refresca en un respiro de conexión antes de
-       que la cola llegue a subirse, y el mismo QR vuelve a dar verde. */
+       que la cola llegue a subirse, y el mismo QR vuelve a dar verde.
+       Lo mismo con un recibo presentado sin señal: si no, el segundo
+       que lo muestre no ve "ya se presentó". */
     P.cola.forEach(i => {
+      const r = P.rx.get(i.code);
+      if (r) { if (!r.p) r.p = i.at; return; }
       const e = P.ix.get(i.code);
       if (e && e.e === "valida") { e.e = "usada"; e.u = i.at; }
     });
@@ -704,6 +741,7 @@ function resolverLocal(code) {
     return { resultado: "error", code,
              motivo: "Sin señal y sin lista guardada. Conectate una vez para bajarla." };
   }
+  if (esRecibo(code)) return reciboLocal(code);
   const e = P.ix.get(code);
   if (!e) return { resultado: "no_existe", code, offline: true };
 
@@ -736,6 +774,40 @@ function resolverLocal(code) {
   return { ...ficha, resultado: "valida" };
 }
 
+/* El recibo de una mesa sin señal (0108). La misma ficha que devuelve la
+   base en línea (recibo_puerta): tipo, incluye, nombre, carnet completo y
+   correo, que el padrón trae a propósito para esto. Nunca toca una
+   entrada. La primera vez anota la presentación —en el padrón y en la
+   cola, que la sube con los ingresos— para que el próximo que lo muestre
+   vea "ya se presentó", acá y en las otras puertas cuando suba. */
+function reciboLocal(code) {
+  /* Una lista bajada antes de 0108 no trae recibos: no es que el código
+     no exista, es que este teléfono no lo puede saber. */
+  if (!Array.isArray(P.padron.recibos)) {
+    return { resultado: "error", code,
+             motivo: "Es el recibo de una mesa y la lista guardada es vieja. Conectate para bajarla de nuevo." };
+  }
+  const r = P.rx && P.rx.get(code);
+  if (!r) return { resultado: "no_existe", code, offline: true };
+  const ficha = {
+    resultado: "recibo_mesa", recibo: true, code, offline: true,
+    estado: r.e, tipo: r.t, incluye: r.i, entradas_incluidas: r.k,
+    cliente: r.n, titular: r.n, titular_ci: r.d, email: r.m,
+    presentado_at: r.p || null, ya_presentado: !!r.p,
+  };
+  /* Con filtro no se anota nada, igual que marcar_filtro_entrada. */
+  if (r.e !== "valida" || r.p || P.filtro) return ficha;
+
+  const at = new Date().toISOString();
+  r.p = at;
+  P.cola.push({ code, at });
+  const id = P.evento.id;
+  P.guardado = guardarJSON(llaveCola(id), P.cola);
+  guardarJSON(llavePadron(id), P.padron);
+  pintarEstado();
+  return { ...ficha, presentado_at: at };
+}
+
 /* Sube la cola y vuelve a bajar el padrón. Se llama al volver la señal,
    al entrar a la pantalla y cada vez que se refresca el padrón. */
 async function sincronizar({ callado } = {}) {
@@ -754,8 +826,10 @@ async function sincronizar({ callado } = {}) {
       if (!data || !data.ok) throw new Error("respuesta inesperada");
 
       aplicados += Number(data.aplicados || 0);
+      /* Un recibo de mesa vuelve como 'recibo_mesa' (0108): se anotó su
+         presentación, no es un ingreso y no es un conflicto. */
       (data.detalle || []).forEach(d => {
-        if (d.resultado !== "valida")
+        if (d.resultado !== "valida" && d.resultado !== "recibo_mesa")
           conflictos.push({ code: d.code, resultado: d.resultado, used_at: d.used_at });
       });
 
@@ -799,11 +873,15 @@ function pintarEstado() {
   const caja = $("#pEstado");
   if (!caja) return;
 
-  const pend = P.cola.length;
+  /* Lo que espera subir son ingresos y, aparte, recibos de mesa que se
+     presentaron sin señal: llamarlos "ingresos" sería contar gente que no
+     entró. */
+  const pendRec = P.cola.filter(i => esRecibo(i.code)).length;
+  const pend = P.cola.length - pendRec;
   const conectado = hayRed();
   const conf = (P.conflictos || []).length;
 
-  if (conectado && !pend && !conf && P.guardado !== false) {
+  if (conectado && !pend && !pendRec && !conf && P.guardado !== false) {
     caja.dataset.on = "0";
     caja.innerHTML = "";
     return;
@@ -819,6 +897,8 @@ function pintarEstado() {
   if (pend)
     partes.push(`${pend} ingreso${pend === 1 ? "" : "s"} por subir` +
                 (P.sincronizando ? " (subiendo…)" : ""));
+  if (pendRec)
+    partes.push(`${pendRec} recibo${pendRec === 1 ? "" : "s"} de mesa por subir`);
   if (P.guardado === false)
     partes.push(`<b>El teléfono no deja guardar</b> — si se cierra la ` +
                 `pestaña se pierde lo que no se haya subido.`);
@@ -1019,6 +1099,7 @@ function pieFiltro(r) {
   const que = r.resultado === "no_existe" ? "ese código no existe"
             : r.resultado === "otro_evento" ? "es de otra fecha"
             : r.resultado === "ajeno" ? "ese QR no es una entrada"
+            : r.resultado === "recibo_mesa" ? "es el recibo de una mesa, no una entrada"
             : r.resultado === "usada" ? "ya había entrado"
             : r.resultado === "anulada" ? "estaba anulada"
             : "seguía válida, no se consumió";
@@ -1132,14 +1213,18 @@ function mostrarCartel(r) {
     r = { resultado: "no_existe", code: r.code };
   }
 
+  /* El recibo de una mesa (0108) tiene su propio cartel. */
+  if (r.resultado === "recibo_mesa") return cartelRecibo(caja, r);
+
   const c = CARTELES[r.resultado] || CARTELES.error;
 
   const detalle = [];
   if (r.cliente) detalle.push(`<strong>${esc(r.cliente)}</strong>`);
   if (r.tipo)    detalle.push(esc(r.tipo));
-  /* La mesa va a nombre de alguien que puede no ser quien pagó (0107): el
-     portero compara este nombre y este carnet con el que le muestran. En
-     línea llega el carnet completo; sin señal, los últimos cuatro. */
+  /* La entrada de una mesa: a nombre de quién está la mesa (0107) y, desde
+     0108, el tipo ya dice "Entrada · Mesa VIP". El portero compara el
+     nombre y el carnet con el que le muestran: en línea llega el carnet
+     completo; sin señal, los últimos cuatro. */
   const mesa = r.titular
     ? `Mesa a nombre de <b>${esc(r.titular)}</b>${r.titular_ci ? ` · CI ${esc(r.titular_ci)}` : ""}`
     : "";
@@ -1178,6 +1263,39 @@ function mostrarCartel(r) {
   sonar(c.cls);
   clearTimeout(P.tCartel);
   P.tCartel = setTimeout(ocultarCartel, CARTEL_MS);
+}
+
+/* El cartel del recibo. Lo que el dueño pidió que vea el guardia: tipo de
+   mesa, lo que incluye, nombre, carnet y correo. Arriba, en grande, que NO
+   es una entrada: el que lo muestra tiene que entrar con una. Si ya se
+   había mostrado, la hora va antes que todo lo demás: es lo que delata una
+   captura reenviada. Una mesa anulada sale en rojo: no hay mesa. */
+function cartelRecibo(caja, r) {
+  const anulada = r.estado === "anulada";
+  const inc = Number(r.entradas_incluidas || 0);
+  const ent = r.entradas && typeof r.entradas === "object" ? r.entradas : null;
+  const lineaEntradas = inc === 0 ? "Sin entradas incluidas"
+    : `${inc} entrada${inc === 1 ? "" : "s"} incluida${inc === 1 ? "" : "s"}` +
+      (ent ? ` · ${Number(ent.usadas || 0)} ya entr${Number(ent.usadas) === 1 ? "ó" : "aron"}` : "");
+
+  caja.className = `puerta-cartel ${anulada ? "no" : "recibo"}`;
+  caja.dataset.on = "1";
+  caja.innerHTML = `
+    <span class="puerta-titulo">${anulada ? "MESA ANULADA" : "RECIBO DE MESA"}</span>
+    ${r.offline ? `<span class="puerta-sinsenal">sin señal</span>` : ""}
+    <span class="puerta-motivo"><b>${anulada ? "Esta reserva se anuló. No hay mesa."
+      : "No da ingreso. Para entrar se usa una entrada."}</b></span>
+    ${!anulada && r.ya_presentado
+      ? `<span class="puerta-aviso">Ya se presentó a las ${esc(hora(r.presentado_at)) || "—"}</span>` : ""}
+    <span class="puerta-quien">${esc(r.tipo || "Mesa")}</span>
+    <span class="puerta-motivo">${r.incluye ? `Incluye: ${esc(r.incluye)} · ` : ""}${esc(lineaEntradas)}</span>
+    <span class="puerta-mesa">A nombre de <b>${esc(r.titular || "—")}</b>${
+      r.titular_ci ? ` · CI ${esc(r.titular_ci)}` : ""}${r.email ? `<br>${esc(r.email)}` : ""}</span>
+    ${r.code ? `<span class="puerta-code">#${esc(r.code)}</span>` : ""}`;
+
+  sonar(anulada ? "no" : "neutro");
+  clearTimeout(P.tCartel);
+  P.tCartel = setTimeout(ocultarCartel, CARTEL_RECIBO_MS);
 }
 
 function ocultarCartel() {

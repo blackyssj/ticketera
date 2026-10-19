@@ -94,7 +94,17 @@ Deno.serve(async (req) => {
     }
 
     const e = await uno(`eventos?id=eq.${o.evento_id}&select=id,nombre,lugar,fecha,hora_inicio,arte_url`);
-    const ent = await rest(`entradas?orden_id=eq.${id}&select=code,precio,estado,used_at,fase_id,tipo_entrada(nombre),mesas(etiqueta,categoria)&order=created_at`);
+    const ent = await rest(`entradas?orden_id=eq.${id}&select=code,precio,estado,used_at,fase_id,tipo_entrada(nombre,categoria),mesas(etiqueta,categoria)&order=created_at`);
+    /* El recibo de la mesa (0108), aparte y con red como lo de 0104: si la
+       función todavía no existe o falla, la página de entradas sale igual.
+       Una mesa sin entradas no tiene `ent[0]`, así que la fase (para el
+       arte) se busca en lo comprado. */
+    const [mesa, itemFase] = await Promise.all([
+      rpc("recibo_mesa_orden", { p_orden: id }).catch(() => null),
+      ent?.[0]?.fase_id ? Promise.resolve(null)
+        : uno(`orden_items?orden_id=eq.${id}&fase_id=not.is.null&select=fase_id&limit=1`).catch(() => null),
+    ]);
+    const faseId = ent?.[0]?.fase_id ?? itemFase?.fase_id ?? null;
     /* Dos datos de 0104, aparte y con red: si fallan (la columna todavía no
        existe porque 0104 no se aplicó, o un corte), la página sale como
        siempre. Esta es la página donde el que pagó ve su QR la noche del
@@ -104,8 +114,8 @@ Deno.serve(async (req) => {
            espejo (esa no lleva sello).
          · titulo_marca: el título es "BOWIE" y la noche va abajo. */
     const [fase, espejo, org] = await Promise.all([
-      ent?.[0]?.fase_id
-        ? uno(`evento_fase?id=eq.${ent[0].fase_id}&select=id,nombre,arte_url`) : Promise.resolve(null),
+      faseId
+        ? uno(`evento_fase?id=eq.${faseId}&select=id,nombre,arte_url`) : Promise.resolve(null),
       uno(`puerta_evento?evento_id=eq.${e.id}&select=fase_online`).catch(() => null),
       uno(`organizadores?id=eq.${o.organizador_id}&select=nombre,titulo_marca`).catch(() => null),
     ]);
@@ -138,11 +148,20 @@ Deno.serve(async (req) => {
          propio. La 'Online' del espejo no existe en Puerta: sin sello. */
       fase: { nombre: fase?.nombre ?? "", arte_url: fase?.arte_url ?? null,
               sello: espejo && fase?.id && fase.id !== espejo.fase_online ? fase.nombre : null },
-      entradas: (ent ?? []).map((x) => ({
+      entradas: (ent ?? []).map((x: any) => ({
         code: x.code, cliente: o.comprador_nombre, estado: x.estado, used_at: x.used_at,
-        etiqueta: x.tipo_entrada?.nombre
-          ?? ((x.mesas?.categoria === "lounge" ? "Lounge " : "Mesa ") + (x.mesas?.etiqueta ?? "")),
+        /* Las entradas de una mesa dicen de cuál (0108): son las que pasan
+           el molinete, y no se tienen que confundir con el recibo. */
+        etiqueta: x.tipo_entrada?.categoria === "mesa" ? `Entrada · ${x.tipo_entrada.nombre}`
+          : x.tipo_entrada?.nombre
+            ?? ((x.mesas?.categoria === "lounge" ? "Lounge " : "Mesa ") + (x.mesas?.etiqueta ?? "")),
+        mesa: x.tipo_entrada?.categoria === "mesa" ? x.tipo_entrada.nombre : null,
       })),
+      /* El recibo de la mesa, o null. Su QR es `EVT:<evento.id>:<mesa.code>`,
+         el mismo formato que una entrada: la puerta lo reconoce por el
+         código (MESA…) y muestra el recibo, nunca el molinete. El carnet
+         viene enmascarado: este link se reenvía. */
+      mesa: mesa ?? null,
     });
   } catch (err) {
     return json({ ok: false, motivo: String((err as Error).message ?? err) }, 500);

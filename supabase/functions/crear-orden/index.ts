@@ -69,30 +69,45 @@ async function compradorLogueado(req: Request): Promise<string | null> {
 }
 
 /* Los errores de la base salen con prefijo (SIN_CUPO:, MESA_TOMADA:, …).
-   El comprador no tiene por qué leer eso. */
-function traducir(m: string) {
-  if (m.includes("SIN_CUPO")) return "Se acabaron las entradas de ese tipo mientras elegías.";
-  if (m.includes("MESA_TOMADA")) return "Alguien tomó esa mesa hace un momento. Elegí otra.";
-  if (m.includes("TOPE:")) return "Pasaste el máximo de entradas por compra.";
-  if (m.includes("DEMASIADAS_ORDENES")) return "Tenés varias compras sin terminar. Cerrá alguna y volvé a intentar.";
-  if (m.includes("EVENTO_NO_PUBLICADO")) return "El evento todavía no está a la venta.";
-  if (m.includes("SIN_FASE")) return "No hay ninguna fase de venta abierta.";
-  if (m.includes("TIPO_NO_VENDIBLE")) return "Ese tipo de entrada no se vende en esta fase.";
-  if (m.includes("UNA_MESA")) return UNA_MESA;
-  if (m.includes("FALTA_TITULAR"))
-    return "Para reservar una mesa poné el nombre y el carnet de la persona a cuyo nombre va.";
-  if (m.includes("CI_INVALIDO")) return "El número de carnet no es válido.";
-  return "No se pudo reservar. Probá de nuevo.";
+   El comprador no tiene por qué leer eso. El código va aparte, en
+   `codigo`, para que la página pueda reaccionar (volver a elegir, ir a la
+   compra que ya tiene) sin leer la frase. */
+const FRASES: Array<[string, string]> = [
+  ["SIN_CUPO", "Se acabaron las entradas de ese tipo mientras elegías."],
+  ["MESA_TOMADA", "Alguien tomó esa mesa hace un momento. Elegí otra."],
+  ["TOPE", "Pasaste el máximo de entradas por compra."],
+  ["DEMASIADAS_ORDENES", "Tenés varias compras sin terminar. Cerrá alguna y volvé a intentar."],
+  ["EVENTO_NO_PUBLICADO", "El evento todavía no está a la venta."],
+  ["SIN_FASE", "No hay ninguna fase de venta abierta."],
+  ["TIPO_NO_VENDIBLE", "Ese tipo de entrada no se vende en esta fase."],
+  ["UNA_MESA", "Una mesa por persona. Elegí una sola."],
+  ["MESA_SOLA", "La mesa se compra sola. Si también querés entradas, hacé otra compra."],
+  ["FALTA_TITULAR", "La mesa va a tu nombre: poné tu nombre y apellido y tu carnet."],
+  ["CI_INVALIDO", "El número de carnet no es válido."],
+  ["FALTA_CORREO", "Para una mesa necesitamos tu correo: ahí te llegan el QR y el recibo."],
+  ["YA_TIENE_MESA", "Ese carnet ya tiene una mesa en este evento. Es una mesa por persona."],
+  ["MESA_EN_CURSO", "Ya hay una reserva de mesa con ese carnet esperando el pago. " +
+                    "Terminá ese pago o esperá 10 minutos y volvé a intentar."],
+];
+function traducir(m: string): { codigo: string | null; motivo: string } {
+  for (const [codigo, motivo] of FRASES)
+    if (m.includes(codigo + ":")) return { codigo, motivo };
+  return { codigo: null, motivo: "No se pudo reservar. Probá de nuevo." };
 }
+const frase = (codigo: string) => FRASES.find(([c]) => c === codigo)![1];
 
-const UNA_MESA = "Una mesa por compra. Si querés otra, hacé otra compra.";
+/* Las condiciones de la reserva que el comprador aceptó al tildar los
+   términos. Las mesas exigen la versión que las trae (la del 19/10): con
+   la página vieja en caché se le pide que la recargue antes de pagar,
+   para que nadie pague una mesa sin haber visto "sin devolución". */
+const TC_MESAS_DESDE = "2026-10-19";
 
-/* ── el titular de la mesa (0107) ──
-   Una mesa es una reserva para un grupo y en la puerta preguntan por la
-   persona a cuyo nombre está, con su carnet. Se normaliza igual que en
-   crear_orden —la base repite todo esto y tiene CHECK con la misma forma—
-   para que un carnet mal escrito vuelva con una frase y no con un error
-   de constraint.
+/* ── el titular de la mesa (0107, 0108) ──
+   La mesa va a nombre de QUIEN LA COMPRA (0108): en la puerta preguntan
+   por esa persona, con su carnet, y el recibo le llega a su correo. Se
+   normaliza igual que en crear_orden —la base repite todo esto y tiene
+   CHECK con la misma forma— para que un carnet mal escrito vuelva con una
+   frase y no con un error de constraint.
 
    Carnet boliviano: 5 a 10 dígitos (sin puntos ni espacios), "E-" adelante
    si es de extranjero, y un complemento opcional de 2 caracteres (los
@@ -102,24 +117,42 @@ const UNA_MESA = "Una mesa por compra. Si querés otra, hacé otra compra.";
 const EXTENSIONES = new Set(["LP", "CB", "SC", "OR", "PT", "CH", "TJ", "BN", "PD"]);
 const ALIAS_EXT: Record<string, string> = { BE: "BN", PA: "PD", PN: "PD" };
 
-type Titular = { titular_nombre: string; titular_ci: string; titular_ci_ext: string | null };
+type Carnet = { nombre: string; ci: string; ci_ext: string | null };
 
-function leerTitular(t: any): Titular | string {
-  const nombre = String(t?.nombre ?? "").replace(/\s+/g, " ").trim().slice(0, 80).trim();
+/* El carnet viene como comprador.ci / ci_ext / complemento (0108) o, desde
+   una página de 0107 que todavía no se recargó, como comprador.titular. El
+   nombre es SIEMPRE el del comprador: el titular de 0107 que no era quien
+   pagaba ya no existe. */
+function leerCarnet(c: any): Carnet | string {
+  const t = c?.titular ?? {};
+  const nombre = String(c?.nombre ?? "").replace(/\s+/g, " ").trim().slice(0, 80).trim();
   if (!/^\S+( \S+)+$/.test(nombre))
-    return "Poné nombre y apellido de la persona a cuyo nombre va la mesa.";
+    return "La mesa va a tu nombre: poné tu nombre y apellido.";
   // "E1234567" es el mismo carnet que "E-1234567"; y si el complemento
   // vino pegado al número (1234567-1A) también vale.
-  const ci = String(t?.ci ?? "").toUpperCase().replace(/[\s.]/g, "").replace(/^-+|-+$/g, "")
+  const ci = String(c?.ci ?? t?.ci ?? "").toUpperCase().replace(/[\s.]/g, "").replace(/^-+|-+$/g, "")
     .replace(/^E(?=\d)/, "E-");
+  if (!ci) return "La mesa va a tu nombre: poné tu número de carnet.";
   const m = /^((?:E-)?[0-9]{5,10})(?:-([0-9A-Z]{2}))?$/.exec(ci);
-  const comp = String(t?.complemento ?? "").toUpperCase().replace(/[\s.-]/g, "") || m?.[2] || "";
-  let ext = String(t?.ext ?? "").toUpperCase().trim();
+  const comp = String(c?.complemento ?? t?.complemento ?? "").toUpperCase().replace(/[\s.-]/g, "")
+    || m?.[2] || "";
+  let ext = String(c?.ci_ext ?? c?.ext ?? t?.ext ?? "").toUpperCase().trim();
   ext = ALIAS_EXT[ext] ?? ext;
   if (!m || (comp && !/^[0-9A-Z]{2}$/.test(comp)) || (ext && !EXTENSIONES.has(ext)))
-    return "Revisá el carnet de quien reserva la mesa.";
-  return { titular_nombre: nombre, titular_ci: comp ? `${m[1]}-${comp}` : m[1],
-           titular_ci_ext: ext || null };
+    return "Revisá tu número de carnet.";
+  return { nombre, ci: comp ? `${m[1]}-${comp}` : m[1], ci_ext: ext || null };
+}
+
+/* Dispara el correo sin bloquear la respuesta (el mismo de estado-orden).
+   Solo lo usa la mesa gratis: la de pago lo manda quien confirma el pago. */
+function avisarPorCorreo(orden: string) {
+  const tarea = fetch(`${SB}/functions/v1/enviar-entradas`, {
+    method: "POST", headers: H, body: JSON.stringify({ orden }),
+  }).then(async (r) => {
+    if (!r.ok) console.error(`enviar-entradas devolvió ${r.status} para ${orden}`);
+  }).catch((e) => console.error(`enviar-entradas falló para ${orden}: ${e}`));
+  const rt = (globalThis as any).EdgeRuntime;
+  if (rt && typeof rt.waitUntil === "function") rt.waitUntil(tarea);
 }
 
 /* Fechas de Bowie y BurTown (espejo de Plataforma Puerta, 0103): allá las
@@ -182,9 +215,9 @@ Deno.serve(async (req) => {
     const r = String(b.r ?? "").trim().toLowerCase();
     /* Las mesas del evento (0107) se piden junto con el relacionador, en
        paralelo: casi siempre vuelve vacío y no le suma una vuelta a la
-       compra. Sirve para contestar "una mesa por compra" y "falta el
-       titular" con una frase antes de tocar la base; la que manda igual
-       es crear_orden, que repite las dos reglas. */
+       compra. Sirve para contestar "la mesa sola", "una mesa" y "falta el
+       carnet" con una frase antes de tocar la base; la que manda igual es
+       crear_orden, que repite las reglas. */
     const [p, mesasEv] = await Promise.all([
       r && /^[a-z0-9-]{2,30}$/.test(r)
         ? uno(`perfiles?organizador_id=eq.${o.id}&slug=eq.${q(r)}&activo=is.true&select=id`)
@@ -203,28 +236,40 @@ Deno.serve(async (req) => {
     const idsMesa = new Set((sabe ? mesasEv : []).map((t: { id: string }) => t.id));
     const mesas = limpios.reduce((n: number, it: any) =>
       n + (it.mesa_id ? 1 : idsMesa.has(it.tipo_id) ? it.cantidad : 0), 0);
-    if (mesas > 1) return json({ ok: false, motivo: UNA_MESA }, 400);
-    /* El titular viaja a la base solo si hay mesa: una compra de entradas
+    if (mesas > 1) return json({ ok: false, codigo: "UNA_MESA", motivo: frase("UNA_MESA") }, 400);
+    // 0108: la mesa es una compra aparte de las entradas
+    if (mesas === 1 && limpios.length > 1)
+      return json({ ok: false, codigo: "MESA_SOLA", motivo: frase("MESA_SOLA") }, 400);
+
+    /* El carnet viaja a la base solo si hay mesa: una compra de entradas
        no guarda el carnet de nadie aunque el navegador lo mande (y si lo
        mandara igual, crear_orden lo descarta). Sin la lista de mesas se
        pasa el que vino bien escrito y la base decide si hacía falta. */
-    let titular: Titular | null = null;
-    if (mesas === 1 || (!sabe && comprador?.titular)) {
-      const t = leerTitular(comprador?.titular);
-      if (typeof t !== "string") titular = t;
-      else if (mesas === 1) return json({ ok: false, motivo: t }, 400);
+    let carnet: Carnet | null = null;
+    const trajoCarnet = !!(comprador?.ci || comprador?.titular?.ci);
+    if (mesas === 1 || (!sabe && trajoCarnet)) {
+      const c = leerCarnet(comprador);
+      if (typeof c !== "string") carnet = c;
+      else if (mesas === 1) return json({ ok: false, codigo: "FALTA_TITULAR", motivo: c }, 400);
     }
+    if (mesas === 1 && tc.slice(0, 10) < TC_MESAS_DESDE)
+      return json({ ok: false, codigo: "TC_VIEJOS",
+                    motivo: "Cambiaron las condiciones de las mesas. Recargá la página y volvé a intentar." }, 409);
 
     let data;
     try {
       data = await rpc("crear_orden", {
         p_evento: e.id, p_items: limpios,
-        p_comprador: { nombre, email, telefono: String(comprador?.telefono ?? "").slice(0, 30),
-                       ...(titular ?? {}) },
+        /* Con mesa, el nombre que viaja es el normalizado: es el que va a
+           decir el recibo y el que el guardia compara con el carnet. */
+        p_comprador: { nombre: carnet ? carnet.nombre : nombre, email,
+                       telefono: String(comprador?.telefono ?? "").slice(0, 30),
+                       ...(carnet ? { ci: carnet.ci, ci_ext: carnet.ci_ext } : {}) },
         p_client_key: client_key ?? null, p_ip_hash: await hashIp(req), p_rrpp: rrpp_id,
       });
     } catch (err) {
-      return json({ ok: false, motivo: traducir(String((err as Error).message)) }, 409);
+      const t = traducir(String((err as Error).message));
+      return json({ ok: false, codigo: t.codigo, motivo: t.motivo }, 409);
     }
 
     /* El comprador vio un total y la base acaba de congelar otro: la tanda
@@ -292,7 +337,13 @@ Deno.serve(async (req) => {
         const em = await rpc("emitir_orden", {
           p_orden: data.orden, p_monto_cobrado: 0, p_pago_ref: "GRATIS",
         });
-        if (em?.ok === true && em.repetida === false) avisarPuerta();
+        if (em?.ok === true && em.repetida === false) {
+          avisarPuerta();
+          /* La mesa gratis también recibe su QR y su recibo por correo
+             (0108). Las entradas gratis siguen como siempre: el comprador
+             salta a su página y ahí están. */
+          if (em.recibo) avisarPorCorreo(data.orden);
+        }
         return json({ ...data, gratis: true });
       } catch (err) {
         console.error(`no se pudo emitir la orden gratis ${data.orden}: ${err}`);

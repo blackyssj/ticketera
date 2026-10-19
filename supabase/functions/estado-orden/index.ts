@@ -167,6 +167,14 @@ Deno.serve(async (req) => {
           return json({ ok: false, estado: "vencida",
             motivo: "Se venció tu reserva antes de confirmarse el pago. Volvé a elegir." }, 409);
         }
+        /* 0108: una mesa por carnet. Esta reserva venció, se pagó tarde y
+           mientras tanto el mismo carnet ya pagó otra mesa: no se emite,
+           queda en revisión con la plata anotada y la ve el organizador. */
+        if (r && r.ok === false && r.motivo === "MESA_DUPLICADA") {
+          return json({ ok: false, estado: "revision_manual", codigo: "MESA_DUPLICADA",
+            motivo: "Ese carnet ya tiene otra mesa pagada en este evento. Este pago queda en " +
+                    "revisión: el organizador se va a comunicar con vos." }, 409);
+        }
         // Recién emitida: mandar el correo. Nunca esperar a que salga ni
         // dejar que su fallo tumbe una venta ya cobrada.
         if (r && r.ok === true && r.repetida === false) {
@@ -179,7 +187,11 @@ Deno.serve(async (req) => {
     const f = await uno(`ordenes?id=eq.${orden}&select=estado`);
     if (f?.estado !== "pagada") return json({ ok: true, estado: f?.estado ?? "pendiente" });
 
-    const ent = await rest(`entradas?orden_id=eq.${orden}&select=code,precio,tipo_entrada(nombre),mesas(etiqueta,categoria)&order=created_at`);
+    const [ent, mesa] = await Promise.all([
+      rest(`entradas?orden_id=eq.${orden}&select=code,precio,tipo_entrada(nombre,categoria),mesas(etiqueta,categoria)&order=created_at`),
+      // El recibo de la mesa (0108), o null. Si falla, sale lo de siempre.
+      rpc("recibo_mesa_orden", { p_orden: orden }).catch(() => null),
+    ]);
     // simulada=true deja explícito en la respuesta (y logueado abajo) que esta
     // confirmación no pasó por un cobro real, para que nunca se confunda con
     // uno. No se puede confiar en que el frontend lo muestre: por eso también
@@ -188,11 +200,14 @@ Deno.serve(async (req) => {
     if (simulada) console.log(`confirmación simulada (no se cobró nada): orden=${orden}`);
     return json({
       ok: true, estado: "pagada", simulada,
-      entradas: (ent ?? []).map((e) => ({
+      entradas: (ent ?? []).map((e: any) => ({
         code: e.code, precio: Number(e.precio), cliente: o.comprador_nombre,
-        etiqueta: e.tipo_entrada?.nombre
-          ?? ((e.mesas?.categoria === "lounge" ? "Lounge " : "Mesa ") + (e.mesas?.etiqueta ?? "")),
+        etiqueta: e.tipo_entrada?.categoria === "mesa" ? `Entrada · ${e.tipo_entrada.nombre}`
+          : e.tipo_entrada?.nombre
+            ?? ((e.mesas?.categoria === "lounge" ? "Lounge " : "Mesa ") + (e.mesas?.etiqueta ?? "")),
+        mesa: e.tipo_entrada?.categoria === "mesa" ? e.tipo_entrada.nombre : null,
       })),
+      mesa: mesa ?? null,
     });
   } catch (err) {
     return json({ ok: false, motivo: String((err as Error).message ?? err) }, 500);
