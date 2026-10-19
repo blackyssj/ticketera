@@ -45,9 +45,11 @@
 -- puerta devuelven exactamente lo de antes.
 -- ============================================================
 
--- Toca `ordenes` (índices) y `tipo_entrada` (CHECK), que son del
--- checkout. Si una consulta larga las tiene tomadas, mejor fallar a los
--- 15 s y reintentar que dejar la venta esperando detrás del ALTER.
+-- Toca `ordenes` (una columna calculada, que la reescribe, e índices) y
+-- `tipo_entrada` (CHECK), que son del checkout. Si una consulta larga las
+-- tiene tomadas, mejor fallar a los 15 s y reintentar que dejar la venta
+-- esperando detrás del ALTER. La reescritura en sí es nada: 1772 órdenes,
+-- menos de 1 MB (consulta de solo lectura del 19/10).
 set local lock_timeout = '15s';
 
 -- ── 1. una mesa puede incluir 0 entradas ────────────────────
@@ -126,6 +128,57 @@ comment on table mesa_recibos is
   'El recibo de cada mesa vendida (0108): su QR (EVT:<evento>:MESA…) abre el recibo en la puerta y NUNCA marca un ingreso. Vale mientras su orden esté pagada. tipo_nombre, incluye y entradas_incluidas son lo vendido, congelado al emitir.';
 
 -- ── 3. una mesa por carnet y por evento ─────────────────────
+-- "El mismo carnet" no es "el mismo texto". La primera versión comparaba
+-- titular_ci entero, y un revisor sacó la segunda mesa con el mismo número
+-- escrito de otra forma: 1234567-1A (cualquier cosa en el complemento),
+-- 01234567 o E-1234567. El candado, la búsqueda y el índice veían otra
+-- persona, y el guardia que compara el recibo con el carnet físico lo deja
+-- pasar de un vistazo porque el número es el mismo.
+--
+-- Así que la regla se cuenta sobre la CLAVE del carnet: solo el número,
+-- sin ceros adelante, sin la E- de extranjero, sin complemento y sin
+-- extensión. El complemento y la extensión son opcionales, y con
+-- cualquiera de los dos adentro de la cuenta alcanzaba con escribirlo en
+-- una compra y no en la otra. El precio: dos personas distintas con el
+-- mismo número (el complemento del SEGIP existe para eso, y la serie E es
+-- aparte) no pueden tener mesa en el mismo evento; la segunda recibe
+-- YA_TIENE_MESA. Es rarísimo y lo resuelve una persona; una mesa de más
+-- por cada variante que se le ocurra a alguien no lo resuelve nadie.
+--
+-- titular_ci sigue guardando el carnet COMPLETO: es lo que el guardia lee
+-- en el recibo y en el padrón. La clave es solo para contar.
+--
+-- La clave la calcula una sola función, y la usan crear_orden (candado y
+-- búsqueda) y la columna calculada de abajo (índices y emitir_orden). Si
+-- cada uno armara la suya, la primera diferencia entre las dos sería un
+-- candado que no se cruza con la búsqueda. Es inmutable porque una columna
+-- calculada lo exige, y por eso mismo Postgres no recalcula nada si se le
+-- cambia el cuerpo: las claves ya guardadas seguirían con la regla vieja.
+-- La migración que la cambie lleva también un `update ordenes set
+-- titular_ci = titular_ci where titular_ci is not null`, que las recalcula.
+create or replace function carnet_clave(p_ci text) returns text
+  language sql immutable parallel safe set search_path = public as $$
+  -- 0* se come los ceros de adelante; si son todos ceros, el ([0-9]+)
+  -- devuelve uno y la clave es '0', no null: con null el candado no
+  -- trababa nada y la búsqueda no encontraba nada.
+  select substring(upper(regexp_replace(p_ci, '[\s.]', '', 'g')) from '^(?:E-?)?0*([0-9]+)')
+$$;
+-- La columna calculada la evalúa quien escribe la fila: crear_orden y
+-- emitir_orden corren como dueño, y las Edge Functions (service_role)
+-- hacen PATCH sobre `ordenes`. Ni anon ni authenticated escriben órdenes
+-- (0012, 0084), así que no la necesitan.
+revoke execute on function carnet_clave(text) from public, anon, authenticated;
+grant execute on function carnet_clave(text) to service_role;
+comment on function carnet_clave(text) is
+  'La clave de un carnet para la regla de una mesa por persona y por evento (0108): solo el número, sin ceros adelante, sin E-, sin complemento ni extensión. 1234567, 01234567, E-1234567 y 1234567-1A dan 1234567.';
+
+-- Calculada y guardada, no armada a mano en crear_orden: así ningún camino
+-- que escriba titular_ci puede dejarla distinta.
+alter table ordenes add column if not exists titular_ci_clave text
+  generated always as (carnet_clave(titular_ci)) stored;
+comment on column ordenes.titular_ci_clave is
+  'carnet_clave(titular_ci): con lo que se cuenta una mesa por carnet y por evento (0108). Para mostrar, titular_ci.';
+
 -- El índice parcial es para buscar rápido las órdenes con mesa de un
 -- carnet (solo las órdenes con mesa tienen titular, 0107). El único es el
 -- tope de la base: dos órdenes PAGADAS con mesa del mismo carnet en el
@@ -135,9 +188,9 @@ comment on table mesa_recibos is
 -- un candado. Al aplicar esto no hay ninguna fila con titular: los dos
 -- se arman sobre nada.
 create index if not exists ordenes_mesa_ci_idx
-  on ordenes (evento_id, titular_ci) where titular_ci is not null;
+  on ordenes (evento_id, titular_ci_clave) where titular_ci_clave is not null;
 create unique index if not exists ordenes_mesa_ci_pagada_uq
-  on ordenes (evento_id, titular_ci) where titular_ci is not null and estado = 'pagada';
+  on ordenes (evento_id, titular_ci_clave) where titular_ci_clave is not null and estado = 'pagada';
 
 -- ── 4. crear_orden: la mesa sola, a nombre de quien paga, una por carnet ──
 -- El cuerpo vivo de 0107 con los cambios marcados 0108:
@@ -166,7 +219,7 @@ declare
   v_it jsonb; v_tipo uuid; v_mesa uuid; v_cant int;
   v_precio numeric(12,2); v_cupo int; v_disp int; v_n int; v_pend int;
   v_mesas int; v_cupo_total int;
-  v_tit_nombre text; v_tit_ci text; v_tit_ext text;
+  v_tit_nombre text; v_tit_ci text; v_tit_ext text; v_clave text;
   v_comprador text; v_email text; v_choque text;
 begin
   select organizador_id, estado, tope_entradas_orden
@@ -232,7 +285,8 @@ begin
       raise exception 'FALTA_TITULAR: la mesa va a nombre de quien la compra: falta su nombre y apellido o su carnet';
     end if;
     -- El carnet no va en el mensaje: los errores terminan en logs.
-    if v_tit_ci !~ '^(E-)?[0-9]{5,10}(-[0-9A-Z]{2})?$'
+    v_clave := carnet_clave(v_tit_ci);
+    if v_tit_ci !~ '^(E-)?[0-9]{5,10}(-[0-9A-Z]{2})?$' or v_clave is null
        or (v_tit_ext is not null
            and v_tit_ext not in ('LP','CB','SC','OR','PT','CH','TJ','BN','PD')) then
       raise exception 'CI_INVALIDO: el carnet del titular no tiene un formato valido';
@@ -248,10 +302,12 @@ begin
     -- 0108 c) Una mesa por carnet y por evento. El candado va por (evento,
     -- carnet) y no por evento: dos personas distintas compran a la vez sin
     -- esperarse. Es de transacción: se suelta al confirmar, cuando la orden
-    -- nueva ya es visible para la compra que estaba esperando. La extensión
-    -- NO entra en la cuenta: es opcional, y con ella adentro alcanzaba con
-    -- escribirla en una compra y no en la otra.
-    perform pg_advisory_xact_lock(hashtextextended('mesa:' || p_evento::text || ':' || v_tit_ci, 0));
+    -- nueva ya es visible para la compra que estaba esperando. Candado y
+    -- búsquedas van por la CLAVE del carnet (sección 3), no por el texto:
+    -- 1234567, 01234567, E-1234567 y 1234567-1A son la misma persona. Y la
+    -- clave es la misma cuenta que emitir_orden y el índice único hacen
+    -- sobre titular_ci_clave.
+    perform pg_advisory_xact_lock(hashtextextended('mesa:' || p_evento::text || ':' || v_clave, 0));
 
     -- El que vuelve atrás y elige OTRA mesa antes de pagar es la misma
     -- persona, no una segunda mesa: su reserva anterior se da por vencida
@@ -259,13 +315,13 @@ begin
     -- pasarela (pago_ref null): una que ya tiene QR de cobro puede estar
     -- pagándose en este momento.
     update ordenes set estado = 'vencida'
-     where evento_id = p_evento and titular_ci = v_tit_ci
+     where evento_id = p_evento and titular_ci_clave = v_clave
        and estado = 'pendiente' and expira_at > now()
        and pago_ref is null
        and lower(btrim(coalesce(comprador_email, ''))) = lower(v_email);
 
     select estado into v_choque from ordenes
-     where evento_id = p_evento and titular_ci = v_tit_ci
+     where evento_id = p_evento and titular_ci_clave = v_clave
        and (estado in ('pagada', 'revision_manual')
             or (estado = 'pendiente' and expira_at > now()))
      order by case estado when 'pagada' then 1 when 'revision_manual' then 2 else 3 end
@@ -378,7 +434,7 @@ end $function$;
 revoke execute on function crear_orden(uuid, jsonb, jsonb, uuid, text, uuid) from anon, public, authenticated;
 
 comment on function crear_orden(uuid, jsonb, jsonb, uuid, text, uuid) is
-  'Crea la orden y congela los precios. Segun organizadores.comision_modo el cargo por servicio se le suma al comprador o sale de adentro del precio; en los dos casos subtotal queda siendo lo del organizador, fee lo de TICKETAZO y total lo que se cobra. Una orden con mesa lleva esa mesa sola (MESA_SOLA, UNA_MESA) y va a nombre del comprador: p_comprador trae nombre y apellido, ci, ci_ext opcional y email (FALTA_TITULAR / CI_INVALIDO / FALTA_CORREO). Una mesa por carnet y por evento contando pagadas, en revision y pendientes vivas (YA_TIENE_MESA / MESA_EN_CURSO); la reserva sin pagar del mismo carnet y correo se reemplaza (0108).';
+  'Crea la orden y congela los precios. Segun organizadores.comision_modo el cargo por servicio se le suma al comprador o sale de adentro del precio; en los dos casos subtotal queda siendo lo del organizador, fee lo de TICKETAZO y total lo que se cobra. Una orden con mesa lleva esa mesa sola (MESA_SOLA, UNA_MESA) y va a nombre del comprador: p_comprador trae nombre y apellido, ci, ci_ext opcional y email (FALTA_TITULAR / CI_INVALIDO / FALTA_CORREO). Una mesa por carnet y por evento contando pagadas, en revision y pendientes vivas (YA_TIENE_MESA / MESA_EN_CURSO), comparando carnet_clave (solo el numero: sin ceros adelante, E-, complemento ni extension); la reserva sin pagar del mismo carnet y correo se reemplaza (0108).';
 
 -- ── 5. emitir_orden: la mesa emite su recibo y sus entradas, de 0 a N ──
 -- El cuerpo vivo de 0038 (la última definición; 0051 le dejó el execute
@@ -408,7 +464,9 @@ create or replace function emitir_orden(
 declare o ordenes; v_n int; v_it record; i int; v_manillas int; v_canal text;
         v_t tipo_entrada; v_ci text; v_ev uuid; v_recibo text;
 begin
-  select titular_ci, evento_id into v_ci, v_ev from ordenes where id = p_orden;
+  -- La misma clave que crear_orden: con el texto del carnet, una compra con
+  -- 01234567 y la emisión de la de 1234567 no se cruzaban.
+  select titular_ci_clave, evento_id into v_ci, v_ev from ordenes where id = p_orden;
   if v_ci is not null then
     perform pg_advisory_xact_lock(hashtextextended('mesa:' || v_ev::text || ':' || v_ci, 0));
   end if;
@@ -446,9 +504,9 @@ begin
   -- 0108 c) Otra mesa pagada del mismo carnet en este evento. Va también
   -- cuando la confirma una persona desde la revisión: para quedarse con
   -- esta, primero hay que anular la otra.
-  if o.titular_ci is not null and exists (
+  if o.titular_ci_clave is not null and exists (
        select 1 from ordenes x
-        where x.evento_id = o.evento_id and x.titular_ci = o.titular_ci
+        where x.evento_id = o.evento_id and x.titular_ci_clave = o.titular_ci_clave
           and x.id <> o.id and x.estado = 'pagada') then
     update ordenes set estado = 'revision_manual', pago_ref = coalesce(p_pago_ref, pago_ref),
                        monto_cobrado = coalesce(p_monto_cobrado, monto_cobrado)
@@ -513,7 +571,7 @@ revoke execute on function emitir_orden(uuid, numeric, text, boolean) from publi
 grant execute on function emitir_orden(uuid, numeric, text, boolean) to service_role;
 
 comment on function emitir_orden(uuid, numeric, text, boolean) is
-  'Emite las entradas de una orden y la deja pagada. Idempotente: repetirla no duplica nada. Se niega con VENCIDA si la reserva expiro sin pagarse, con MONTO si la pasarela cobro otra cifra (y ahi la manda a revision_manual guardando monto_cobrado), con MESA_DUPLICADA si el carnet ya tiene otra mesa pagada en el evento (tambien a revision_manual), y con REVISION_MANUAL o ANULADA segun el estado. Una mesa emite su recibo (mesa_recibos, devuelto en `recibo`) y de 0 a N entradas (0108). Sin grant a authenticated: la llaman las Edge Functions con service_role.';
+  'Emite las entradas de una orden y la deja pagada. Idempotente: repetirla no duplica nada. Se niega con VENCIDA si la reserva expiro sin pagarse, con MONTO si la pasarela cobro otra cifra (y ahi la manda a revision_manual guardando monto_cobrado), con MESA_DUPLICADA si el carnet (por titular_ci_clave) ya tiene otra mesa pagada en el evento (tambien a revision_manual), y con REVISION_MANUAL o ANULADA segun el estado. Una mesa emite su recibo (mesa_recibos, devuelto en `recibo`) y de 0 a N entradas (0108). Sin grant a authenticated: la llaman las Edge Functions con service_role.';
 
 -- ── 6. guardar_mesa: de 0 a 50 entradas incluidas ───────────
 -- El cuerpo vivo de 0107 con dos cambios marcados 0108: `personas` (cuántas

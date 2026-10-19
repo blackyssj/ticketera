@@ -49,7 +49,8 @@ const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) =>
    código de cada mesa. Así que se arma la matriz acá —las funciones no
    importan nada, ver comun.ts— y se dibuja como una tabla de celdas negras
    y blancas, que es lo que Gmail, Outlook y Apple Mail muestran igual.
-   Solo el del recibo: las entradas siguen yendo por el link, como siempre.
+   Lo mismo para las entradas que trae la mesa (ver correoMesa); las de
+   una compra de entradas siguen yendo por el link, como siempre.
 
    Es un QR mínimo y estándar: modo byte, corrección M, versiones 1 a 10
    (el payload `EVT:<uuid>:MESA…` son 53 bytes y entra en la 4). Sigue al
@@ -245,17 +246,32 @@ function qrMatriz(texto: string): boolean[][] | null {
   return m;
 }
 
-/** El QR como tabla HTML, una celda por módulo. El margen blanco de 4
-    módulos que pide el estándar (sin él la cámara no lo encuentra sobre el
-    violeta del correo) va como relleno de la tabla de afuera y no como
-    celdas: son 600 celdas menos, y el correo entero tiene que quedar lejos
-    de los 102 KB en los que Gmail lo corta. */
+/** El QR como tabla HTML. El margen blanco de 4 módulos que pide el
+    estándar (sin él la cámara no lo encuentra sobre el violeta del correo)
+    va como relleno de la tabla de afuera y no como celdas: el correo entero
+    tiene que quedar lejos de los 102 KB en los que Gmail lo corta.
+
+    Por lo mismo, cada fila va por tramos: los módulos seguidos del mismo
+    color son UNA celda con colspan. Una celda por módulo eran ~40 KB por
+    QR, y con las entradas de la mesa en el correo (cada una con el suyo)
+    ya con la segunda se pasaba del corte. La primera fila sí va módulo por
+    módulo y con su ancho: es la que fija cuánto mide cada columna, y sin
+    ella una celda vacía con colspan no tiene de dónde sacarlo. El alto va
+    en la primera celda de cada fila: la fila mide lo de su celda más alta. */
 function qrTabla(texto: string, px = 5): string {
   const m = qrMatriz(texto);
   if (!m) return "";
-  const negro = `<td width="${px}" height="${px}" bgcolor="black"></td>`;
-  const blanco = `<td width="${px}" height="${px}"></td>`;
-  const filas = m.map((f) => `<tr>${f.map((b) => (b ? negro : blanco)).join("")}</tr>`).join("");
+  const filas = m.map((f, y) => {
+    let tr = "";
+    for (let x = 0; x < f.length;) {
+      let k = 1;
+      if (y > 0) while (x + k < f.length && f[x + k] === f[x]) k++;
+      tr += `<td${k > 1 ? ` colspan="${k}"` : ""}${y === 0 ? ` width="${px}"` : ""}` +
+        `${x === 0 ? ` height="${px}"` : ""}${f[x] ? ` bgcolor="black"` : ""}></td>`;
+      x += k;
+    }
+    return `<tr>${tr}</tr>`;
+  }).join("");
   const lado = m.length * px;
   return `<table role="presentation" cellpadding="${4 * px}" cellspacing="0" border="0" bgcolor="#FFFFFF" ` +
     `style="background:#FFFFFF;border-radius:6px"><tr><td>` +
@@ -272,21 +288,61 @@ const etiqueta = (x: any) =>
     : x.tipo_entrada?.nombre
       ?? ((x.mesas?.categoria === "lounge" ? "Lounge " : "Mesa ") + (x.mesas?.etiqueta ?? ""));
 
+/* Cuántas entradas de la mesa van con su QR adentro del correo. El dueño
+   pidió que lleguen los QR, no solo el link. Dos topes: diez, que es una
+   mesa grande, y el tamaño (CORREO_TOPE): pasados los 102 KB Gmail esconde
+   el final detrás de "Ver mensaje completo", y ahí quedaba también el
+   botón. Las que no entran van con su código y con el QR en el link, que
+   las tiene todas. */
+const QR_ENTRADAS_TOPE = 10;
+const CORREO_TOPE = 95_000;
+
 /* ── el correo de una mesa (0108) ──
    Lo que el dueño pidió que llegue: el QR de la mesa y el recibo, las
-   entradas incluidas si las hay, y las condiciones de la reserva. El mismo
-   cascarón que el de entradas (paleta, tablas, estilos en línea) para que
-   parezcan del mismo lado. El carnet va enmascarado: un correo se
-   reenvía, y el completo lo ve el guardia en su pantalla. */
-function correoMesa(o: any, e: any, mesa: any, filas: string, n: number, link: string): string {
+   entradas incluidas con su QR si las hay, y las condiciones de la
+   reserva. El mismo cascarón que el de entradas (paleta, tablas, estilos
+   en línea) para que parezcan del mismo lado. El carnet va enmascarado:
+   un correo se reenvía, y el completo lo ve el guardia en su pantalla. */
+function correoMesa(o: any, e: any, mesa: any, ent: any[], link: string): string {
   const F = "font-family:Helvetica,Arial,sans-serif";
   const fila = (k: string, v: string) =>
     `<tr><td style="padding:6px 14px 6px 0;${F};font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#A79EC0;vertical-align:top;white-space:nowrap">${k}</td>` +
     `<td style="padding:6px 0;${F};font-size:14px;line-height:1.45;color:#F3EFE2">${v}</td></tr>`;
   const inc = Number(mesa.entradas_incluidas ?? 0);
+  const n = ent.length;
   const condiciones = (Array.isArray(mesa.condiciones) ? mesa.condiciones : [])
     .map((c: string) => `<p style="margin:4px 0 0;${F};font-size:14px;line-height:1.5;color:#F3EFE2">· ${esc(c)}</p>`).join("");
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#180E3A;margin:0;padding:0">
+
+  /* Cada entrada con su QR, dibujado igual que el del recibo, y abajo de
+     qué mesa es: es la que pasa el molinete, y el comprador tiene que
+     poder distinguirla del recibo, que no lo pasa. */
+  const conQr = ent.slice(0, QR_ENTRADAS_TOPE).map((x: any, i: number) =>
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:22px auto 0"><tr><td align="center">
+     ${qrTabla(`EVT:${e.id}:${x.code}`)}
+     <p style="margin:10px 0 0;${F};font-size:13px;color:#F3EFE2;text-align:center">${esc(etiqueta(x))}${n > 1 ? ` · ${i + 1} de ${n}` : ""}</p>
+     <p style="margin:2px 0 0;font-family:Courier,monospace;font-size:13px;color:#A79EC0;text-align:center">#${esc(x.code)}</p>
+    </td></tr></table>`);
+  const soloCodigo = (x: any) =>
+    `<tr>
+        <td style="padding:7px 12px 7px 0;${F};font-size:13px;color:#A79EC0">${esc(etiqueta(x))}</td>
+        <td style="padding:7px 0;font-family:Courier,monospace;font-size:13px;color:#F3EFE2">#${esc(x.code)}</td>
+      </tr>`;
+  const parrafo = (txt: string) =>
+    `<p style="margin:24px 0 0;${F};font-size:15px;line-height:1.55;color:#F3EFE2">${txt}</p>`;
+  const entradas = (k: number) => {
+    if (inc === 0 || n === 0) return parrafo("Tu mesa no incluye entradas: para entrar, cada uno necesita la suya.");
+    const cuantas = k === n ? (n === 1 ? "Tenés 1, con su QR acá abajo." : `Tenés ${n}, cada una con su QR acá abajo.`)
+      : k === 0 ? (n === 1 ? "Tenés 1, con su QR en el link:" : `Tenés ${n}, cada una con su QR en el link:`)
+      : `Tenés ${n}: acá abajo van ${k === 1 ? "la primera" : `las primeras ${k}`} con su QR, y todas están en el link.`;
+    return parrafo(`Para entrar se usan las entradas de la mesa. ${cuantas} Cada QR vale para un solo ingreso.`) +
+      conQr.slice(0, k).join("") +
+      (k === n ? "" : (k > 0
+        ? `<p style="margin:22px 0 0;${F};font-size:14px;line-height:1.5;color:#A79EC0">${n - k === 1 ? "La que falta" : `Las ${n - k} que faltan`}, con su QR en el link:</p>`
+        : "") +
+        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;border-collapse:collapse">${ent.slice(k).map(soloCodigo).join("")}</table>`);
+  };
+
+  const armar = (k: number) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#180E3A;margin:0;padding:0">
  <tr><td align="center" style="padding:32px 16px">
   <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="width:520px;max-width:100%">
    <tr><td style="padding:0 0 26px"><img src="${SITIO}/logo-correo.png" alt="TICKETAZO" width="180" style="display:block;border:0;outline:none;text-decoration:none;width:180px;height:auto;color:#F3EFE2;${F};font-size:22px;font-weight:bold"></td></tr>
@@ -312,10 +368,7 @@ function correoMesa(o: any, e: any, mesa: any, filas: string, n: number, link: s
     </td></tr></table>
     <p style="margin:10px 0 0;text-align:center;font-family:Courier,monospace;font-size:13px;color:#F3EFE2">#${esc(mesa.code)}</p>
     <p style="margin:12px 0 0;${F};font-size:13px;line-height:1.5;color:#A79EC0;text-align:center">Este QR es el recibo de tu mesa: mostralo en la puerta y el guardia ve tu reserva. <b style="color:#F3EFE2">No sirve para entrar.</b></p>
-    ${inc > 0
-      ? `<p style="margin:24px 0 0;${F};font-size:15px;line-height:1.55;color:#F3EFE2">Para entrar se usan las entradas de la mesa. ${n === 1 ? "Tenés 1" : `Tenés ${n}`}, cada una con su QR en el link:</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;border-collapse:collapse">${filas}</table>`
-      : `<p style="margin:24px 0 0;${F};font-size:15px;line-height:1.55;color:#F3EFE2">Tu mesa no incluye entradas: para entrar, cada uno necesita la suya.</p>`}
+    ${entradas(k)}
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:22px"><tr>
      <td align="center" bgcolor="#FFE24B" style="border-radius:8px">
       <a href="${link}" style="display:inline-block;padding:14px 26px;${F};font-size:15px;font-weight:bold;color:#180E3A;text-decoration:none">${inc > 0 ? "Ver mi mesa y mis entradas" : "Ver mi mesa"}</a>
@@ -332,6 +385,13 @@ function correoMesa(o: any, e: any, mesa: any, filas: string, n: number, link: s
   </table>
  </td></tr>
 </table>`;
+
+  // De a una menos hasta que entre. Bytes y no largo del texto: Gmail
+  // cuenta bytes, y cada tilde son dos.
+  const bytes = (t: string) => new TextEncoder().encode(t).length;
+  let k = Math.min(n, QR_ENTRADAS_TOPE), html = armar(k);
+  while (k > 0 && bytes(html) > CORREO_TOPE) html = armar(--k);
+  return html;
 }
 
 Deno.serve(async (req) => {
@@ -379,7 +439,7 @@ Deno.serve(async (req) => {
         <td style="padding:7px 0;font-family:Courier,monospace;font-size:13px;color:#F3EFE2">#${esc(x.code)}</td>
       </tr>`).join("");
 
-    const html = mesa?.code ? correoMesa(o, e, mesa, filas, n, link) : `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#180E3A;margin:0;padding:0">
+    const html = mesa?.code ? correoMesa(o, e, mesa, ent ?? [], link) : `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#180E3A;margin:0;padding:0">
  <tr><td align="center" style="padding:32px 16px">
   <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="width:520px;max-width:100%">
    <tr><td style="padding:0 0 26px"><img src="${SITIO}/logo-correo.png" alt="TICKETAZO" width="180" style="display:block;border:0;outline:none;text-decoration:none;width:180px;height:auto;color:#F3EFE2;font-family:Helvetica,Arial,sans-serif;font-size:22px;font-weight:bold"></td></tr>

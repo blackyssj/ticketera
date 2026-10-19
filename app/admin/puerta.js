@@ -1286,7 +1286,7 @@ function cartelRecibo(caja, r) {
     <span class="puerta-motivo"><b>${anulada ? "Esta reserva se anuló. No hay mesa."
       : "No da ingreso. Para entrar se usa una entrada."}</b></span>
     ${!anulada && r.ya_presentado
-      ? `<span class="puerta-aviso">Ya se presentó a las ${esc(hora(r.presentado_at)) || "—"}</span>` : ""}
+      ? `<span class="puerta-presentado">Ya se presentó a las ${esc(hora(r.presentado_at)) || "—"}</span>` : ""}
     <span class="puerta-quien">${esc(r.tipo || "Mesa")}</span>
     <span class="puerta-motivo">${r.incluye ? `Incluye: ${esc(r.incluye)} · ` : ""}${esc(lineaEntradas)}</span>
     <span class="puerta-mesa">A nombre de <b>${esc(r.titular || "—")}</b>${

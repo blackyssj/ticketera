@@ -3697,7 +3697,7 @@ declare v_org   uuid := '01070107-0107-4107-8107-000000000001';
         v_o1 uuid; v_o2 uuid; v_o3 uuid; v_o4 uuid; v_o5 uuid; v_o6 uuid;
         v_o7 uuid; v_o8 uuid; v_ox uuid;
         v_r jsonb; v_f jsonb; v_n int; v_code text; v_rec text; v_rec_sin text;
-        v_tit text; v_ci text; v_ext text; v_t timestamptz;
+        v_tit text; v_ci text; v_ext text; v_t timestamptz; v_var jsonb;
 begin
   insert into organizadores (id, slug, nombre, fee_pct, fee_fijo_transaccion, fee_piso)
   values (v_org, 'prueba-0107', 'Prueba 0107', 0, 0, 0);
@@ -3911,6 +3911,20 @@ begin
   exception when others then
     if sqlerrm not like 'YA_TIENE_MESA%' then raise; end if;
   end;
+  -- el mismo número escrito de otra forma tampoco: complemento, cero
+  -- adelante, E- de extranjero, otra extensión, y todo junto
+  for v_var in select * from jsonb_array_elements('[
+      {"ci":"1234567-1A"}, {"ci":"01234567"}, {"ci":"E-1234567"}, {"ci":"1234567", "ci_ext":"LP"},
+      {"ci":"E-001234567-2B", "ci_ext":"CB"}, {"ci":"1.234.567-99"}]'::jsonb) loop
+    begin
+      perform crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_lounge, 'cantidad', 1)),
+                          jsonb_build_object('nombre', 'Juana Perez', 'email', 'otra@prueba.test') || v_var,
+                          null::uuid, null::text, null::uuid);
+      raise exception 'TEST_FAIL: el mismo carnet compro otra mesa escrito como %', v_var;
+    exception when others then
+      if sqlerrm not like 'YA_TIENE_MESA%' then raise; end if;
+    end;
+  end loop;
   -- en OTRA fecha, el mismo carnet sí
   v_o8 := (crear_orden(v_ev3, jsonb_build_array(jsonb_build_object('tipo_id', v_otra, 'cantidad', 1)),
                        '{"nombre":"Juana Perez","ci":"1234567","email":"juana@prueba.test"}'::jsonb,
@@ -3965,8 +3979,11 @@ begin
   v_o4 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_vip, 'cantidad', 1)),
                        '{"nombre":"Luis Rojas","ci":"E-9876543","email":"luis@prueba.test"}'::jsonb,
                        null::uuid, null::text, v_b)->>'orden')::uuid;
+  -- (sin la E- y con un cero adelante: es la misma persona, así que también
+  -- reemplaza; y de acá abajo el cobro tardío y el índice comparan las dos
+  -- formas del mismo carnet)
   v_o3 := (crear_orden(v_ev, jsonb_build_array(jsonb_build_object('tipo_id', v_lounge, 'cantidad', 1)),
-                       '{"nombre":"Luis Rojas","ci":"E-9876543","email":" LUIS@prueba.test "}'::jsonb,
+                       '{"nombre":"Luis Rojas","ci":"09876543","email":" LUIS@prueba.test "}'::jsonb,
                        null::uuid, null::text, v_b)->>'orden')::uuid;
   if (select estado from ordenes where id = v_o4) <> 'vencida' then
     raise exception 'TEST_FAIL: la reserva anterior del mismo comprador no se dio por vencida';
