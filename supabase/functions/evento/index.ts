@@ -235,7 +235,7 @@ Deno.serve(async (req) => {
                 ...free.map((f) => [String(f.nombre), freeCoverTxt(f, String(e.fecha), ahoraBo)]),
                 ...(reservas > 0 ? [["Reservas", `${reservas} disponibles`]] : []),
                 tipos.length && tipos.every((t) => Number(t.precio) === 0)
-                  ? ["Inscripción", "Gratis"] : ["Pago", "Con QR"]],
+                  ? ["Inscripción", "Gratis"] : ["Pago", "QR o tarjeta"]],
         tope_entradas_orden: e.tope_entradas_orden,
         arte_url: e.arte_url ?? null,
         /* La marca del organizador (0062). Van los tres o no va ninguno:

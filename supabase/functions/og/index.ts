@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
 <title>TICKETAZO</title>
 <meta property="og:site_name" content="TICKETAZO">
 <meta property="og:title" content="TICKETAZO">
-<meta property="og:description" content="Entradas con QR. Elegís, pagás y te llega al toque.">
+<meta property="og:description" content="Elegís tus entradas, pagás con QR o tarjeta y te llegan al toque.">
 <meta property="og:url" content="${esc(url)}">
 <meta property="og:type" content="website">
 <!-- La tarjeta de marca, la misma que llevan las páginas estáticas. Una

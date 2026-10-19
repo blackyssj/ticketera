@@ -614,7 +614,7 @@ function pintarHero() {
   $("#heroL1").textContent = e.marca_1;
   $("#heroL2").textContent = e.marca_2;
   $("#heroBajada").textContent = e.bajada;
-  /* El dato "Pago · Con QR" lo manda la función para todo evento, gratis
+  /* El dato "Pago · QR o tarjeta" lo manda la función para todo evento, gratis
      incluido. Ahí arriba, en el afiche, es lo primero que lee el invitado a
      algo que no cobra: un cobro anunciado que después no aparece por ningún
      lado. Se cae solo cuando no hay nada que cobrar. */

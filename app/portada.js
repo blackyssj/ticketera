@@ -805,8 +805,8 @@ function ponerVidriera(v) {
   if (t) t.innerHTML = `<span class="l fluor">${esc(v.nombre)}</span>`;
   const b = $(".hero .bajada");
   if (b) b.textContent = v.n > 1
-    ? "Elegí tu fecha, pagás con QR y la entrada te llega al toque."
-    : "Pagás con QR y la entrada te llega al toque.";
+    ? "Elegí tu fecha, pagás con QR o tarjeta y la entrada te llega al toque."
+    : "Pagás con QR o tarjeta y la entrada te llega al toque.";
   document.title = `${v.nombre} — entradas`;
   if (v.papel && v.papel.length === 2) {
     const r = document.documentElement.style;
