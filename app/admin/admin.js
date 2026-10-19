@@ -1557,22 +1557,26 @@ function describirTipo(eventoId, t) {
   desc.focus({ preventScroll: true });
 }
 
-/* ── las mesas y combos (0107) ──
+/* ── las mesas y combos (0107, 0108) ──
    Una mesa es un tipo con categoria 'mesa': se vende por la misma tubería
-   que una entrada, emite una manilla por persona y al comprarla se pide a
-   nombre de quién va (nombre y carnet). Antes se creaba solo por SQL; acá
-   se arma entera en un formulario, porque lo que se promete al comprador
-   —cuántos entran, qué trae, cuánto sale, cuántas hay— se tiene que ver
-   junto para no prometer de más.
+   que una entrada, pero SOLA (una orden es entradas o una mesa) y a nombre
+   de quien la paga, con su carnet, una por carnet en el evento. Puede
+   incluir de 0 a 50 entradas: con 0 el comprador reserva la mesa y entra
+   con una entrada que compra aparte. Lo que se promete al comprador —qué
+   trae, cuántas entradas, cuánto sale, cuántas hay— se arma junto en un
+   formulario para no prometer de más.
 
    La marca en la grilla dice lo que la fila no dice sola: que es una mesa,
-   cuántos entran y cuántas hay en todo el evento. El cupo de cada celda es
-   por fase; el de la marca es el que manda. */
+   cuántas entradas incluye y cuántas hay en todo el evento. El cupo de
+   cada celda es por fase; el de la marca es el que manda. */
+const entradasMesaTxt = n => Number(n) === 0 ? "no incluye entradas"
+  : Number(n) === 1 ? "incluye 1 entrada" : `incluye ${num(n)} entradas`;
+
 function marcaMesa(t) {
   if (t.categoria !== "mesa") return "";
-  const partes = [`Mesa · entran ${num(t.manillas)}`];
+  const partes = [`Mesa · ${entradasMesaTxt(t.manillas)}`];
   if (t.cupo_total != null) partes.push(`${num(t.cupo_total)} en todo el evento`);
-  if (t.comision_rrpp != null) partes.push(`${bs(t.comision_rrpp)} al relacionador`);
+  if (t.comision_rrpp != null) partes.push(`${bs(t.comision_rrpp)} por mesa al relacionador`);
   return `<em class="marca-mesa">${esc(partes.join(" · "))}</em>`;
 }
 
@@ -1604,6 +1608,10 @@ function formMesa(eventoId, t, F, P) {
   const precio = conPrecio.length ? Number(precioDe(conPrecio[0]).precio) : "";
   const marcada = f => t ? !!precioDe(f) : f.activo !== false;
   const val = v => v == null ? "" : esc(String(v));
+  /* Nueva, sin respuesta marcada: "no dijo" y "no incluye" no son lo
+     mismo, y un Sí o un No ya marcado se guarda sin que nadie lo piense. */
+  const incluyeSi = !!t && Number(t.manillas) > 0;
+  const incluyeNo = !!t && Number(t.manillas) === 0;
   /* La grilla deja poner un precio distinto en cada fase y este formulario
      muestra uno solo. Si no se dice, el organizador entra a corregir el
      «Incluye», guarda, y la General que valía 1200 queda a 900 sin que
@@ -1618,33 +1626,42 @@ function formMesa(eventoId, t, F, P) {
   z.innerHTML = `
     <form class="form-fase form-tipo form-mesa" id="formMesa">
       <h3>${t ? `Mesa «${esc(t.nombre)}»` : "Mesa o combo nuevo"}</h3>
-      <label class="ancha"><span>Nombre</span>
+      <label class="ancha"><span>Nombre de la mesa</span>
         <input id="mNombre" maxlength="60" required value="${val(t && t.nombre)}"
                placeholder="Mesa VIP, Lounge, Combo para 4…"></label>
-      <label><span>Cuántas personas entran</span>
-        <input id="mPersonas" type="number" min="1" max="50" step="1" required
-               value="${val(t ? t.manillas : 4)}">
-        <em class="ayuda">Una manilla por persona.</em></label>
-      <label><span>Precio (Bs)</span>
+      <div class="incluye-ent" role="radiogroup" aria-labelledby="mIncEntRot">
+        <span class="rotulo" id="mIncEntRot">¿Incluye entradas?</span>
+        <label><input type="radio" name="mIncEnt" value="si"${
+          incluyeSi ? " checked" : ""}> Sí</label>
+        <label><input type="radio" name="mIncEnt" value="no"${
+          incluyeNo ? " checked" : ""}> No</label>
+        <label class="cuantas" id="mCuantasCaja"${incluyeSi ? "" : " hidden"}><span>Cuántas</span>
+          <input id="mPersonas" type="number" min="1" max="50" step="1"
+                 value="${val(t && Number(t.manillas) > 0 ? t.manillas : "")}"></label>
+        <em class="ayuda" id="mIncEntAyuda"></em>
+      </div>
+      <label><span>Precio de la mesa (Bs)</span>
         <input id="mPrecio" type="number" min="0" step="1" required value="${val(precio)}">
         <em class="ayuda" id="mPaga"></em>${notaPrecios}</label>
-      <label><span>Cuántas hay</span>
+      <label><span>Cuántas mesas de este tipo hay</span>
         <input id="mCantidad" type="number" min="1" step="1" placeholder="sin tope"
                value="${val(t && t.cupo_total)}">
-        <em class="ayuda">En todo el evento, sumando las fases.</em></label>
-      <label><span>Comisión por mesa (Bs)</span>
+        <em class="ayuda">En todo el evento, sumando las fases. Vacío: sin tope.</em></label>
+      <label><span>Comisión del relacionador por mesa (Bs)</span>
         <input id="mComision" type="number" min="0" step="1" placeholder="la de cada relacionador"
                value="${val(t && t.comision_rrpp)}">
-        <em class="ayuda">Lo que cobra el relacionador por cada mesa. Vacía: su comisión de siempre, una vez por mesa.</em></label>
-      <label class="ancha"><span>La frase que vende (va debajo del nombre)</span>
-        <textarea id="mDesc" rows="2" maxlength="220"
-          placeholder="Ej.: La mejor vista de la pista, con atención en la mesa toda la noche."
-          >${esc((t && t.descripcion) || "")}</textarea></label>
-      <label class="ancha"><span>Incluye (lo que se lleva quien compra)</span>
+        <em class="ayuda">Aparte de su comisión por entradas, y una vez por mesa aunque incluya
+          entradas. Vacía: su comisión de siempre.</em></label>
+      <label class="ancha"><span>Lo que incluye</span>
         <textarea id="mIncluye" rows="2" maxlength="220"
           placeholder="Ej.: 1 botella de whisky · 6 gaseosas · hielo · piqueos"
           >${esc((t && t.incluye) || "")}</textarea>
-        <em class="ayuda">Se muestra con el rótulo «Incluye» adelante. Separá cada cosa con « · ».</em></label>
+        <em class="ayuda">Se muestra con el rótulo «Incluye» adelante, en la página y en el recibo
+          que ve el guardia. Separá cada cosa con « · ».</em></label>
+      <label class="ancha"><span>La frase que vende <em class="ayuda">opcional, va debajo del nombre</em></span>
+        <textarea id="mDesc" rows="2" maxlength="220"
+          placeholder="Ej.: La mejor vista de la pista, con atención en la mesa toda la noche."
+          >${esc((t && t.descripcion) || "")}</textarea></label>
       <div class="fases-mesa">
         <span class="rotulo">Se vende en</span>
         ${F.length ? F.map(f => `<label><input type="checkbox" value="${esc(f.id)}"${
@@ -1656,8 +1673,9 @@ function formMesa(eventoId, t, F, P) {
             solo si lo cambiás: si no lo tocás, cada fase se queda con el suyo. Los topes por
             fase que pusiste en la grilla tampoco se pisan.`
          : `El mismo precio en todas las fases que marques; para precios distintos
-            por fase, cambialos después en la grilla.`} Al comprar se pide el nombre y el carnet de
-         la persona a cuyo nombre va la mesa, y es una mesa por compra.</p>
+            por fase, cambialos después en la grilla.`} La mesa se compra aparte de las entradas,
+         va a nombre de quien la paga (nombre, carnet y correo) y es una por carnet en el evento.
+         Su QR no da ingreso: en la puerta muestra el recibo.</p>
       <p class="error" id="mError"></p>
       <div class="acciones">
         <button type="submit" class="btn primario" id="mGuardar">${t ? "Guardar mesa" : "Crear mesa"}</button>
@@ -1668,6 +1686,21 @@ function formMesa(eventoId, t, F, P) {
   // El mismo eco que la grilla: lo que paga el comprador (o lo que te queda).
   const eco = () => { $("#mPaga").textContent = textoPaga(Number(precioInp.value)); };
   precioInp.oninput = eco; eco();
+  /* "¿Incluye entradas?" Con Sí se pide cuántas; con No no se pide ningún
+     número (0108: la mesa se guarda con 0 entradas). Cada respuesta dice
+     lo que va a pasar en la puerta, que es donde se nota la diferencia. */
+  const incluyeEco = () => {
+    const si = !!z.querySelector('input[name="mIncEnt"][value="si"]:checked');
+    const no = !!z.querySelector('input[name="mIncEnt"][value="no"]:checked');
+    $("#mCuantasCaja").hidden = !si;
+    $("#mIncEntAyuda").textContent = si
+      ? "Al pagar llegan esas entradas con el recibo de la mesa, y cada una pasa el molinete."
+      : no ? "El comprador reserva la mesa y entra con una entrada que compra aparte. Si no se presenta con entrada, pierde la mesa."
+      : "Elegí una: el comprador la ve antes de pagar.";
+    if (si && !$("#mPersonas").value) $("#mPersonas").focus();
+  };
+  z.querySelectorAll('input[name="mIncEnt"]').forEach(r => { r.onchange = incluyeEco; });
+  incluyeEco();
   $("#mCancelar").onclick = () => { z.innerHTML = ""; };
   $("#formMesa").onsubmit = async e => {
     e.preventDefault();
@@ -1677,9 +1710,17 @@ function formMesa(eventoId, t, F, P) {
       return;
     }
     const n = id => $(id).value.trim() === "" ? null : Number($(id).value);
+    const inc = (z.querySelector('input[name="mIncEnt"]:checked') || {}).value;
+    if (!inc) { $("#mError").textContent = "Decí si la mesa incluye entradas."; return; }
+    if (inc === "si" && !(n("#mPersonas") >= 1 && n("#mPersonas") <= 50)) {
+      $("#mError").textContent = "Cuántas entradas incluye: de 1 a 50.";
+      $("#mPersonas").focus();
+      return;
+    }
     const datos = {
       nombre: $("#mNombre").value.trim(),
-      personas: n("#mPersonas"), precio: n("#mPrecio"),
+      // `personas` son las entradas incluidas: 0 cuando la respuesta es No.
+      personas: inc === "si" ? n("#mPersonas") : 0, precio: n("#mPrecio"),
       cantidad: n("#mCantidad"), comision: n("#mComision"),
       descripcion: $("#mDesc").value.trim(), incluye: $("#mIncluye").value.trim(),
       fases,
@@ -2511,6 +2552,9 @@ function bajarLiquidacion() {
     ["Servicio de TICKETAZO", CSV.bs(foto.fee)],
     ["Pasó por la pasarela", CSV.bs(foto.cobrado)],
     ["Comisiones de relacionadores", CSV.bs(-Number(foto.comisiones || 0))],
+    // 0108: la partición, si el cierre la guardó (los de antes, vacío)
+    ["Comisiones por entradas", foto.comisiones_entradas == null ? "" : CSV.bs(-Number(foto.comisiones_entradas))],
+    ["Comisiones por mesas", foto.comisiones_mesas == null ? "" : CSV.bs(-Number(foto.comisiones_mesas))],
     ["Para el organizador", CSV.bs(foto.neto)],
     ["Manillas", CSV.ent(foto.entradas)],
     ["Compras", CSV.ent(foto.ordenes)],
@@ -2525,12 +2569,19 @@ function bajarLiquidacion() {
       ["Hoy el evento suma (Bs)", CSV.bs(hoy.bruto)]);
   }
   const lineas = foto.lineas || [];
+  /* Entradas y mesas por separado y después el total (0108): es lo que
+     se le explica a cada relacionador. Una línea de un cierre anterior no
+     tiene la partición: esas celdas quedan vacías, no en cero. */
   filas.push([], ["Relacionador", "Código", "Manillas", "Recaudado (Bs)",
-                  "Comisión unitaria (Bs)", "Comisión (Bs)", "Estado",
+                  "Entradas sueltas", "Comisión unitaria (Bs)", "Comisión por entradas (Bs)",
+                  "Mesas", "Comisión por mesas (Bs)", "Comisión (Bs)", "Estado",
                   "Pagado (Bs)", "Pendiente (Bs)", "Pagada el", "La marcó", "Nota del pago"]);
+  const vacioSiNull = (v, f) => v == null ? "" : f(v);
   lineas.forEach(l => filas.push([
     l.nombre || "", l.slug || "", CSV.ent(l.entradas), CSV.bs(l.recaudado),
-    CSV.bs(l.comision_unitaria), CSV.bs(l.comision),
+    vacioSiNull(l.sueltas, CSV.ent), CSV.bs(l.comision_unitaria),
+    vacioSiNull(l.comision_entradas, CSV.bs),
+    vacioSiNull(l.mesas, CSV.ent), vacioSiNull(l.comision_mesas, CSV.bs), CSV.bs(l.comision),
     l.pagada ? "Pagada" : "Pendiente",
     CSV.bs(l.pagada ? l.pagado_monto : 0),
     CSV.bs(l.pagada ? 0 : l.comision),
@@ -2538,7 +2589,9 @@ function bajarLiquidacion() {
   ]));
   const debe = lineas.filter(l => !l.pagada).reduce((a, l) => a + Number(l.comision || 0), 0);
   const pago = lineas.filter(l => l.pagada).reduce((a, l) => a + Number(l.pagado_monto || 0), 0);
-  filas.push(["Total", "", CSV.ent(lineas.reduce((a, l) => a + Number(l.entradas || 0), 0)), "", "",
+  filas.push(["Total", "", CSV.ent(lineas.reduce((a, l) => a + Number(l.entradas || 0), 0)), "",
+              "", "", vacioSiNull(foto.comisiones_entradas, CSV.bs),
+              "", vacioSiNull(foto.comisiones_mesas, CSV.bs),
               CSV.bs(foto.comisiones), "", CSV.bs(pago), CSV.bs(debe), "", "", ""]);
 
   CSV.bajar(CSV.nombre("liquidacion", LIQ.ev), filas);
@@ -2558,6 +2611,9 @@ function cuadroCifras(c, titulo) {
         <div class="tenue"><dt>Servicio de TICKETAZO</dt><dd>${bs(c.fee)}</dd></div>
         <div class="tenue"><dt>Pasó por la pasarela</dt><dd>${bs(c.cobrado)}</dd></div>
         <div><dt>Comisiones de relacionadores</dt><dd>− ${bs(c.comisiones)}</dd></div>
+        ${c.comisiones_entradas != null && c.comisiones_mesas != null ? `
+        <div class="tenue sub"><dt>por entradas</dt><dd>${bs(c.comisiones_entradas)}</dd></div>
+        <div class="tenue sub"><dt>por mesas</dt><dd>${bs(c.comisiones_mesas)}</dd></div>` : ""}
         <div class="total"><dt>Para el organizador</dt><dd>${bs(c.neto)}</dd></div>
       </dl>
       <p class="ayuda">${c.entradas} ${Number(c.entradas) === 1 ? "manilla" : "manillas"}
@@ -2593,6 +2649,64 @@ function cuadroDiferencia(foto, hoy) {
 const cuentaCierra = v =>
   Math.abs(Number(v.entradas || 0) * Number(v.comision_unitaria || 0) - Number(v.comision || 0)) < 0.005;
 
+/* La comisión partida (0108): por entradas, por mesas y el total, que es
+   la suma. Las tres vienen de ventas_rrpp_base() —la única cuenta— y acá
+   no se recalcula nada: si `comision_entradas` no viene (una función de
+   antes, o una línea de un cierre anterior a 0108, que no la guardó), las
+   partes quedan en null y la pantalla muestra solo el total, que es lo
+   que se sabía. */
+function partesComision(v) {
+  const total = Number(v.comision || 0);
+  const ent = v.comision_entradas != null ? Number(v.comision_entradas)
+    : v.comision_mesas != null && v.mesas != null ? total - Number(v.comision_mesas) : null;
+  const mes = v.comision_mesas != null ? Number(v.comision_mesas) : null;
+  return { total, entradas: ent, mesas: mes,
+           sueltas: v.sueltas != null ? Number(v.sueltas) : null,
+           nMesas: v.mesas != null ? Number(v.mesas) : null };
+}
+
+/* Las tres cifras de una fila de venta: por entradas, por mesas y total.
+   Debajo de cada una, de qué sale: "12 × 15 Bs" y "2 mesas". */
+function cifrasComision(v) {
+  const p = partesComision(v);
+  if (p.entradas == null || p.mesas == null)
+    return `<span class="cifra"><i>—</i><em>por entradas</em></span>
+      <span class="cifra"><i>—</i><em>por mesas</em></span>
+      <span class="cifra destacada">${bs(p.total)}<em>${esc(desgloseComision(v))}</em></span>`;
+  const sueltas = p.sueltas != null ? p.sueltas : Number(v.entradas || 0);
+  return `<span class="cifra">${bs(p.entradas)}<em>por entradas${sueltas
+      ? ` · ${num(sueltas)} × ${bs(v.comision_unitaria)}` : ""}</em></span>
+    <span class="cifra">${bs(p.mesas)}<em>por mesas${p.nMesas
+      ? ` · ${num(p.nMesas)} ${p.nMesas === 1 ? "mesa" : "mesas"}` : ""}</em></span>
+    <span class="cifra destacada">${bs(p.total)}<em>total</em></span>`;
+}
+
+/* El total de una lista, partido igual. */
+function sumaComisiones(filas) {
+  const ps = filas.map(partesComision);
+  const sabe = ps.every(p => p.entradas != null && p.mesas != null);
+  return {
+    total: ps.reduce((a, p) => a + p.total, 0),
+    entradas: sabe ? ps.reduce((a, p) => a + p.entradas, 0) : null,
+    mesas: sabe ? ps.reduce((a, p) => a + p.mesas, 0) : null,
+    sueltas: ps.reduce((a, p, i) => a + (p.sueltas != null ? p.sueltas : Number(filas[i].entradas || 0)), 0),
+    nMesas: ps.reduce((a, p) => a + (p.nMesas || 0), 0),
+  };
+}
+
+function partesTotal(t) {
+  if (t.entradas == null || t.mesas == null) return "";
+  return `<dl class="total-partes">
+    <div><dt>Por entradas</dt><dd>${bs(t.entradas)}</dd></div>
+    <div><dt>Por mesas</dt><dd>${bs(t.mesas)}</dd></div>
+  </dl>`;
+}
+
+const ventasTxt = t => [
+  `${num(t.sueltas)} ${t.sueltas === 1 ? "entrada" : "entradas"}`,
+  t.nMesas ? `${num(t.nMesas)} ${t.nMesas === 1 ? "mesa" : "mesas"}` : "",
+].filter(Boolean).join(" y ");
+
 function desgloseComision(v) {
   const mesas = Number(v.mesas || 0);
   if (mesas > 0) {
@@ -2604,13 +2718,24 @@ function desgloseComision(v) {
   return cuentaCierra(v) ? `${v.entradas} × ${bs(v.comision_unitaria)}` : "con mesas";
 }
 
+/* La línea dice de qué sale lo que se le paga. Desde 0108 la línea guarda
+   la partición del cierre: "330 Bs por 22 entradas + 150 Bs por 2 mesas".
+   Una línea de un cierre anterior no la tiene y dice lo de siempre. */
+function cuentaLinea(l) {
+  const p = partesComision(l);
+  if (p.entradas == null || p.mesas == null || l.comision_entradas == null)
+    return `${l.entradas} ${Number(l.entradas) === 1 ? "manilla" : "manillas"}${
+      cuentaCierra(l) ? ` × ${bs(l.comision_unitaria)}` : " · con mesas"}`;
+  const s = p.sueltas != null ? p.sueltas : Number(l.entradas || 0);
+  return `${bs(p.entradas)} por ${num(s)} ${s === 1 ? "entrada" : "entradas"}` +
+    (p.nMesas || p.mesas ? ` + ${bs(p.mesas)} por ${num(p.nMesas)} ${p.nMesas === 1 ? "mesa" : "mesas"}` : "");
+}
+
 function filaLinea(l) {
   return `
     <li class="fila quieta liq-linea${l.pagada ? " pagada" : ""}">
       <span class="fila-nombre">${esc(l.nombre)}
-        <em>${l.slug ? "?r=" + esc(l.slug) + " · " : ""}${l.entradas}
-          ${Number(l.entradas) === 1 ? "manilla" : "manillas"}${
-          cuentaCierra(l) ? ` × ${bs(l.comision_unitaria)}` : " · con mesas"}</em></span>
+        <em>${l.slug ? "?r=" + esc(l.slug) + " · " : ""}${esc(cuentaLinea(l))}</em></span>
       <span class="cifra destacada">${bs(l.comision)}</span>
       ${l.pagada
         ? `<span class="pastilla verde">Pagada</span>
@@ -2665,7 +2790,10 @@ async function pedirReapertura() {
 async function pedirPago(lineaId) {
   const l = (LIQ.datos.foto.lineas || []).find(x => x.id === lineaId);
   if (!l) return;
-  if (!confirm(`Marcar como pagada la comisión de ${l.nombre}: ${bs(l.comision)}.\n\n` +
+  const p = partesComision(l);
+  const partes = l.comision_entradas != null && p.mesas != null
+    ? ` (${bs(p.entradas)} por entradas + ${bs(p.mesas)} por mesas)` : "";
+  if (!confirm(`Marcar como pagada la comisión de ${l.nombre}: ${bs(l.comision)}${partes}.\n\n` +
                `Esto queda registrado y no se deshace desde acá.`)) return;
   const nota = prompt("¿Cómo se pagó? (opcional: transferencia, efectivo, nº de comprobante)", "");
   if (nota === null) return;
@@ -2702,8 +2830,8 @@ async function pantallaMisVentas() {
     return;
   }
   const ventas = rv.data || [];
-  const entradas = ventas.reduce((a, v) => a + Number(v.entradas || 0), 0);
-  const total = ventas.reduce((a, v) => a + Number(v.comision || 0), 0);
+  // La comisión partida (0108): por entradas, por mesas y total.
+  const suma = sumaComisiones(ventas);
 
   /* Sus compradores cuelgan de UN evento, y él puede estar repartiendo
      links de varios a la vez: sin elegir cuál, la lista sería la de
@@ -2735,21 +2863,20 @@ async function pantallaMisVentas() {
     <h3 class="titulo-bloque">Lo que vendiste</h3>
     ${ventas.length ? `
       <ul class="lista">${ventas.map(v => `
-        <li class="fila quieta venta">
+        <li class="fila quieta venta venta-partida">
           <span class="fila-nombre">${esc(v.evento_nombre)}
             <em>${fmtF(v.evento_fecha)}</em></span>
-          <span class="cifra">${v.entradas}<em>entradas</em></span>
           <span class="cifra">${bs(v.recaudado)}<em>recaudado</em></span>
-          <span class="cifra destacada">${bs(v.comision)}
-            <em>${esc(desgloseComision(v))}</em></span>
+          ${cifrasComision(v)}
         </li>`).join("")}</ul>
       <div class="total">
         <div>
           <h3>Tu comisión</h3>
-          <p>${entradas} ${entradas === 1 ? "entrada" : "entradas"} en
+          <p>${ventasTxt(suma)} en
              ${ventas.length} ${ventas.length === 1 ? "evento" : "eventos"}</p>
         </div>
-        <span class="monto">${bs(total)}</span>
+        ${partesTotal(suma)}
+        <span class="monto">${bs(suma.total)}</span>
       </div>`
     : `<p class="vacio">Todavía no vendiste nada. En cuanto alguien compre
          entrando por tu link y pague, acá aparecen las entradas y tu comisión.</p>`}`}
@@ -2768,7 +2895,8 @@ async function pantallaMisVentas() {
              </select>`
           : `<span class="conteo">${esc(evs[0].nombre)} · ${fmtF(evs[0].fecha)}</span>`}
       </div>
-      <section id="zonaCompradores"></section>` : ""}`}`;
+      <section id="zonaCompradores"></section>
+      <section id="zonaMesasCompradores"></section>` : ""}`}`;
 
   cablearCopiar();
 
@@ -2836,8 +2964,8 @@ async function pantallaRelacionadores(eventoId) {
   }
 
   const filas = rr.data || [];
-  const entradas = filas.reduce((a, v) => a + Number(v.entradas || 0), 0);
-  const total = filas.reduce((a, v) => a + Number(v.comision || 0), 0);
+  // La comisión partida (0108): por entradas, por mesas y total.
+  const suma = sumaComisiones(filas);
 
   $("#main").innerHTML = `
     <div class="cab-seccion">
@@ -2848,21 +2976,20 @@ async function pantallaRelacionadores(eventoId) {
     ${rr.error ? `<p class="error">${esc(rr.error.message)}</p>` : ""}
     ${filas.length ? `
       <ul class="lista">${filas.map(v => `
-        <li class="fila quieta venta">
+        <li class="fila quieta venta venta-partida">
           <span class="fila-nombre">${esc(v.nombre)}
             <em>${v.slug ? "?r=" + esc(v.slug) : "sin código"}</em></span>
-          <span class="cifra">${v.entradas}<em>entradas</em></span>
           <span class="cifra">${bs(v.recaudado)}<em>recaudado</em></span>
-          <span class="cifra destacada">${bs(v.comision)}
-            <em>${esc(desgloseComision(v))}</em></span>
+          ${cifrasComision(v)}
         </li>`).join("")}</ul>
       <div class="total">
         <div>
           <h3>Total a pagar</h3>
-          <p>${entradas} ${entradas === 1 ? "entrada" : "entradas"} de
+          <p>${ventasTxt(suma)} de
              ${filas.length} ${filas.length === 1 ? "relacionador" : "relacionadores"}</p>
         </div>
-        <span class="monto">${bs(total)}</span>
+        ${partesTotal(suma)}
+        <span class="monto">${bs(suma.total)}</span>
       </div>`
     : rr.error ? "" : `<p class="vacio">Nadie vendió con su link en este evento
         todavía. Aparecen acá en cuanto se pague la primera orden que entró
@@ -3002,6 +3129,7 @@ async function pantallaTablero(eventoId) {
     </div>
     <div id="zonaResumen"><p class="cargando">Cargando…</p></div>
     <section id="zonaCompradores"></section>
+    <section id="zonaMesasCompradores"></section>
     ${puedeEditar() ? `<section id="zonaPorteros"></section>` : ""}
     <section id="zonaRegistro"></section>`;
 
@@ -3116,12 +3244,14 @@ function turnoTxt(desde, hasta) {
 async function refrescarResumen(eventoId) {
   const z = $("#zonaResumen");
   if (!z) return;
-  const [{ data, error }, porFase] = await Promise.all([
+  const [{ data, error }, porFase, mesas] = await Promise.all([
     sb.rpc("resumen_evento", { p_evento: eventoId }),
     /* Aparte y en paralelo: si el desglose por fase falla, el tablero se
        pinta igual y el bloque dice que no pudo. Un desglose de más no
        puede tumbar las alertas. */
     ventasPorFase(eventoId).then(data => ({ data }), e => ({ error: e })),
+    // El tablero de mesas (0108), con la misma red.
+    sb.rpc("tablero_mesas", { p_evento: eventoId }).then(r => r, e => ({ error: e })),
   ]);
   if (error) { z.innerHTML = `<p class="error">${esc(error.message)}</p>`; return; }
   /* {} en vez de error: resumen_evento() devuelve lo mismo para "no es de
@@ -3132,7 +3262,8 @@ async function refrescarResumen(eventoId) {
     return;
   }
   z.innerHTML = bloqueCifras(data) + bloqueAlertas(data.alertas)
-    + bloqueDesgloses(data, porFase.error ? { error: porFase.error.message } : porFase.data);
+    + bloqueDesgloses(data, porFase.error ? { error: porFase.error.message } : porFase.data,
+                      mesas.error ? { error: mesas.error } : mesas.data);
   /* La alerta de revisión manual contaba las órdenes desde 0033 y no
      ofrecía nada: el que la leía se enteraba de que había plata cobrada
      sin entrada del otro lado y ahí se terminaba. Este botón es el
@@ -3186,7 +3317,7 @@ function bloqueAlertas(a) {
     { cifra: a.revision_manual.ordenes,
       titulo: "En revisión manual",
       pie: `${bs(a.revision_manual.monto)} cobrados`,
-      viva: "La pasarela cobró un monto distinto al esperado. Hay que mirarlas de a una: es plata que entró y no tiene entrada del otro lado.",
+      viva: "La pasarela cobró un monto distinto al esperado, o es una segunda mesa del mismo carnet. Hay que mirarlas de a una: es plata que entró y no tiene entrada del otro lado.",
       hecha: "Nadie pagó de más ni de menos.",
       nivel: "aviso", boton: { id: "irARevision", txt: "Resolverlas" } },
     { cifra: a.pendientes_vencidas.ordenes,
@@ -3468,7 +3599,8 @@ function bloqueFases(v) {
       ? `<em>se pagó ${bs(pagado.toFixed(2))} prom.</em>` : ""}</td>`;
   };
   const notasTipo = t => [
-    t.manillas_por_unidad > 1 ? `${num(t.manillas_por_unidad)} manillas por unidad` : "",
+    t.manillas_por_unidad > 1 ? `${num(t.manillas_por_unidad)} manillas por unidad`
+      : Number(t.manillas_por_unidad) === 0 ? "no incluye entradas" : "",
     t.activo ? "" : "inactivo",
     t.precio == null && Number(t.unidades) ? "ya no tiene precio en esta fase" : "",
   ].filter(Boolean).join(" · ");
@@ -3551,7 +3683,79 @@ function bloqueFases(v) {
   </div></section>`;
 }
 
-function bloqueDesgloses(r, porFase) {
+/* ─── las mesas (0108) ───
+   La tabla «Por fase» pero por tipo de mesa: cuántas hay, cuántas se
+   vendieron, cuántas quedan, cuánto recaudaron y si incluyen entradas,
+   con el total abajo. Lo arma tablero_mesas() en la base y no esta
+   pantalla: «vendidas» son unidades de órdenes pagadas (una mesa sin
+   entradas no tiene manillas que contar) y el recaudado es al precio que
+   pagó cada comprador, igual que «Por fase».
+
+   Las que están en pago se dicen aparte: todavía no son vendidas, pero
+   ocupan el cupo hasta que venzan, y es lo que explica un «quedan 0» con
+   menos vendidas que mesas. */
+function quedanMesa(t) {
+  if (t.quedan == null) return t.en_venta ? `<i>sin tope</i>` : `<i>fuera de venta</i>`;
+  return Number(t.quedan) === 0 ? `<b class="agotado">agotadas</b>` : num(t.quedan);
+}
+
+function bloqueMesas(v) {
+  if (!v) return "";
+  /* Sin la función (el front llegó antes que la migración) no se dice
+     nada: es un bloque nuevo, no uno que se rompió. Cualquier otro error,
+     se dice. */
+  if (v.error) {
+    const m = String(v.error.message || v.error);
+    if (v.error.code === "PGRST202" || /tablero_mesas/.test(m) && /not find|does not exist/i.test(m)) return "";
+    return `<section class="bloque-mesas"><h3 class="titulo-bloque">Mesas</h3>
+      <p class="error">No se pudo armar el tablero de mesas: ${esc(sinCodigo(m))}</p></section>`;
+  }
+  const T = v.tipos || [];
+  if (!T.length) return "";
+  const t0 = v.total || {};
+  const notas = t => [
+    t.precio == null ? "" : `${bs(t.precio)} hoy`,
+    !t.en_venta ? (t.activo ? "sin precio en la fase de hoy" : "inactiva") : "",
+    t.comision_rrpp != null ? `${bs(t.comision_rrpp)} por mesa al relacionador` : "",
+  ].filter(Boolean).join(" · ");
+  const fila = t => `
+    <tr${!Number(t.vendidas) && !t.en_venta ? ' class="apagada"' : ""}>
+      <td><span class="prod-nombre">${esc(t.nombre)}</span>${notas(t) ? `<em>${esc(notas(t))}</em>` : ""}</td>
+      <td data-rot="Incluye entradas">${t.incluye_entradas
+        ? `Sí · ${num(t.entradas_incluidas)}` : "No"}</td>
+      <td class="n" data-rot="Hay">${t.hay == null ? `<i>sin tope</i>` : num(t.hay)}</td>
+      <td class="n" data-rot="Vendidas">${num(t.vendidas)}${Number(t.reservadas)
+        ? `<em>${num(t.reservadas)} en pago</em>` : ""}${Number(t.presentadas)
+        ? `<em>${num(t.presentadas)} se presentaron</em>` : ""}</td>
+      <td class="n" data-rot="Quedan">${quedanMesa(t)}</td>
+      <td class="n" data-rot="Recaudado">${bs(t.recaudado)}</td>
+    </tr>`;
+  return `<section class="bloque-mesas">
+  <h3 class="titulo-bloque">Mesas</h3>
+  <p class="ayuda explica bajo-titulo">Cada tipo de mesa con lo que vendió. El recaudado es al
+    precio que pagó cada comprador. Las que están en pago vuelven a la venta si no se pagan
+    en 10 minutos. Los compradores, con su carnet y el link al recibo, están más abajo.</p>
+  <div class="grilla-envoltorio">
+    <table class="tabla ficha-tabla tabla-mesas">
+      <thead><tr>
+        <th>Mesa</th><th>Incluye entradas</th><th class="n">Hay</th><th class="n">Vendidas</th>
+        <th class="n">Quedan</th><th class="n">Recaudado</th>
+      </tr></thead>
+      <tbody>${T.map(fila).join("")}</tbody>
+      ${T.length > 1 ? `<tfoot><tr>
+        <td>Total<em>${num(t0.tipos)} ${Number(t0.tipos) === 1 ? "tipo" : "tipos"}</em></td>
+        <td data-rot="Incluye entradas">${num(t0.con_entradas)} de ${num(t0.tipos)}</td>
+        <td class="n" data-rot="Hay">${t0.hay == null ? `<i>sin tope</i>` : num(t0.hay)}</td>
+        <td class="n" data-rot="Vendidas">${num(t0.vendidas)}${Number(t0.reservadas)
+          ? `<em>${num(t0.reservadas)} en pago</em>` : ""}</td>
+        <td class="n" data-rot="Quedan">${t0.quedan == null ? `<i>—</i>` : num(t0.quedan)}</td>
+        <td class="n" data-rot="Recaudado">${bs(t0.recaudado)}</td>
+      </tr></tfoot>` : ""}
+    </table>
+  </div></section>`;
+}
+
+function bloqueDesgloses(r, porFase, mesas) {
   return `
   <h3 class="titulo-bloque">Por producto</h3>
   <p class="ayuda explica bajo-titulo">Las unidades son lo que compró el cliente y miden el cupo;
@@ -3567,7 +3771,9 @@ function bloqueDesgloses(r, porFase) {
         <tr${p.activo ? "" : ' class="apagada"'}>
           <td><span class="prod-nombre">${esc(p.nombre)}</span>
             <em>${esc(p.categoria)}${p.manillas_por_unidad > 1
-                  ? ` · ${num(p.manillas_por_unidad)} manillas por unidad` : ""}${
+                  ? ` · ${num(p.manillas_por_unidad)} manillas por unidad`
+                  // 0108: una mesa puede no incluir entradas (0 manillas)
+                  : Number(p.manillas_por_unidad) === 0 ? " · no incluye entradas" : ""}${
                   p.activo ? "" : " · inactivo"}</em></td>
           <td class="n" data-rot="Unidades">${num(p.unidades)}</td>
           <td class="n" data-rot="Manillas">${num(p.manillas)}${p.manillas_anuladas
@@ -3581,6 +3787,8 @@ function bloqueDesgloses(r, porFase) {
   </div>
 
   ${bloqueFases(porFase)}
+
+  ${bloqueMesas(mesas)}
 
   <div class="dos-tablas">
     <div>
@@ -3633,10 +3841,10 @@ function bloqueDesgloses(r, porFase) {
 
    Este bloque compartía estado con el plano de mesas —por eso se llama
    «salón»— y el plano ya no está. Las mesas volvieron como producto
-   (0107): se venden como cualquier tipo, sin elegir lugar, y cada compra
-   con mesa trae a nombre de quién va (titular_nombre y su carnet), que se
-   muestra en la fila, se busca y sale en el CSV. Lo que quedó es la
-   lista, que es lo que se usa todas las noches. */
+   (0107) y desde 0108 son otra compra con su propia lista, debajo de esta
+   (los compradores de mesas, MC): acá quedan las compras de entradas. Lo
+   del titular de la fila sigue para las compras viejas con mesa del plano,
+   que compradores_evento todavía trae. */
 const SALON = { evento: null, editar: false, compras: [],
                 busca: "", alCambiar: null,
                 anulando: null, abierta: null, manillas: {}, anulandoEntrada: null };
@@ -3663,7 +3871,10 @@ async function montarSalon(eventoId, opts) {
        escuchan acá arriba porque las filas se repintan enteras. */
     c.onsubmit = enviarEnCompradores;
   }
-  await cargarSalon();
+  /* Los compradores de mesas van en su propia lista, debajo (0108), con
+     las mismas reglas de quién ve qué. Se monta acá para que toda pantalla
+     que muestra compradores muestre las dos. */
+  await Promise.all([cargarSalon(), montarMesasCompradores(eventoId, opts)]);
 }
 
 /* La lista llega entera, un jsonb: no hay paginado que pueda comerse una
@@ -3893,19 +4104,22 @@ function filaCompraDetalle(c) {
 
    El día que alguien cargue la clave de Resend, este mismo botón manda el
    correo de verdad y el aviso cambia solo. No hay nada que tocar acá. */
-function bloqueLink(c) {
+/* `pre` separa los ids de este bloque cuando hay dos listas en pantalla
+   (compradores de entradas y de mesas, 0108): con el mismo id, copiar o el
+   resultado del correo caían en el bloque de la otra lista. */
+function bloqueLink(c, pre = "") {
   const id = c.orden_id;
   return `<div class="link-compra">
     <p class="ayuda explica">El link no pide clave: el uuid de la compra es la
       credencial. Mandáselo por WhatsApp al que dice que no le llegó nada.</p>
     <p class="link-publico">
-      <code id="lkOrden">${esc(linkOrden(id))}</code>
-      <button type="button" class="btn primario chico" data-copiar="lkOrden"
+      <code id="${pre}lkOrden">${esc(linkOrden(id))}</code>
+      <button type="button" class="btn primario chico" data-copiar="${pre}lkOrden"
               data-que="El link">Copiar</button>
     </p>
     ${c.email
       ? `<div class="acciones">
-           <button type="button" class="btn plano chico" data-mail="${esc(id)}"
+           <button type="button" class="btn plano chico" data-mail="${esc(id)}" data-pre="${pre}"
              >Mandarle el correo a ${esc(c.email)}</button>
          </div>
          ${S.correoOff ? `<p class="ayuda">La última vez que se intentó, el envío de
@@ -3913,14 +4127,16 @@ function bloqueLink(c) {
             ya lo configuraron; mientras tanto, el link de arriba es lo que funciona.</p>` : ""}`
       : `<p class="ayuda">Esta compra no dejó correo, así que no hay a dónde mandarlo:
            queda el link.</p>`}
-    <p class="mail-resultado" id="mailResultado"></p>
+    <p class="mail-resultado" id="${pre}mailResultado"></p>
   </div>`;
 }
 
 /* La única fuente de verdad de lo que pasó es la respuesta de la función:
    `enviado` es booleano y no se interpreta. Si dice false, se dice que no
    se mandó y se repite el link, que es lo que sí sirve. */
-async function mandarCorreo(ordenId) {
+async function mandarCorreo(ordenId, boton) {
+  const pre = (boton && boton.dataset.pre) || "";
+  const pintarMail = (txt, ok) => pintarMailEn(pre, txt, ok);
   pintarMail("", null);
   const { data, error } = await sb.functions.invoke("enviar-entradas", { body: { orden: ordenId } });
   if (error || !data || data.ok === false) {
@@ -3941,8 +4157,8 @@ async function mandarCorreo(ordenId) {
              `Copiá el link de arriba y mandáselo vos.`, false);
 }
 
-function pintarMail(txt, ok) {
-  const z = $("#mailResultado");
+function pintarMailEn(pre, txt, ok) {
+  const z = $("#" + pre + "mailResultado");
   if (!z) { if (txt) avisar(txt); return; }
   z.textContent = txt;
   if (ok === null) delete z.dataset.ok; else z.dataset.ok = ok ? "1" : "0";
@@ -4121,6 +4337,243 @@ async function anularManilla(entradaId, motivo, incluirUsadas) {
   const abierta = SALON.abierta;
   await refrescarSalon();
   if (abierta) await abrirManillas(abierta);
+}
+
+/* ══ los compradores de mesas (0108) ══════════════════════════════
+   Aparte de los de entradas, como pidió el dueño: una mesa es otra compra
+   (sola, a nombre de quien paga, una por carnet) y lo que se busca de ella
+   es otra cosa — el titular y su carnet, qué mesa es y el link al recibo,
+   que es lo que se le reenvía al que dice que no le llegó el QR de la
+   mesa. compradores_evento() ya no trae estas compras; las trae
+   compradores_mesas(), con las mismas reglas de quién ve qué (el
+   relacionador, solo lo suyo).
+
+   Es una hermana chica del salón y no el salón con un `if`: las filas
+   tienen otra forma y otras acciones (no hay manillas sueltas que anular:
+   las entradas de la mesa se miran en Resumen, la mesa se anula entera).
+   Lo que sí se comparte es lo que tiene que decir lo mismo en las dos
+   listas: el bloque del link con su correo (bloqueLink, con otro prefijo
+   de ids) y el CSV. */
+const MC = { evento: null, editar: false, ev: null, filas: [], hayMesas: false,
+             busca: "", link: null, anulando: null, alCambiar: null };
+
+async function montarMesasCompradores(eventoId, opts) {
+  Object.assign(MC, {
+    evento: eventoId, editar: !!(opts && opts.editar),
+    ev: (opts && opts.ev) || { id: eventoId },
+    filas: [], hayMesas: false, busca: "", link: null, anulando: null,
+    alCambiar: (opts && opts.alCambiar) || null,
+  });
+  const z = $("#zonaMesasCompradores");
+  if (!z) return;
+  z.innerHTML = "";
+  z.onclick = clicEnMesasCompradores;
+  z.onsubmit = enviarEnMesasCompradores;
+  await cargarMesasCompradores();
+}
+
+/* Sin mesas en el evento, el bloque no existe: un "Compradores de mesas"
+   vacío en una fiesta que solo vende entradas es ruido. Se pregunta por
+   el tipo y no solo por la lista, para que el organizador que acaba de
+   crear su primera mesa vea dónde van a caer las compras. */
+async function cargarMesasCompradores() {
+  const [rc, rt] = await Promise.all([
+    sb.rpc("compradores_mesas", { p_evento: MC.evento, p_solo_mios: false }),
+    sb.from("tipo_entrada").select("id").eq("evento_id", MC.evento).eq("categoria", "mesa").limit(1),
+  ]);
+  MC.filas = rc.data || [];
+  MC.hayMesas = MC.filas.length > 0 || !!(rt.data && rt.data.length);
+  pintarMesasCompradores(rc.error);
+}
+
+async function refrescarMesasCompradores() {
+  await cargarMesasCompradores();
+  if (MC.alCambiar) await MC.alCambiar();
+}
+
+/* "1234567-1A SC": el carnet como lo pide el guardia, completo (el panel
+   lo ve entero desde 0107; el link público lo enmascara). */
+const carnetTxt = c => [c.titular_ci, c.titular_ci_ext].filter(Boolean).join(" ");
+
+function pintarMesasCompradores(error) {
+  const z = $("#zonaMesasCompradores");
+  if (!z) return;
+  if (!MC.hayMesas && !MC.filas.length) { z.innerHTML = ""; return; }
+  z.innerHTML = `
+    <div class="cab-bloque sep">
+      <h3 class="titulo-bloque">Compradores de mesas</h3>
+      ${MC.filas.length ? `<input id="buscaMesa" class="buscador" type="search"
+         autocomplete="off" placeholder="Buscar nombre, carnet o teléfono"
+         value="${esc(MC.busca)}" aria-label="Buscar comprador de mesa">` : ""}
+      <span class="conteo" id="conteoMesas"></span>
+      ${MC.filas.length ? `<span class="bajadas">
+        <button type="button" class="btn plano chico" id="btnCsvMesas">Bajar compradores de mesas</button>
+      </span>` : ""}
+    </div>
+    ${error ? `<p class="error">${esc(sinCodigo(error.message))}</p>` : ""}
+    ${MC.filas.length ? `
+      <div class="grilla-envoltorio">
+        <table class="tabla tabla-compras tabla-mesas-compras">
+          <thead><tr>
+            <th>Titular</th><th>Contacto</th><th>Mesa</th>
+            <th class="n">Entradas</th><th class="n">Pagó</th>
+            <th>Relacionador</th>
+            <th class="col-accion"></th>
+          </tr></thead>
+          <tbody id="filasMesas"></tbody>
+        </table>
+      </div>`
+      : error ? "" : `<p class="vacio">Todavía nadie compró una mesa en este evento.</p>`}`;
+  const bc = $("#btnCsvMesas");
+  if (bc) bc.onclick = () => conBoton(bc, "Armando…", bajarCompradoresMesas);
+  const b = $("#buscaMesa");
+  if (b) b.oninput = () => { MC.busca = b.value; pintarFilasMesas(); };
+  pintarFilasMesas();
+}
+
+function filtrarMesas() {
+  const q = MC.busca.trim().toLowerCase();
+  if (!q) return MC.filas;
+  const soloNum = s => String(s || "").replace(/\D/g, "");
+  const qn = soloNum(q);
+  return MC.filas.filter(c =>
+    String(c.titular_nombre || "").toLowerCase().includes(q) ||
+    String(c.email || "").toLowerCase().includes(q) ||
+    String(c.tipo || "").toLowerCase().includes(q) ||
+    String(c.recibo_code || "").toLowerCase().includes(q) ||
+    (qn.length >= 3 && soloNum(c.telefono).includes(qn)) ||
+    (qn.length >= 3 && soloNum(c.titular_ci).includes(qn)));
+}
+
+function pintarFilasMesas() {
+  const tb = $("#filasMesas");
+  if (!tb) return;
+  const filas = filtrarMesas();
+  const cont = $("#conteoMesas");
+  if (cont) cont.textContent = MC.busca.trim()
+    ? `${filas.length} de ${MC.filas.length}`
+    : `${MC.filas.length} ${MC.filas.length === 1 ? "mesa vendida" : "mesas vendidas"}`;
+  tb.innerHTML = filas.length
+    ? filas.map(c => filaMesaCompra(c) + filaMesaDetalle(c)).join("")
+    : `<tr><td class="sin-nada" colspan="7">
+         Nadie con ese nombre, ese carnet ni ese teléfono compró una mesa en este evento.</td></tr>`;
+}
+
+function filaMesaCompra(c) {
+  const ent = Number(c.entradas_incluidas) || 0;
+  return `<tr data-orden="${esc(c.orden_id)}">
+    <td><span class="prod-nombre" title="${esc(c.titular_nombre || "")}">${esc(c.titular_nombre || "Sin nombre")}</span>
+      <em>CI ${esc(carnetTxt(c) || "—")}</em>
+      <em>${esc(fmtFH(c.fecha))}</em></td>
+    <td class="dato">${esc(c.telefono || "—")}${c.email ? `<em title="${esc(c.email)}">${esc(c.email)}</em>` : ""}</td>
+    <td class="detalle"><b>${esc(c.tipo || "Mesa")}</b>
+      <em>${esc(entradasMesaTxt(ent))}</em>${c.presentado_at
+        ? `<em class="titular-compra">Se presentó ${esc(fmtFH(c.presentado_at))}</em>` : ""}${c.mesa_etiqueta
+        ? `<em>Mesa ${esc(c.mesa_etiqueta)}</em>` : ""}</td>
+    <td class="n" data-rot="Entradas">${ent ? `${num(c.entradas)}${Number(c.entradas_usadas)
+        ? `<em>${num(c.entradas_usadas)} usadas</em>` : ""}` : `<i>—</i>`}</td>
+    <td class="n" data-rot="Pagó">${bs(c.pagado)}</td>
+    <td class="dato">${esc(c.rrpp_nombre || (c.canal === "rrpp" ? "sin nombre" : "Público"))}</td>
+    <td class="col-accion"><div class="acc-compra">${accionesMesa(c)}</div></td>
+  </tr>`;
+}
+
+/* "Recibo" abre la página del comprador, donde está el QR de la mesa: es
+   lo que se le reenvía. "Link" despliega copiar y mandar el correo, como
+   en la otra lista. Anular, solo a quien puede editar, y es la compra
+   entera: la mesa con sus entradas. */
+function accionesMesa(c) {
+  const recibo = `<a class="btn plano chico" href="${esc(linkOrden(c.orden_id))}" target="_blank"
+      rel="noopener">Recibo</a>`;
+  const link = `<button type="button" class="btn plano chico" data-mlink="${esc(c.orden_id)}"
+      >${MC.link === c.orden_id ? "Ocultar" : "Link"}</button>`;
+  if (!MC.editar) return recibo + link;
+  return `${recibo}${link}
+    <button type="button" class="btn plano chico peligrosa" data-manular="${esc(c.orden_id)}">Anular</button>`;
+}
+
+function filaMesaDetalle(c) {
+  if (MC.link !== c.orden_id && MC.anulando !== c.orden_id) return "";
+  return `<tr class="fila-detalle"><td colspan="7">
+    ${MC.link === c.orden_id ? bloqueLink(c, "m-") : ""}
+    ${MC.anulando === c.orden_id ? formAnularMesa(c) : ""}
+  </td></tr>`;
+}
+
+/* Lo mismo que dice la anulación de una compra de entradas, con lo que es
+   propio de una mesa: el recibo queda anulado (la puerta lo muestra en
+   rojo) y la mesa vuelve a la venta. */
+function formAnularMesa(c) {
+  const ent = Number(c.entradas) || 0, usadas = Number(c.entradas_usadas) || 0;
+  return `<form class="form-anular" data-manular-compra="${esc(c.orden_id)}">
+    <p class="anular-que">Se anula <b>«${esc(c.tipo || "")}»</b>, la mesa de
+      ${esc(c.titular_nombre || "sin nombre")}${ent
+        ? `, con ${ent === 1 ? "su <b>entrada</b>" : `sus <b>${num(ent)} entradas</b>`},` : ""} y vuelve a la venta.
+      El recibo queda anulado. Los <b>${bs(c.pagado)}</b> cobrados no se devuelven solos: el
+      reintegro se hace en la pasarela. <b>Esto no se deshace.</b></p>
+    ${usadas ? `<label class="anular-usadas">
+      <input type="checkbox" name="usadas">
+      <span>${usadas === 1 ? "Una entrada de esta mesa ya entró" : `${num(usadas)} entradas de esta mesa ya entraron`}
+        al evento. Anularlas igual no las saca de adentro y hace bajar el conteo de la puerta.</span></label>` : ""}
+    <label class="anular-motivo"><span>Motivo</span>
+      <input name="motivo" required maxlength="200" autocomplete="off"
+             placeholder="mesa duplicada, contracargo, se arrepintió…"></label>
+    <div class="acciones">
+      <button type="submit" class="btn primario chico">Anular la mesa</button>
+      <button type="button" class="btn plano chico" data-mcerrar="1">Cancelar</button>
+    </div>
+  </form>`;
+}
+
+function clicEnMesasCompradores(e) {
+  const b = e.target.closest("button[data-mlink],button[data-manular],button[data-mcerrar]," +
+                             "button[data-copiar],button[data-mail]");
+  if (!b) return;
+  const d = b.dataset;
+  if (d.copiar) return copiarNodo(document.getElementById(d.copiar), d.que);
+  if (d.mail) return conBoton(b, "Mandando…", () => mandarCorreo(d.mail, b));
+  if (d.mlink) { MC.link = MC.link === d.mlink ? null : d.mlink; MC.anulando = null; pintarFilasMesas(); return; }
+  if (d.mcerrar) { MC.anulando = null; pintarFilasMesas(); return; }
+  if (d.manular) { MC.anulando = MC.anulando === d.manular ? null : d.manular; MC.link = null; pintarFilasMesas(); }
+}
+
+function enviarEnMesasCompradores(e) {
+  const f = e.target.closest("form[data-manular-compra]");
+  if (!f) return;
+  e.preventDefault();
+  const motivo = (f.elements.motivo && f.elements.motivo.value) || "";
+  const usadas = !!(f.elements.usadas && f.elements.usadas.checked);
+  return anularMesa(f.dataset.manularCompra, motivo, usadas);
+}
+
+/* anular_orden anula también el recibo de la mesa (0108). */
+async function anularMesa(ordenId, motivo, incluirUsadas) {
+  const { data, error } = await sb.rpc("anular_orden",
+    { p_orden: ordenId, p_motivo: motivo, p_incluir_usadas: !!incluirUsadas });
+  if (error) { avisar(sinCodigo(error.message)); return; }
+  avisar(data.motivo);
+  MC.anulando = null;
+  await refrescarMesasCompradores();
+}
+
+/* El CSV de las mesas, entero (no lo filtrado, por lo mismo que el de
+   compradores): la lista que se imprime para la puerta sin señal, con el
+   carnet en su columna para poder ordenar y buscar a mano. */
+function bajarCompradoresMesas() {
+  const cab = ["Tipo de mesa", "Titular", "Carnet", "Extensión", "Correo", "Teléfono",
+               "Fecha de la compra", "Precio de la mesa (Bs)", "Pagó (Bs)", "Servicio (Bs)",
+               "Total (Bs)", "Relacionador", "Canal", "Entradas incluidas", "Entradas válidas",
+               "Entradas usadas", "Código del recibo", "Se presentó", "Link del recibo"];
+  const filas = MC.filas.map(c => [
+    c.tipo || "", c.titular_nombre || "", c.titular_ci || "", c.titular_ci_ext || "",
+    c.email || "", c.telefono || "", CSV.fh(c.fecha),
+    CSV.bs(c.precio), CSV.bs(c.pagado), CSV.bs(c.fee), CSV.bs(c.total),
+    c.rrpp_nombre || "", c.canal === "rrpp" ? "Relacionador" : "Público",
+    CSV.ent(c.entradas_incluidas), CSV.ent(c.entradas), CSV.ent(c.entradas_usadas),
+    c.recibo_code || "", CSV.fh(c.presentado_at), linkOrden(c.orden_id),
+  ]);
+  CSV.bajar(CSV.nombre("compradores-mesas", MC.ev), [cab, ...filas]);
+  avisar(`Bajaron ${filas.length} ${filas.length === 1 ? "mesa" : "mesas"}.`);
 }
 
 /* ── el plano de mesas: no está, y no es un olvido ──
@@ -4457,7 +4910,7 @@ async function pantallaCortesias(eventoId) {
 
   Object.assign(CORT, { evento: eventoId, ev: ev.data, fase, ultimas: null,
                         lista: [], total: 0, anulando: null,
-                        productos: (r.productos || []).filter(p => p.en_venta || p.quedan != null) });
+                        productos: (r.productos || []).filter(cortesiaPosible) });
 
   $("#main").innerHTML = `
     <div class="cab-seccion">
@@ -4627,8 +5080,14 @@ async function emitirCortesias() {
   if (res.data && res.data.productos) refrescarSelectorCortesias(res.data.productos);
 }
 
+/* Lo que se puede regalar: lo que se vende o tiene cupo. Una mesa que no
+   incluye entradas (0108) no tiene manillas que regalar: emitir_cortesias
+   la rechaza (MESA_SIN_ENTRADAS) y acá ni se ofrece. */
+const cortesiaPosible = p => (p.en_venta || p.quedan != null)
+  && !(p.categoria === "mesa" && Number(p.manillas_por_unidad) === 0);
+
 function refrescarSelectorCortesias(productos) {
-  CORT.productos = productos.filter(p => p.en_venta || p.quedan != null);
+  CORT.productos = productos.filter(cortesiaPosible);
   const sel = $("#cTipo");
   if (!sel) return;
   const elegido = sel.value;
@@ -4732,9 +5191,9 @@ async function pantallaRevision(eventoId) {
       <button class="btn plano chico" id="btnVolver">← Tablero</button>
       <h2>Revisión manual</h2>
     </div>
-    <p class="ayuda bajo-titulo">La pasarela cobró un monto distinto al esperado, así que
-      estas compras quedaron sin entradas emitidas. Miralas de a una con el
-      código de la pasarela y decidí: emitir igual, o anular.</p>
+    <p class="ayuda bajo-titulo">La pasarela cobró un monto distinto al esperado —o es una
+      segunda mesa del mismo carnet—, así que estas compras quedaron sin entradas emitidas.
+      Miralas de a una con el código de la pasarela y decidí: emitir igual, o anular.</p>
     <section id="zonaRevision"><p class="cargando">Cargando…</p></section>`;
   $("#btnVolver").onclick = () => pantallaTablero(eventoId);
   const z = $("#zonaRevision");
@@ -4759,8 +5218,14 @@ function pintarRevision() {
   cablearCopiar();
 }
 
+/* Una revisión con la plata justa es una mesa repetida (0108): solo dos
+   cosas mandan una compra acá, el monto distinto (MONTO, siempre con
+   diferencia) y la segunda mesa pagada de un mismo carnet
+   (MESA_DUPLICADA, que se pagó bien). Confirmarla no anda mientras la otra
+   siga pagada, y eso se dice antes de que alguien apriete. */
 function tarjetaRevision(o) {
   const dif = o.diferencia == null ? null : Number(o.diferencia);
+  const mesaRepetida = dif === 0;
   return `<article class="rev-tarjeta" data-orden="${esc(o.orden_id)}">
     <div class="rev-cab">
       <div>
@@ -4768,9 +5233,13 @@ function tarjetaRevision(o) {
         <p>${esc(o.telefono || "sin teléfono")}${o.email ? ` · ${esc(o.email)}` : ""}
           · ${esc(fmtFH(o.fecha))}</p>
       </div>
-      <span class="pastilla aviso">Sin entradas emitidas</span>
+      <span class="pastilla aviso">${mesaRepetida ? "Mesa repetida" : "Sin entradas emitidas"}</span>
     </div>
     <p class="rev-detalle">${esc(o.detalle || "—")}</p>
+    ${mesaRepetida ? `<p class="ayuda aviso">Se cobró lo esperado, pero ese carnet ya tiene otra
+      mesa pagada en este evento, y es una por carnet. Para quedarse con esta, anulá primero
+      la otra en «Compradores de mesas» (Resumen); si no, anulá esta y hacé el reintegro en
+      la pasarela.</p>` : ""}
     <div class="rev-plata">
       <span><em>Esperado</em><b>${bs(o.total)}</b></span>
       <span><em>Cobrado</em><b>${o.monto_cobrado == null
@@ -4833,7 +5302,12 @@ function enviarEnRevision(e) {
 async function resolverRevision(ordenId, decision, motivo) {
   const { data, error } = await sb.rpc("resolver_revision",
     { p_orden: ordenId, p_decision: decision, p_motivo: motivo });
-  if (error) { avisar(sinCodigo(error.message)); return; }
+  if (error) {
+    avisar(/MESA_DUPLICADA/.test(error.message)
+      ? "Ese carnet todavía tiene otra mesa pagada en este evento. Anulá esa primero en Compradores de mesas, o anulá esta."
+      : sinCodigo(error.message));
+    return;
+  }
   avisar(data.motivo);
   REV.abierta = null;
   REV.decision = null;

@@ -59,8 +59,11 @@ const HOLD_SEG = 600;
    crear-orden como `tc` y queda en ordenes.tc_version: lo que vale es la
    versión vigente cuando se compró. Cuando cambien los términos, cambia esto
    junto con la fecha de /terminos/index.html, y la función va a exigir la
-   nueva. */
-const TC_VERSION = "2026-09-02.v1";
+   nueva.
+   La 2 (19/10) suma las condiciones de la reserva de una mesa, y crear-orden
+   rechaza una mesa con términos anteriores (TC_VIEJOS): nadie paga una mesa
+   sin haber visto "sin devolución si no vas". */
+const TC_VERSION = "2026-10-19.v2";
 /* Si `iniciar-pago` devuelve una URL, la pasarela es real y el comprador se
    va a ella. Si no, se queda en la pantalla de cobro por QR de acá. */
 /* Sin paso de mesa: el comprador elige un producto, no un lugar del plano.
@@ -82,21 +85,22 @@ const PASOS = [
    activar entradas sueltas, el vocabulario vuelve solo. */
 let VOCAB = { plural: "entradas", singular: "entrada", elegi: "Elegí tus entradas" };
 
+/* Desde 0108 lo dice además lo que se está comprando: entradas y mesa son
+   dos compras separadas (S.modo), y mientras se elige una mesa los pasos
+   dicen "Mesas" y "Tu mesa". */
 function fijarVocabulario() {
-  const soloMesas = D.tipos.length > 0 && D.tipos.every(t => t.categoria === "mesa");
-  const hayMesas = D.tipos.some(t => t.categoria === "mesa");
-  VOCAB = soloMesas
-    ? { plural: "reservas", singular: "reserva", elegi: "Elegí tu reserva",
-        titulo: "reservas" }
+  const hayMesas = hayMesasVenta();
+  const mesa = S.modo === "mesas";
+  VOCAB = mesa
+    ? { plural: "mesas", singular: "mesa", elegi: "Elegí tu mesa",
+        titulo: hayEntradasVenta() ? "entradas y mesas" : "mesas" }
     : { plural: "entradas", singular: "entrada", elegi: "Elegí tus entradas",
         titulo: hayMesas ? "entradas y mesas" : "entradas" };
-  PASOS[0].txt = soloMesas ? "Reservas"   : "Entradas";
-  PASOS[3].txt = soloMesas ? "Tu reserva" : "Tu entrada";
+  PASOS[0].txt = mesa ? "Mesas"   : "Entradas";
+  PASOS[3].txt = mesa ? "Tu mesa" : "Tu entrada";
   const h2 = $('[data-paso="entradas"] .panel-cab h2');
   if (h2) h2.textContent = PASOS[0].txt;
-  const gm = GRUPOS.find(g => g.cat === "mesa");
-  if (gm) gm.titulo = soloMesas ? null : "Mesas y lounges";
-  $("#railResumen").textContent = VOCAB.elegi;
+  if (!hayCarrito()) $("#railResumen").textContent = VOCAB.elegi;
 }
 
 /* ── estado ────────────────────────────────────────────────────── */
@@ -104,13 +108,19 @@ const S = {
   paso: "entradas",
   cant: {},                    // tipo_id → cantidad
   comprador: { nombre:"", telefono:"", email:"" },
-  /* A nombre de quién va la mesa (0107). Vive solo en memoria: viaja en
-     crear-orden y nada más. NO va a localStorage —ni con el comprador
-     recordado ni con la compra guardada—: es el carnet de otra persona en
-     el teléfono de quien pagó. */
-  titular: { nombre:"", ci:"" },
+  /* Qué se está comprando: "entradas" o "mesas" (0108). Son dos compras
+     separadas: una orden lleva entradas o UNA mesa, nunca las dos, y la
+     base rechaza la mezcla (MESA_SOLA). */
+  modo: "entradas",
+  /* El carnet de quien compra la mesa (0108: la mesa va a su nombre). Vive
+     solo en memoria: viaja en crear-orden y nada más. NO va a localStorage
+     —ni con el comprador recordado ni con la compra guardada—: un carnet en
+     el teléfono es un dato que no se pidió guardar. */
+  carnet: { ci:"" },
   orden: null,
   entradas: [],
+  // El recibo de la mesa comprada, como lo manda estado-orden (o la demo).
+  mesa: null,
   restan: HOLD_SEG,
   tic: null
 };
@@ -136,15 +146,27 @@ function avisar(txt) {
 const tipoDe = id => D.tipos.find(t => t.id === id);
 const esperar = ms => new Promise(r => setTimeout(r, ms));
 
-/* ── mesas en el carrito (0107) ──
-   Una mesa por compra: la orden lleva UN titular, y con dos mesas la
-   segunda quedaría a nombre de alguien que no la reservó. Las entradas
-   sueltas se siguen sumando a la misma compra. crear_orden repite la regla
-   en la base; esto es para no dejar llegar hasta ahí. */
-const mesasEnCarrito = () => D.tipos.filter(t => t.categoria === "mesa")
+/* ── mesas y entradas, dos compras (0108) ──
+   Una mesa va a nombre de quien la compra, con su carnet, y es una por
+   carnet en el evento. Una orden lleva entradas O una mesa: con las dos en
+   el mismo carrito, la mesa quedaba a nombre de alguien y las entradas de
+   sus amigos colgadas de esa misma compra. crear_orden repite las reglas
+   en la base (MESA_SOLA, UNA_MESA, YA_TIENE_MESA); esto es para no dejar
+   llegar hasta ahí. */
+const esMesaT = t => (t.categoria || "entrada") === "mesa";
+const hayMesasVenta = () => D.tipos.some(esMesaT);
+const hayEntradasVenta = () => D.tipos.some(t => !esMesaT(t));
+const tiposDelModo = () => D.tipos.filter(t => esMesaT(t) === (S.modo === "mesas"));
+const mesaElegida = () => D.tipos.find(t => esMesaT(t) && S.cant[t.id] > 0) || null;
+const mesasEnCarrito = () => D.tipos.filter(esMesaT)
                                     .reduce((a, t) => a + (S.cant[t.id] || 0), 0);
 const hayMesa = () => mesasEnCarrito() > 0;
-const UNA_MESA = "Una mesa por compra. Si querés otra, hacé otra compra.";
+const hayCarrito = () => Object.values(S.cant).some(q => q > 0);
+const UNA_MESA = "Una mesa por persona. Elegí una sola.";
+const CONDICIONES = () => window.CONDICIONES_MESA ||
+  ["Si no te presentás con entrada, perdés la mesa.", "Sin devolución si no vas."];
+const textoEntradasMesa = n => window.entradasDeMesa ? window.entradasDeMesa(n)
+  : (Number(n) ? `Incluye ${n} entradas` : "No incluye entradas");
 
 /* El carnet como lo escribe la gente —con puntos, espacios, la E pegada—
    llevado a la forma que guarda la base: 5 a 10 números, "E-" adelante si
@@ -153,12 +175,13 @@ const normCi = v => String(v || "").toUpperCase().replace(/[\s.]/g, "")
   .replace(/^-+|-+$/g, "").replace(/^E(?=\d)/, "E-");
 const CI_OK = /^(E-)?\d{5,10}(-[0-9A-Z]{2})?$/;
 
-function titularDelForm() {
+/* Lo que viaja a crear-orden con una mesa: el carnet de quien compra, con
+   los nombres que lee crear-orden (ci, complemento, ci_ext). */
+function carnetDelForm() {
   return {
-    nombre: $("#fTitNombre").value.replace(/\s+/g, " ").trim(),
-    ci: normCi($("#fTitCi").value),
-    complemento: $("#fTitComp").value.toUpperCase().replace(/[\s.-]/g, ""),
-    ext: $("#fTitExt").value
+    ci: normCi($("#fCi").value),
+    complemento: $("#fCiComp").value.toUpperCase().replace(/[\s.-]/g, ""),
+    ci_ext: $("#fCiExt").value
   };
 }
 const linkDeOrden = () => `${location.origin}/orden/?id=${S.orden.id}`;
@@ -239,11 +262,14 @@ function apiDemo() {
     async evento() { return { ok: true, ...window.DATOS_DEMO }; },
     async crearOrden(items, comprador) {
       await esperar(220);
-      /* Las mismas dos reglas que crear-orden (0107), para que la demo no
-         deje pasar lo que el servidor rechaza. */
-      if (mesasEnCarrito() > 1) throw new Error(UNA_MESA);
-      if (hayMesa() && !(comprador.titular && comprador.titular.ci))
-        throw new Error("Para reservar una mesa poné el nombre y el carnet de la persona a cuyo nombre va.");
+      /* Las mismas reglas que crear-orden (0108), para que la demo no deje
+         pasar lo que el servidor rechaza. */
+      const conCodigo = (codigo, motivo) => Object.assign(new Error(motivo), { codigo });
+      if (mesasEnCarrito() > 1) throw conCodigo("UNA_MESA", UNA_MESA);
+      if (hayMesa() && items.length > 1)
+        throw conCodigo("MESA_SOLA", "La mesa se compra sola. Si también querés entradas, hacé otra compra.");
+      if (hayMesa() && !CI_OK.test(comprador.ci || ""))
+        throw conCodigo("FALTA_TITULAR", "La mesa va a tu nombre: poné tu nombre y apellido y tu carnet.");
       const { subtotal, fee, total } = cotizar();
       return { id: crypto.randomUUID(), subtotal, fee, total, gratis: total === 0,
                expira_at: Date.now() + HOLD_SEG * 1000, comprador };
@@ -256,18 +282,34 @@ function apiDemo() {
       await esperar(900);
       return { estado: "pagada" };
     },
+    /* Lo mismo que devuelve estado-orden: las entradas y, si fue una mesa,
+       su recibo. Una mesa emite las entradas que incluye —de 0 a N, con su
+       nombre en la etiqueta— y un recibo con código MESA…, que en la
+       puerta abre el recibo y no el molinete (0108). */
     async emitir(orden) {
       await esperar(400);
       const out = [];
+      let mesa = null;
       Object.entries(S.cant).forEach(([id, q]) => {
         const t = tipoDe(id);
-        // una mesa emite una entrada por persona que entra con ella
-        for (let i = 0; i < q * (t.manillas || 1); i++) {
-          out.push({ code: nuevoCode(), etiqueta: t.nombre, precio: t.precio,
-                     cliente: orden.comprador.nombre });
+        if (!q) return;
+        const porUnidad = esMesaT(t) ? Math.max(Number(t.manillas) || 0, 0) : (t.manillas || 1);
+        for (let i = 0; i < q * porUnidad; i++) {
+          out.push({ code: nuevoCode(), precio: t.precio, cliente: orden.comprador.nombre,
+                     etiqueta: esMesaT(t) ? `Entrada · ${t.nombre}` : t.nombre,
+                     mesa: esMesaT(t) ? t.nombre : null });
+        }
+        if (esMesaT(t)) {
+          const c = orden.comprador;
+          const num = String(c.ci || "").replace(/\D/g, "");
+          mesa = { code: "MESA" + nuevoCode().slice(0, 8), tipo: t.nombre, incluye: t.incluye || null,
+                   entradas_incluidas: porUnidad, titular: c.nombre,
+                   ci: "••" + num.slice(-4) + (c.ci_ext ? " " + c.ci_ext : ""),
+                   email: c.email, estado: "valida", presentado_at: null,
+                   condiciones: CONDICIONES() };
         }
       });
-      return out;
+      return { entradas: out, mesa };
     }
   };
 }
@@ -291,7 +333,11 @@ function apiSupabase() {
        la reja del gateway contesta {code, message} —función no encontrada,
        sin recursos— y si eso pasara como éxito, crearOrden devolvería una
        orden sin id y la compra seguiría a la pasarela con nada. */
-    if (j.ok === false || !r.ok) throw new Error(j.motivo || `No se pudo completar (${r.status}).`);
+    /* El `codigo` viaja pegado al error (0108: YA_TIENE_MESA, TC_VIEJOS…)
+       para que pagar() decida a qué paso volver sin leer la frase. */
+    if (j.ok === false || !r.ok)
+      throw Object.assign(new Error(j.motivo || `No se pudo completar (${r.status}).`),
+                          { codigo: j.codigo || null });
     return j;
   };
   /* Con tope: con una raya de señal el fetch no falla, se queda colgado, y
@@ -372,7 +418,9 @@ function apiSupabase() {
     iniciarPago: orden => fn("iniciar-pago", { orden: orden.id }),
     // estado-orden confirma contra la pasarela y emite en el mismo viaje
     estadoOrden: orden => fn("estado-orden", { orden: orden.id }),
-    emitir:      orden => fn("estado-orden", { orden: orden.id }).then(r => r.entradas || [])
+    // Las entradas y el recibo de la mesa, si la compra fue una (0108).
+    emitir:      orden => fn("estado-orden", { orden: orden.id })
+                            .then(r => ({ entradas: r.entradas || [], mesa: r.mesa || null }))
   };
 }
 
@@ -745,38 +793,74 @@ function marcarDesborde() {
   r.dataset.mas = falta ? "1" : "0";
 }
 
-/* Dos grupos, no una lista sola: una entrada y una mesa se compran distinto
-   —una es una persona, la otra es un espacio para un grupo— y mezclarlas hace
-   que la de 3.000 parezca una entrada carísima. */
-const GRUPOS = [
-  { cat: "entrada", titulo: null },
-  { cat: "mesa", titulo: "Mesas y lounges",
-    nota: "Una mesa por compra, a nombre de quien la reserva. El lugar exacto te lo asigna el equipo el día del evento." },
-];
+/* Una entrada y una mesa se compran distinto —una es una persona, la otra
+   es un espacio para un grupo, a nombre de quien la paga— y desde 0108 ni
+   siquiera van en la misma compra: arriba se elige "Entradas" o "Mesas"
+   (pintarModo) y abajo se ve sólo lo de esa compra. Mezcladas en una lista,
+   la de 3.000 parecía una entrada carísima. */
+const NOTA_MESAS = "Una mesa por persona, a tu nombre y con tu carnet. " +
+  "El lugar exacto te lo asigna el equipo el día del evento.";
+
+/* El selector de arriba. Aparece sólo si el evento vende las dos cosas:
+   con una sola, preguntar "¿entradas o mesa?" es un paso de más. Debajo de
+   cada opción, desde cuánto sale: es lo que hace que alguien que vino por
+   una entrada se entere de que hay mesas, y al revés. */
+function pintarModo() {
+  const caja = $("#modoCompra");
+  if (!caja) return;
+  const las2 = hayEntradasVenta() && hayMesasVenta();
+  caja.hidden = !las2;
+  if (!las2) return;
+  const desde = lista => {
+    const vivos = lista.filter(t => t.cupo > 0);
+    if (!vivos.length) return lista.length ? "agotado" : "";
+    const min = Math.min(...vivos.map(t => Number(t.precio)));
+    return min === 0 ? "gratis" : `desde ${bs(min)}`;
+  };
+  $("#modoSubEntradas").textContent = desde(D.tipos.filter(t => !esMesaT(t)));
+  $("#modoSubMesas").textContent = desde(D.tipos.filter(esMesaT));
+  caja.querySelectorAll("[data-modo]").forEach(b =>
+    b.setAttribute("aria-checked", String(b.dataset.modo === S.modo)));
+}
+
+/* Cambiar de compra vacía la otra: una orden no lleva las dos cosas, y
+   dejar entradas elegidas "escondidas" atrás de la pestaña de mesas era
+   pagar algo que no se estaba viendo. Se avisa, para que nadie crea que
+   perdió lo que había elegido sin motivo. */
+function cambiarModo(m) {
+  if (m === S.modo || (m !== "entradas" && m !== "mesas")) return;
+  const habia = hayCarrito();
+  D.tipos.forEach(t => { S.cant[t.id] = 0; });
+  S.modo = m;
+  olvidarClave();
+  fijarVocabulario();
+  pintarPasos();
+  pintarTipos();
+  pintarRail();
+  if (habia) avisar(m === "mesas"
+    ? "Sacamos las entradas del carrito: la mesa se compra aparte."
+    : "Sacamos la mesa del carrito: las entradas se compran aparte.");
+}
 
 function pintarTipos() {
   const tope = D.evento.tope_entradas_orden;
   const usadas = Object.values(S.cant).reduce((a, b) => a + b, 0);
+  const mesas = S.modo === "mesas";
+  const suyos = tiposDelModo();
+  pintarModo();
+  $("#tipos").innerHTML = avisoSinVenta() +
+    (mesas && suyos.length ? `<div class="grupo-cab"><p>${esc(NOTA_MESAS)}</p></div>` : "") +
+    suyos.map(t => mesas ? tarjetaMesa(t) : tarjetaTipo(t, tope, usadas)).join("");
 
-  $("#tipos").innerHTML = avisoSinVenta() + GRUPOS.map(g => {
-    const suyos = D.tipos.filter(t => (t.categoria || "entrada") === g.cat);
-    if (!suyos.length) return "";
-    // El título del grupo se calla cuando no separa nada — con mesas y nada
-    // más, "Mesas y lounges" repite el encabezado del panel. La nota queda:
-    // esa sí dice algo que el comprador no sabe.
-    return ((g.titulo || g.nota)
-        ? `<div class="grupo-cab">` +
-          (g.titulo ? `<h3>${esc(g.titulo)}</h3>` : "") +
-          (g.nota ? `<p>${esc(g.nota)}</p>` : "") + `</div>`
-        : "") +
-      suyos.map(t => tarjetaTipo(t, tope, usadas)).join("");
-  }).join("");
-
-  if (usadas >= tope) {
+  if (!mesas && usadas >= tope) {
     $("#tipos").insertAdjacentHTML("beforeend",
       `<p class="letra-chica">Máximo ${tope} por compra. Para más, hacé otra compra.</p>`);
   }
-  $("#tipos").insertAdjacentHTML("beforeend", listaFases());
+  /* Las fases hablan del precio de la entrada: al lado de las mesas, con
+     entradas también a la venta, "Fase 2 · 150 Bs" se leería como el precio
+     de una mesa. Con mesas y nada más, como siempre. */
+  if (!mesas || !hayEntradasVenta())
+    $("#tipos").insertAdjacentHTML("beforeend", listaFases());
 }
 
 /* ── las fases de la venta (0091) ──────────────────────────────────
@@ -824,7 +908,8 @@ function avisoSinVenta() {
   /* Fase abierta pero con todo lo que queda apartado por compras a medio
      pagar (0094: la fase ya no salta a la siguiente por reservas). No es
      "agotado": en minutos se paga o se libera. */
-  if (!D.sin_venta && D.tipos.length && D.tipos.every(t => t.cupo === 0)) {
+  const vista = tiposDelModo();
+  if (!D.sin_venta && vista.length && vista.every(t => t.cupo === 0)) {
     return `<article class="tipo sin-venta">
       <h3 class="tipo-nombre">Se están pagando las últimas</h3>
       <p class="tipo-desc">Si alguna compra no se completa, vuelve a la venta en unos minutos. Recargá la página.</p>
@@ -899,9 +984,8 @@ function listaFases() {
 
 function tarjetaTipo(t, tope, usadas) {
   const q = S.cant[t.id];
-  const esMesa = (t.categoria || "entrada") === "mesa";
-  // Con una mesa en el carrito, el + de todas las mesas se apaga (0107).
-  const topeMas = q >= t.cupo || usadas >= tope || (esMesa && hayMesa());
+  const esMesa = esMesaT(t);
+  const topeMas = q >= t.cupo || usadas >= tope;
 
   /* El renglón del cupo dice el número real o no dice nada. Sin tope en la
      base llegaba el 9999 de la función y la tarjeta anunciaba "9999
@@ -918,7 +1002,6 @@ function tarjetaTipo(t, tope, usadas) {
   const partes = [];
   if (t.cupo === 0) partes.push("Agotado");
   else if (!sinTope && !callar) partes.push(t.cupo <= 20 ? `Quedan ${t.cupo}` : `${t.cupo} disponibles`);
-  if (esMesa && t.manillas > 1) partes.push(`entran ${t.manillas}`);
   const txtCupo = partes.join(" · ");
 
   return `<article class="tipo${esMesa ? " es-mesa" : ""}" data-activo="${q ? 1 : 0}">
@@ -939,6 +1022,38 @@ function tarjetaTipo(t, tope, usadas) {
         <button type="button" data-paso-t="1" data-tipo="${t.id}"
           aria-label="Agregar ${esc(t.nombre)}"${topeMas ? " disabled" : ""}>+</button>
       </div>
+    </div>
+  </article>`;
+}
+
+/* La tarjeta de una mesa (0108). No tiene stepper: es UNA mesa por
+   persona, así que se elige como una opción —tocar otra cambia la
+   elegida— en vez de sumar unidades que la base iba a rechazar. Dice todo
+   lo que se compra junto: lo que incluye, cuántas entradas trae (o que no
+   trae ninguna) y, antes de elegirla, las dos condiciones de la reserva. */
+function tarjetaMesa(t) {
+  const elegida = S.cant[t.id] > 0;
+  const agotada = t.cupo === 0;
+  const callar = D.organizador.muestra_cupo === false;
+  const sinTope = t.cupo >= SIN_TOPE;
+  const chips = [{ txt: textoEntradasMesa(t.manillas), cls: Number(t.manillas) ? "" : " sin-entrada" }];
+  if (agotada) chips.push({ txt: "Agotada", cls: " poco" });
+  else if (!sinTope && !callar)
+    chips.push({ txt: t.cupo === 1 ? "Queda 1" : `Quedan ${t.cupo}`, cls: t.cupo <= 5 ? " poco" : "" });
+  return `<article class="tipo es-mesa" data-activo="${elegida ? 1 : 0}">
+    <h3 class="tipo-nombre">${esc(t.nombre)}</h3>
+    <div class="mesa-cuerpo">
+      ${t.desc ? `<p class="tipo-desc">${esc(t.desc)}</p>` : ""}
+      ${t.incluye ? `<p class="tipo-incluye"><b>Incluye</b> ${esc(t.incluye)}</p>` : ""}
+      <p class="mesa-chips">${chips.map(c => `<span class="chip${c.cls}">${esc(c.txt)}</span>`).join("")}</p>
+      <ul class="cond-mesa">${CONDICIONES().map(c => `<li>${esc(c)}</li>`).join("")}</ul>
+    </div>
+    <div class="tipo-der">
+      <span class="tipo-precio">${Number(t.precio) === 0 ? "Gratis" : bs(t.precio)}</span>
+      <button type="button" class="elegir-mesa" data-elegir-mesa="${esc(t.id)}"
+        aria-pressed="${elegida}"${agotada && !elegida ? " disabled" : ""}
+        aria-label="${elegida ? "Quitar" : "Elegir"} ${esc(t.nombre)}">${
+        agotada && !elegida ? "Agotada" : elegida ? "Elegida ✓" : "Elegir"}</button>
     </div>
   </article>`;
 }
@@ -986,13 +1101,9 @@ function pintarRail() {
   const rotulo = (hay ? total === 0 : eventoGratis()) ? "Confirmación" : "Pago";
   if (PASOS[2].txt !== rotulo) { PASOS[2].txt = rotulo; pintarPasos(); }
 
-  const partes = [];
-  const mesas = D.tipos.filter(t => t.categoria === "mesa")
-                       .reduce((a, t) => a + (S.cant[t.id] || 0), 0);
-  const sueltas = entradas - mesas;
-  if (sueltas) partes.push(sueltas + (sueltas === 1 ? " entrada" : " entradas"));
-  if (mesas) partes.push(mesas + (mesas === 1 ? " mesa" : " mesas"));
-  $("#railResumen").textContent = hay ? partes.join(" · ") : VOCAB.elegi;
+  const m = mesaElegida();
+  $("#railResumen").textContent = !hay ? VOCAB.elegi
+    : m ? m.nombre : entradas + (entradas === 1 ? " entrada" : " entradas");
 
   // el botón cambia de nombre y de habilitación según el paso
   const b = $("#btnSeguir"), atras = $("#btnAtras");
@@ -1021,7 +1132,12 @@ function pintarRail() {
   /* La política de devolución, al lado del total y del botón "Ir a pagar":
      en el paso de datos, que es cuando se decide, y sólo si hay algo que
      cobrar — en un evento gratis no hay nada que devolver. */
-  $("#devolucion").hidden = !(S.paso === "datos" && hay && total > 0);
+  /* Con una mesa, las condiciones de la reserva (0108): una mesa sí se
+     pierde y no se devuelve si no vas, y eso es lo que hay que leer al
+     lado del botón de pagar — aunque sea gratis, porque se pierde igual. */
+  $("#devolucion").textContent = m ? CONDICIONES().join(" ")
+    : "Sin devolución por no asistir. Si el evento se cancela, se devuelve la entrada.";
+  $("#devolucion").hidden = !(S.paso === "datos" && hay && (total > 0 || !!m));
   if (hay) arrancarReloj(); else pararReloj();
   medirBarra();
 }
@@ -1093,9 +1209,7 @@ function irA(paso, { quieto = false } = {}) {
   // dejar los datos y pagar. Antes sobra (están las dudas) y después ya está
   // el link de la orden.
   $("#ayudaWa").hidden = !(paso === "datos" || paso === "pago");
-  // El titular de la mesa se pide sólo si hay una mesa en el carrito: al
-  // que compra entradas sueltas no se le pide el carnet de nadie (0107).
-  if (paso === "datos") $("#bloqueTitular").hidden = !hayMesa();
+  if (paso === "datos") pintarDatosMesa();
   pintarPasos();
   if (paso === "entradas") pintarTipos();
   pintarRail();
@@ -1124,20 +1238,17 @@ const REGLAS = {
   fTc: { e:"#eTc", k:null,
     ok: (v, el) => el.checked,
     msg:"Necesitamos que aceptes los términos." },
-  /* El titular de la mesa (0107). `cuando` dice si la regla corre: sin mesa
-     en el carrito el bloque está escondido y no se le exige nada a nadie.
-     `en` dice dónde se guarda: en S.titular, que nunca se escribe en el
-     teléfono, y no en S.comprador, que sí se recuerda. */
-  fTitNombre: { e:"#eTitNombre", k:"nombre", en:"titular", cuando: hayMesa,
-    ok: v => /^\S+( \S+)+$/.test(v.replace(/\s+/g, " ").trim()),
-    msg:"Poné nombre y apellido de quien reserva." },
-  fTitCi: { e:"#eTitCi", k:"ci", en:"titular", cuando: hayMesa,
+  /* El carnet de quien compra la mesa (0108). `cuando` dice si la regla
+     corre: sin mesa elegida el bloque está escondido y no se le exige nada
+     a nadie. `en` dice dónde se guarda: en S.carnet, que nunca se escribe
+     en el teléfono, y no en S.comprador, que sí se recuerda. */
+  fCi: { e:"#eCi", k:"ci", en:"carnet", cuando: hayMesa,
     ok: v => CI_OK.test(normCi(v)) &&
-             /^([0-9A-Z]{2})?$/.test($("#fTitComp").value.toUpperCase().replace(/[\s.-]/g, "")),
-    msg:"Revisá el carnet: de 5 a 10 números, y el complemento de 2 si tiene." }
+             /^([0-9A-Z]{2})?$/.test($("#fCiComp").value.toUpperCase().replace(/[\s.-]/g, "")),
+    msg:"Revisá tu carnet: de 5 a 10 números, y el complemento de 2 si tiene." }
 };
 /* Dónde guarda cada regla lo que validó. */
-const destino = r => r.en === "titular" ? S.titular : S.comprador;
+const destino = r => r.en === "carnet" ? S.carnet : S.comprador;
 
 function validarCampo(id) {
   const r = REGLAS[id], el = $("#" + id);
@@ -1174,23 +1285,31 @@ function formValido(mostrar) {
   return ok;
 }
 
-/* "Es para mí": copia el nombre de quien paga y lo deja quieto mientras
-   está tildado, así no quedan dos versiones del mismo nombre. El carnet se
-   escribe igual: el de quien paga no lo pedimos en ningún otro lado. */
-function copiarTitular() {
-  const yo = $("#fTitYo").checked, n = $("#fTitNombre");
-  if (yo) n.value = $("#fNombre").value;
-  n.readOnly = yo;
+/* El paso de datos con una mesa (0108): la mesa va a nombre de quien
+   paga, así que el nombre del formulario ES el del titular y se pide su
+   carnet. Las condiciones de la reserva aparecen otra vez arriba del
+   casillero de los términos, y el casillero las nombra: se aceptan juntas.
+   Sin mesa, el formulario de siempre. */
+function pintarDatosMesa() {
+  const m = hayMesa();
+  $("#bloqueCarnet").hidden = !m;
+  $("#condMesa").hidden = !m;
+  $("#tcMesa").hidden = !m;
+  $("#rotNombre").textContent = m ? "Tu nombre y apellido" : "Nombre y apellido";
+  if (m) $("#condMesaLista").innerHTML = CONDICIONES().map(c => `<li>${esc(c)}</li>`).join("");
+  const nota = $('[data-paso="datos"] .panel-nota');
+  if (nota && D.correo_configurado !== false)
+    nota.textContent = m ? "Acá te mandamos el QR de la mesa y el recibo." : "Acá te mandamos el QR.";
 }
-function limpiarTitular() {
-  $("#fTitYo").checked = false;
-  ["fTitNombre", "fTitCi", "fTitComp"].forEach(id => {
+
+function limpiarCarnet() {
+  ["fCi", "fCiComp"].forEach(id => {
     const el = $("#" + id);
-    el.value = ""; el.readOnly = false; el.removeAttribute("aria-invalid");
+    el.value = ""; el.removeAttribute("aria-invalid");
   });
-  $("#fTitExt").value = "";
-  $("#eTitNombre").textContent = ""; $("#eTitCi").textContent = "";
-  S.titular = { nombre: "", ci: "" };
+  $("#fCiExt").value = "";
+  $("#eCi").textContent = "";
+  S.carnet = { ci: "" };
 }
 
 /* ── pago ────────────────────────────────────────────────────────
@@ -1232,15 +1351,23 @@ async function pagar() {
     pagoDice(`<div class="girador"></div><h3>Reservando tu lugar</h3>
       <p>${gratis ? "Guardamos lo que elegiste mientras lo confirmamos."
                   : "Guardamos lo que elegiste por 10 minutos mientras pagás."}</p>`);
+    /* Con una mesa la orden lleva ESA mesa y nada más (0108, MESA_SOLA):
+       una unidad, aunque el carrito dijera otra cosa. */
+    const m = mesaElegida();
     const items = [];
-    Object.entries(S.cant).forEach(([id, q]) => { if (q) items.push({ tipo_id: id, cantidad: q }); });
+    if (m) items.push({ tipo_id: m.id, cantidad: 1 });
+    else Object.entries(S.cant).forEach(([id, q]) => { if (q) items.push({ tipo_id: id, cantidad: q }); });
     // Sólo si está tildado: formValido ya lo exigió, pero lo que se manda
     // es lo que el casillero dice, no lo que la validación supone.
-    // El titular va sólo con una mesa en el carrito (0107). Como es parte
-    // del comprador que se manda, claveDeCompra lo mete en la huella: si
-    // cambia el titular, es otra compra y otra client_key.
-    const titular = hayMesa() ? titularDelForm() : undefined;
-    S.orden = await API.crearOrden(items, { ...S.comprador, titular },
+    // El carnet va sólo con una mesa (0108: la mesa va a nombre de quien
+    // paga). Como es parte del comprador que se manda, claveDeCompra lo
+    // mete en la huella: si cambia el carnet, es otra compra y otra
+    // client_key. El nombre, sin espacios de más: es el que dice el recibo.
+    const comprador = m
+      ? { ...S.comprador, nombre: S.comprador.nombre.replace(/\s+/g, " ").trim(), ...carnetDelForm() }
+      : { ...S.comprador };
+    S.mesa = null;
+    S.orden = await API.crearOrden(items, comprador,
                                    $("#fTc").checked ? TC_VERSION : undefined);
 
     /* El precio que se cobra lo decide la base al crear la orden, con la
@@ -1267,8 +1394,9 @@ async function pagar() {
        rechaza y el comprador se queda trabado en una pantalla que no avanza. */
     if (S.orden.gratis) {
       pagoDice(`<div class="girador"></div><h3>Confirmando tu lugar</h3>
-        <p>Es gratis. Estamos emitiendo tu entrada.</p>`);
-      S.entradas = await API.emitir(S.orden);
+        <p>Es gratis. Estamos emitiendo tu ${m ? "mesa" : "entrada"}.</p>`);
+      const em = await API.emitir(S.orden);
+      S.entradas = em.entradas; S.mesa = em.mesa;
       await mostrarListo();
       return;
     }
@@ -1290,6 +1418,27 @@ async function pagar() {
     olvidarClave();
     throw new Error("No pudimos abrir el pago. Tocá «Volver a intentar».");
   } catch (err) {
+    /* Los rechazos de una mesa (0108) vuelven con su código. Los términos
+       viejos se arreglan recargando: la página que está abierta es de
+       antes de las condiciones de la mesa. El carnet o el correo mal, al
+       formulario. Un carnet que ya tiene mesa, a elegir otra cosa: puede
+       comprar entradas, mesa no. */
+    if (err.codigo === "TC_VIEJOS") {
+      olvidarClave();
+      pagoDice(`<h3>Cambiaron las condiciones</h3><p>${esc(err.message)}</p>
+        <button type="button" class="btn plano" id="btnRecargar">Recargar la página</button>`);
+      $("#btnRecargar").onclick = () => location.reload();
+      return;
+    }
+    if (["FALTA_TITULAR", "CI_INVALIDO", "FALTA_CORREO"].includes(err.codigo)) {
+      pagoFallo(err.message, "datos");
+      return;
+    }
+    if (["YA_TIENE_MESA", "UNA_MESA", "MESA_SOLA", "MESA_TOMADA"].includes(err.codigo)) {
+      olvidarClave();
+      pagoFallo(err.message, "entradas");
+      return;
+    }
     // El precio cambió y la orden no se creó: se recarga y se vuelve a elegir.
     if (/cambió el precio/.test(err.message)) {
       olvidarClave();
@@ -1358,7 +1507,10 @@ async function verificarPago() {
   try {
     const r = await API.estadoOrden(S.orden);
     if (r.estado === "revision_manual") {
-      pagoFallo("El monto cobrado no coincide con la compra. Lo estamos revisando.", null);
+      /* Con una mesa la revisión puede ser por el carnet (0108,
+         MESA_DUPLICADA), no por el monto: no se le dice algo que no pasó. */
+      pagoFallo(hayMesa() ? "Tu pago quedó en revisión. El organizador se va a comunicar con vos."
+                          : "El monto cobrado no coincide con la compra. Lo estamos revisando.", null);
       return;
     }
     if (r.estado !== "pagada") {
@@ -1369,9 +1521,19 @@ async function verificarPago() {
       $("#btnVerificar").onclick = verificarPago;
       return;
     }
-    S.entradas = r.entradas && r.entradas.length ? r.entradas : await API.emitir(S.orden);
+    S.entradas = r.entradas || [];
+    S.mesa = r.mesa || null;
+    /* Pagada y sin nada que mostrar: se pide de nuevo. Una mesa sin
+       entradas llega con `entradas` vacío y su recibo, y eso ya es todo. */
+    if (!S.entradas.length && !S.mesa) {
+      const em = await API.emitir(S.orden);
+      S.entradas = em.entradas; S.mesa = em.mesa;
+    }
     await mostrarListo();
   } catch (err) {
+    /* MESA_DUPLICADA (0108): pagó tarde una reserva vencida y mientras
+       tanto el mismo carnet pagó otra mesa. La plata queda en revisión y
+       el motivo lo dice la función. */
     pagoFallo(err.message, null);
   }
 }
@@ -1387,6 +1549,10 @@ async function recargarEvento() {
   D = r;
   S.cant = {};
   D.tipos.forEach(t => S.cant[t.id] = Math.min(antes[t.id] || 0, t.cupo));
+  // Si la compra que se estaba armando dejó de venderse, se pasa a la otra.
+  if (S.modo === "mesas" && !hayMesasVenta()) S.modo = "entradas";
+  if (S.modo === "entradas" && !hayEntradasVenta() && hayMesasVenta()) S.modo = "mesas";
+  fijarVocabulario();
   pintarHero(); pintarCierre(); pintarTipos(); pintarRail();
 }
 
@@ -1406,8 +1572,8 @@ const dibujarTicket = (t) => window.dibujarTicket(t, D.evento, D.fase);
    Sin correo configurado la entrada vive en la pantalla y en el link, y
    cerrar la pestaña sin copiarlo es perderla. Esta lista es la red: la lee
    /mis-entradas. El formato es un contrato con esa página — id, evento, org,
-   slug, fecha, lugar, entradas, guardada— y no se le cambia una clave sin
-   avisar del otro lado.
+   slug, fecha, lugar, entradas, mesa (opcional, 0108), guardada— y no se
+   le cambia una clave sin avisar del otro lado.
 
    Todo adentro de un try, sin excepción: hay navegadores con el storage
    bloqueado y modos privados que tiran al escribir, y una compra que ya salió
@@ -1428,6 +1594,10 @@ function recordarCompra() {
       fecha: cuando ? cuando.toISOString() : null,
       lugar: D.evento.lugar || "",
       entradas: S.entradas.length,
+      /* 0108: el tipo de mesa, si la compra fue una. Con una mesa sin
+         entradas `entradas` es 0 y sin esto /mis-entradas la pintaba como
+         "sin entradas vigentes". El carnet NO: no se guarda en el teléfono. */
+      mesa: S.mesa ? String(S.mesa.tipo || "") : "",
       guardada: Date.now()
     };
     const previas = JSON.parse(localStorage.getItem(CLAVE_COMPRAS) || "[]");
@@ -1548,13 +1718,33 @@ async function mostrarListo() {
   irA("listo");
   pararReloj();
   olvidarClave();   // la próxima compra es otra compra
-  // El nombre del titular sí (lo escribió quien está mirando); el carnet no.
-  const tit = S.orden && S.orden.comprador && S.orden.comprador.titular;
-  $("#listoNota").textContent =
-    `${S.entradas.length} ${S.entradas.length === 1 ? "entrada" : "entradas"} a nombre de ${S.comprador.nombre}.` +
-    (tit && tit.nombre ? ` La mesa va a nombre de ${tit.nombre}.` : "");
-  // Al que no le cobraron nada no le vendiste nada: consiguió un lugar.
-  $("#btnOtra").textContent = cotizar().total === 0 ? "Conseguir otra" : "Comprar otra";
+  const n = S.entradas.length, mesa = S.mesa;
+  /* Con una mesa (0108) lo primero es la mesa y a nombre de quién: es lo
+     que el guardia va a leer en el recibo. Sin entradas incluidas se dice
+     lo que falta, porque sin entrada la mesa se pierde. */
+  $("#listoNota").textContent = mesa
+    ? `${mesa.tipo} a nombre de ${mesa.titular || S.comprador.nombre}. ` +
+      (n ? `Incluye ${n} ${n === 1 ? "entrada" : "entradas"}: están abajo.`
+         : "No incluye entradas: para entrar necesitás una.")
+    : `${n} ${n === 1 ? "entrada" : "entradas"} a nombre de ${S.comprador.nombre}.`;
+  /* "Comprar otra" con una mesa no tiene sentido —es una por carnet—, y a
+     quien se quedó sin entradas le falta justo eso: el botón lo lleva a
+     comprarlas, que es la otra compra. Al que no le cobraron nada no le
+     vendiste nada: consiguió un lugar. */
+  $("#btnOtra").textContent = mesa && hayEntradasVenta() ? "Comprar entradas"
+    : cotizar().total === 0 ? "Conseguir otra" : "Comprar otra";
+  /* Un solo botón primario: con una mesa sin entradas lo que más importa
+     es ir a comprarlas; guardar el recibo es comodidad (llega por correo y
+     queda en el link). */
+  const faltanEntradas = !!mesa && !n && hayEntradasVenta();
+  $("#btnOtra").classList.toggle("primario", faltanEntradas);
+  $("#btnOtra").classList.toggle("plano", !faltanEntradas);
+  $("#btnDescargar").classList.toggle("primario", !faltanEntradas);
+  $("#btnDescargar").classList.toggle("plano", faltanEntradas);
+  $("#btnDescargar").textContent = mesa
+    ? (n ? "Guardar la mesa y las entradas" : "Guardar el recibo") : "Guardar las entradas";
+  $("#listoLinkTitulo").textContent = mesa ? "Tu mesa vive acá para siempre"
+                                           : "Tus entradas viven acá para siempre";
 
   // Este link es el único camino de vuelta si se cierra la pestaña sin
   // descargar: por eso se muestra siempre, no solo cuando el correo falla.
@@ -1579,7 +1769,8 @@ async function mostrarListo() {
   const correoOk = D.correo_configurado !== false;
   $("#listoRef").textContent =
     `Orden #${String(S.orden.id).slice(0, 8).toUpperCase()}.` +
-    (correoOk ? ` También te las mandamos a ${S.comprador.email}.` : "");
+    (!correoOk ? "" : mesa ? ` También te mandamos el QR de la mesa y el recibo a ${S.comprador.email}.`
+                           : ` También te las mandamos a ${S.comprador.email}.`);
 
   // Antes de dibujar nada: los tickets tardan y el que cierra la pestaña
   // mientras se dibujan igual compró. Si el storage no deja, el link a
@@ -1592,9 +1783,22 @@ async function mostrarListo() {
   pintarYaTenes();
   armarLlegar(linkOrden);
 
-  $("#tickets").innerHTML = `<p class="rail-vacio">Dibujando tus entradas…</p>`;
+  /* El recibo de la mesa va arriba de las entradas, dibujado igual que en
+     /orden y en el mismo papel claro: su QR NO da ingreso, abre el recibo
+     en la puerta. Se guarda junto con las entradas (descargar()). */
+  const cajaMesa = $("#listoMesa");
+  cajaMesa.hidden = !mesa;
+  cajaMesa.innerHTML = mesa ? `<p class="rail-vacio">Dibujando el recibo…</p>` : "";
+  $("#tickets").innerHTML = n ? `<p class="rail-vacio">Dibujando tus entradas…</p>` : "";
 
   if (document.fonts && document.fonts.ready) await document.fonts.ready;
+  if (mesa) {
+    let png = null;
+    try { png = await window.dibujarRecibo(mesa, D.evento); }
+    catch (err) { console.error("no se pudo dibujar el recibo:", err); }
+    mesa.png = png;
+    cajaMesa.innerHTML = window.reciboMesa(mesa, { png });
+  }
   const pngs = [];
   for (const t of S.entradas) pngs.push(await dibujarTicket(t));
   S.entradas.forEach((t, i) => t.png = pngs[i]);
@@ -1603,7 +1807,15 @@ async function mostrarListo() {
   // se leen como un bloque; de a una se lee como "estas son tuyas".
   // La tira la arma ticket.js, la misma que dibuja /orden/?id=…: son el mismo
   // momento y separarlas en dos plantillas es pedir que se despeguen.
-  $("#tickets").innerHTML = window.tiraTickets(S.entradas);
+  $("#tickets").innerHTML = n ? window.tiraTickets(S.entradas) : "";
+}
+
+/* Lo que se guarda en el teléfono: el recibo de la mesa (si se pudo
+   dibujar) y las entradas, en ese orden. */
+function paraGuardar() {
+  const m = S.mesa && S.mesa.png
+    ? [{ png: S.mesa.png, code: S.mesa.code, archivo: "recibo-mesa" }] : [];
+  return m.concat(S.entradas.filter(e => e.png));
 }
 
 /* ── la cuenta del comprador, en "listo" ──────────────────────────
@@ -1728,10 +1940,12 @@ async function descargar() {
   const b = $("#btnDescargar");
   b.disabled = true;
   try {
-    const como = await window.guardarEntradas(S.entradas);
+    const todo = paraGuardar();
+    if (!todo.length) { avisar("Todavía se está dibujando. Probá en un segundo."); return; }
+    const como = await window.guardarEntradas(todo);
     if (como === "bajada")
-      avisar(`${S.entradas.length} ${S.entradas.length === 1
-        ? "entrada guardada" : "entradas guardadas"}.`);
+      avisar(S.mesa ? `${todo.length} ${todo.length === 1 ? "imagen guardada" : "imágenes guardadas"}.`
+        : `${todo.length} ${todo.length === 1 ? "entrada guardada" : "entradas guardadas"}.`);
   } catch (err) {
     avisar("No se pudieron guardar. Mantené apretada la entrada y elegí Guardar imagen.");
   } finally {
@@ -1777,8 +1991,8 @@ function olvidarComprador() {
   // La aceptación de los términos es de la persona, no del teléfono: la
   // que sigue tiene que aceptar por su cuenta.
   $("#fTc").checked = false; $("#fTc").removeAttribute("aria-invalid");
-  // El titular también: con "Es para mí" tildado era el nombre del de antes.
-  limpiarTitular();
+  // El carnet también: era el del de antes.
+  limpiarCarnet();
   $$("#form .error").forEach(e => e.textContent = "");
   S.comprador = { nombre: "", telefono: "", email: "" };
   $("#precargado").hidden = true;
@@ -1796,19 +2010,25 @@ function olvidarComprador() {
    primera salió. */
 function pintarYaTenes() {
   const el = $("#yaTenes");
-  let n = 0;
+  let n = 0, mesas = 0;
   try {
     const lista = JSON.parse(localStorage.getItem(CLAVE_COMPRAS) || "[]");
     const org = CFG.ORGANIZADOR || "", slug = CFG.EVENTO || "";
     const nombre = `${D.evento.marca_1} ${D.evento.marca_2 || ""}`.trim();
-    n = (Array.isArray(lista) ? lista : [])
+    const suyas = (Array.isArray(lista) ? lista : [])
       .filter(c => c && (((org || slug) && c.org === org && c.slug === slug)
-                      || (!c.org && !c.slug && c.evento === nombre)))
-      .reduce((a, c) => a + (Number(c.entradas) || 0), 0);
-  } catch { n = 0; }
-  el.hidden = n <= 0;
-  if (n > 0) el.innerHTML =
-    `<span>Ya tenés <b>${n} ${n === 1 ? "entrada" : "entradas"}</b> para este evento.</span>` +
+                      || (!c.org && !c.slug && c.evento === nombre)));
+    n = suyas.reduce((a, c) => a + (Number(c.entradas) || 0), 0);
+    // 0108: la mesa también se cuenta. Es una por carnet: el que ya tiene
+    // una y vuelve a comprar se choca con YA_TIENE_MESA si no se le avisa.
+    mesas = suyas.filter(c => typeof c.mesa === "string" && c.mesa).length;
+  } catch { n = 0; mesas = 0; }
+  const partes = [];
+  if (mesas) partes.push(mesas === 1 ? "una mesa" : `${mesas} mesas`);
+  if (n) partes.push(`${n} ${n === 1 ? "entrada" : "entradas"}`);
+  el.hidden = !partes.length;
+  if (partes.length) el.innerHTML =
+    `<span>Ya tenés <b>${partes.join(" y ")}</b> para este evento.</span>` +
     `<a href="/mis-entradas">Ver mis entradas</a>`;
 }
 
@@ -1835,6 +2055,7 @@ const SOPORTE_WA = "59178183001";
 function armarDudas() {
   if (D.correo_configurado === false) $("#dudaCorreo").hidden = true;
   $("#dudaGratis").hidden = !eventoGratis();
+  $("#dudaMesa").hidden = !hayMesasVenta();
   const nombre = `${D.evento.marca_1} ${D.evento.marca_2 || ""}`.trim();
   $("#dudaWa").href = `https://wa.me/${SOPORTE_WA}?text=` +
     encodeURIComponent(`Hola, compré entradas para ${nombre} y tengo un problema.`);
@@ -1872,13 +2093,26 @@ $("#btnNoSoy").addEventListener("click", olvidarComprador);
 $("#btnCompartirEvento").addEventListener("click", compartirEvento);
 
 $("#tipos").addEventListener("click", e => {
+  /* Elegir una mesa (0108): es una sola, así que elegir otra cambia la
+     elegida y tocar la elegida la suelta. Nunca dos. */
+  const bm = e.target.closest("button[data-elegir-mesa]");
+  if (bm) {
+    const t = tipoDe(bm.dataset.elegirMesa);
+    if (!t) return;
+    const ya = S.cant[t.id] > 0;
+    if (!ya && !(t.cupo > 0)) return;
+    D.tipos.forEach(x => { if (esMesaT(x)) S.cant[x.id] = 0; });
+    S.cant[t.id] = ya ? 0 : 1;
+    pintarTipos(); pintarRail();
+    return;
+  }
   const b = e.target.closest("button[data-paso-t]");
   if (!b) return;
   const t = tipoDe(b.dataset.tipo);
   const nueva = S.cant[t.id] + Number(b.dataset.pasoT);
   const usadas = Object.values(S.cant).reduce((a, x) => a + x, 0);
   if (nueva < 0 || nueva > t.cupo) return;
-  if (Number(b.dataset.pasoT) > 0 && t.categoria === "mesa" && hayMesa()) {
+  if (Number(b.dataset.pasoT) > 0 && esMesaT(t) && hayMesa()) {
     avisar(UNA_MESA);
     return;
   }
@@ -1888,6 +2122,20 @@ $("#tipos").addEventListener("click", e => {
   }
   S.cant[t.id] = nueva;
   pintarTipos(); pintarRail();
+});
+
+$("#modoCompra").addEventListener("click", e => {
+  const b = e.target.closest("[data-modo]");
+  if (b) cambiarModo(b.dataset.modo);
+});
+/* Como un grupo de radios de verdad: las flechas mueven la elección. */
+$("#modoCompra").addEventListener("keydown", e => {
+  if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) return;
+  e.preventDefault();
+  const otro = S.modo === "mesas" ? "entradas" : "mesas";
+  cambiarModo(otro);
+  const b = $(`#modoCompra [data-modo="${otro}"]`);
+  if (b) b.focus();
 });
 
 $("#railLineas").addEventListener("click", e => {
@@ -1945,28 +2193,25 @@ $("#railTirador").addEventListener("click", () => {
   $("#railTirador").setAttribute("aria-expanded", String(!abierto));
 });
 
-/* El titular de la mesa (0107). "Es para mí" copia el nombre de quien paga
-   y lo sigue mientras está tildado; el complemento y la extensión vuelven
-   a mirar el carnet, que es la regla que los incluye. */
-$("#fTitYo").addEventListener("change", () => {
-  copiarTitular();
-  if ($("#fTitNombre").value) validarCampo("fTitNombre");
-  pintarRail();
-});
-$("#fNombre").addEventListener("input", () => {
-  if ($("#fTitYo").checked) { copiarTitular(); pintarRail(); }
-});
-["fTitComp", "fTitExt"].forEach(id => $("#" + id).addEventListener("change", () => {
-  if ($("#fTitCi").value) validarCampo("fTitCi");
+/* El complemento y la extensión vuelven a mirar el carnet, que es la regla
+   que los incluye (0108). */
+["fCiComp", "fCiExt"].forEach(id => $("#" + id).addEventListener("change", () => {
+  if ($("#fCi").value) validarCampo("fCi");
   pintarRail();
 }));
 
 $("#btnDescargar").addEventListener("click", descargar);
 $("#btnOtra").addEventListener("click", () => {
+  const eraMesa = !!S.mesa;
   D.tipos.forEach(t => S.cant[t.id] = 0);
-  S.orden = null; S.entradas = [];
-  // La próxima puede ser otra mesa a nombre de otro: el carnet no se arrastra.
-  limpiarTitular();
+  S.orden = null; S.entradas = []; S.mesa = null;
+  // La próxima puede ser de otra persona: el carnet no se arrastra.
+  limpiarCarnet();
+  /* Después de una mesa, lo que sigue son entradas: mesa es una por
+     carnet, y la que no traía entradas las necesita para no perderse. */
+  if (eraMesa && hayEntradasVenta()) S.modo = "entradas";
+  fijarVocabulario();
+  pintarYaTenes();
   pintarTipos(); irA("entradas");
 });
 
@@ -2003,6 +2248,11 @@ async function arrancar() {
     REGLAS.fMail.msg = "Revisá el correo: queda en tu comprobante.";
   }
   D.tipos.forEach(t => S.cant[t.id] = 0);
+  /* Con mesas y nada más, se arranca en mesas. Con las dos, en entradas,
+     salvo que el link venga con #mesas: es el que el organizador comparte
+     para "reservá tu mesa", y abrirlo en las entradas lo obliga a buscar. */
+  S.modo = !hayEntradasVenta() && hayMesasVenta() ? "mesas"
+         : (location.hash === "#mesas" && hayMesasVenta()) ? "mesas" : "entradas";
   fijarVocabulario();
   pintarHero();
   pintarCierre();

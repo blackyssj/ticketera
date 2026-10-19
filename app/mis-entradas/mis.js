@@ -19,7 +19,9 @@
    tercer dueño para el mismo dato.
 
    El contrato de cada elemento local:
-     { id, evento, org, slug, fecha, lugar, entradas, guardada }
+     { id, evento, org, slug, fecha, lugar, entradas, mesa?, guardada }
+   `mesa` (0108) es el tipo de mesa de la compra y puede faltar: las
+   compras guardadas antes no la tienen.
    `fecha` debería ser un ISO con año y huso (así la escribe quien acaba de
    comprar, y así la reconstruye orden.js a partir de `fecha_txt`). Pero la
    clave es de otro proceso y puede llegar vacía, vieja o rota, así que acá
@@ -139,6 +141,8 @@ function desdeServidor(r) {
     fecha,
     lugar: r.lugar || "",
     entradas: Number(r.entradas) || 0,
+    // mis_compras() trae la mesa como {tipo, code, entradas_incluidas} (0108)
+    mesa: r.mesa && r.mesa.tipo ? String(r.mesa.tipo) : "",
     guardada: Date.parse(r.pagada_at) || 0,
     enCuenta: true,
   };
@@ -164,7 +168,13 @@ function tarjetaCompra(c, pasada) {
   const cuando = d ? formatearFecha(d) : "Fecha a confirmar";
   const diaTxt = d ? diaGrande(d) : "—";
   const n = Number(c.entradas) || 0;
-  const cant = n > 0 ? `${n} ${n === 1 ? "entrada" : "entradas"}` : "sin entradas vigentes";
+  /* Una mesa (0108) puede no traer entradas: "sin entradas vigentes" la
+     hacía pasar por anulada. Sin el nombre de la mesa: el talón no se
+     encoge (flex 0 0 auto en mis.css) y un "Lounge VIP Premium" lo rompe
+     en un teléfono; el nombre está a un toque, en "Ver mesa". */
+  const mesa = typeof c.mesa === "string" && c.mesa !== "";
+  const cant = mesa ? (n > 0 ? `mesa + ${n} ${n === 1 ? "entrada" : "entradas"}` : "mesa")
+             : n > 0 ? `${n} ${n === 1 ? "entrada" : "entradas"}` : "sin entradas vigentes";
   const etq = c.enCuenta === true  ? `<span class="etq">En tu cuenta</span>`
             : c.enCuenta === false ? `<span class="etq local">Sólo en este teléfono</span>` : "";
   const quien = c.organizador || c.org;
@@ -184,7 +194,7 @@ function tarjetaCompra(c, pasada) {
         <span class="cant">${esc(cant)}</span>
       </div>
       <div class="accion">
-        <a class="ver" href="/orden/?id=${encodeURIComponent(c.id)}">Ver entrada<i class="flecha" aria-hidden="true"></i></a>
+        <a class="ver" href="/orden/?id=${encodeURIComponent(c.id)}">${mesa ? "Ver mesa" : "Ver entrada"}<i class="flecha" aria-hidden="true"></i></a>
         ${c.enCuenta === true ? "" : `<button type="button" class="quitar" data-quitar="${esc(c.id)}">Quitar</button>`}
       </div>
       ${c.enCuenta === false ? `<button type="button" class="vincular" data-vincular="${esc(c.id)}">Guardar en mi cuenta</button>` : ""}

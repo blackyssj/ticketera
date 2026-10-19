@@ -74,6 +74,8 @@ function sumarAMisEntradas(r) {
       fecha: f ? f.toISOString() : "",
       lugar: r.evento.lugar || "",
       entradas: r.entradas.length,
+      // 0108: el tipo de mesa, si la compra fue una (el contrato de mis.js).
+      mesa: r.mesa && r.mesa.tipo ? String(r.mesa.tipo) : "",
       guardada: Date.now(),
     });
     localStorage.setItem(KEY, JSON.stringify(lista));
@@ -92,6 +94,11 @@ function decir(titulo, nota, estado) {
 
 let entradas = [];
 let evento = null;
+/* Lo que se muestra en la puerta, en orden: el recibo de la mesa primero
+   (si hay) y después las entradas. Es lo que recorre el carrusel del modo
+   puerta; `entradas` sigue siendo solo las entradas. */
+let pases = [];
+let recibo = null;
 
 const ES_UUID = v => /^[0-9a-f-]{36}$/i.test(String(v || ""));
 
@@ -140,6 +147,12 @@ function pedir(cuerpo) {
    pendiente, se cortó la red, o la pasarela tropezó (5xx). Antes cualquier
    ok:false cortaba el sondeo, y un tropiezo de la pasarela le decía
    "todavía sin confirmar" a alguien que ya había pagado. */
+/* El motivo de una compra que quedó en revisión, si la pasarela cobró y
+   la base no la emitió: un monto distinto, o (0108) una segunda mesa del
+   mismo carnet. Se dice con todas las letras en vez de "todavía sin
+   confirmar": esa persona ya pagó y no tiene que seguir esperando. */
+let revision = null;
+
 async function consultarPago(orden) {
   try {
     const res = await conTope(`${CFG.SUPABASE_URL}/functions/v1/estado-orden`, {
@@ -150,6 +163,11 @@ async function consultarPago(orden) {
     }, 20000);
     const e = await res.json().catch(() => null);
     if (e && e.ok && e.estado === "pagada") return "pagada";
+    if (e && e.estado === "revision_manual") {
+      revision = e.motivo || revision ||
+        "Tu pago quedó en revisión. El organizador se va a comunicar con vos.";
+      return "no";
+    }
     /* "vencida" NO es definitiva: una orden con QR sólo se vence dentro de
        emitir_orden, o sea DESPUÉS de que la pasarela dijo "pagado" (pagó
        pasados los 10 minutos), y el barrido la emite igual en menos de un
@@ -264,6 +282,10 @@ async function cargar() {
         return;
       }
     }
+    if ((!r.ok || r.estado !== "pagada") && revision) {
+      decir("Tu pago está en revisión", revision, "error");
+      return;
+    }
     if (!r.ok || r.estado !== "pagada") {
       decir("Todavía sin confirmar",
             "Si ya pagaste, el cobro puede tardar unos minutos. Volvé a abrir " +
@@ -275,19 +297,29 @@ async function cargar() {
   evento = r.evento;
   $("#marca").innerHTML = `<b>${esc(r.evento.marca_1)}</b> ${esc(r.evento.marca_2)}`;
   $("#barraFecha").textContent = r.evento.fecha_txt;
+  /* La mesa (0108): la función manda su recibo en `mesa` (o null). Si la
+     función todavía es la de antes, no viene y la página es la de siempre. */
+  recibo = r.mesa && r.mesa.code ? r.mesa : null;
+  const que = recibo ? "Tu mesa" : "Tus entradas";
   // Con la marca de título (0104) es la casa y la noche: "BOWIE · Crush".
   document.title = r.evento.titulo_marca && r.evento.marca_2
-    ? `Tus entradas — ${r.evento.marca_1} · ${r.evento.marca_2}`
-    : `Tus entradas — ${r.evento.marca_1} ${r.evento.marca_2}`;
+    ? `${que} — ${r.evento.marca_1} · ${r.evento.marca_2}`
+    : `${que} — ${r.evento.marca_1} ${r.evento.marca_2}`;
 
   const n = r.entradas.length;
   const usadas = r.entradas.filter(e => e.estado === "usada").length;
   /* "ok" enciende el sello del cobro. Es lo primero que tiene que quedar
      claro: quien abre esta página acaba de pagar, o vuelve semanas después
-     a comprobar que lo que pagó sigue existiendo. */
-  decir("Tus entradas",
-    `${n} ${n === 1 ? "entrada" : "entradas"} a nombre de ${r.orden.comprador}.` +
-    (usadas ? ` ${usadas} ya ${usadas === 1 ? "ingresó" : "ingresaron"}.` : ""),
+     a comprobar que lo que pagó sigue existiendo. Con una mesa, lo primero
+     es la mesa y a nombre de quién; sin entradas incluidas se dice lo que
+     falta, porque sin entrada la mesa se pierde. */
+  decir(que, recibo
+    ? `${recibo.tipo} a nombre de ${recibo.titular || r.orden.comprador}. ` +
+      (n ? `Incluye ${n} ${n === 1 ? "entrada" : "entradas"}.` +
+           (usadas ? ` ${usadas} ya ${usadas === 1 ? "ingresó" : "ingresaron"}.` : "")
+         : "No incluye entradas: para entrar necesitás una.")
+    : `${n} ${n === 1 ? "entrada" : "entradas"} a nombre de ${r.orden.comprador}.` +
+      (usadas ? ` ${usadas} ya ${usadas === 1 ? "ingresó" : "ingresaron"}.` : ""),
     "ok");
 
   /* fecha_txt ya trae el día y la hora de apertura; el evento las llama
@@ -298,18 +330,47 @@ async function cargar() {
 
   sumarAMisEntradas(r);
 
-  $("#tickets").innerHTML = `<p class="rail-vacio">Dibujando…</p>`;
+  const cajaMesa = $("#reciboMesa");
+  cajaMesa.hidden = !recibo;
+  if (recibo) cajaMesa.innerHTML = `<p class="rail-vacio">Dibujando el recibo…</p>`;
+  $("#tickets").innerHTML = n ? `<p class="rail-vacio">Dibujando…</p>` : "";
   if (document.fonts && document.fonts.ready) await document.fonts.ready;
+
+  /* El recibo primero: es el pase 0 del modo puerta, y su QR no da
+     ingreso — en la puerta abre el recibo con el nombre, el carnet y lo que
+     incluye. Si no se puede dibujar, los datos se ven igual en letras. */
+  if (recibo) {
+    let png = null;
+    try { png = await window.dibujarRecibo(recibo, r.evento); }
+    catch (err) { console.error("no se pudo dibujar el recibo:", err); }
+    recibo.png = png;
+    recibo.etiqueta = recibo.tipo;
+    recibo.cliente = recibo.titular;
+    recibo.archivo = "recibo-mesa";
+    cajaMesa.innerHTML = window.reciboMesa(recibo, { png, pase: 0 });
+  }
 
   entradas = r.entradas;
   const pngs = [];
   for (const e of entradas) pngs.push(await window.dibujarTicket(e, r.evento, r.fase));
   entradas.forEach((e, i) => e.png = pngs[i]);
+  pases = (recibo ? [recibo] : []).concat(entradas);
 
-  $("#tickets").innerHTML = window.tiraTickets(entradas, { puerta: true });
+  $("#tickets").innerHTML = n
+    ? window.tiraTickets(entradas, { puerta: true, desde: recibo ? 1 : 0 }) : "";
 
+  /* Con mesa la instrucción cambia: se entra con una entrada, y el QR de
+     la mesa es para que te ubiquen. */
+  $("#instruccion").textContent = recibo
+    ? (n ? "En la puerta entrás con las entradas: cada una vale para un solo ingreso. " +
+           "El QR de la mesa no da ingreso: mostralo para que te ubiquen."
+         : "El QR de la mesa no da ingreso: mostralo para que te ubiquen. " +
+           "Para entrar necesitás una entrada.")
+    : "En la puerta mostrá el QR. Cada entrada vale para un solo ingreso.";
   $("#instruccion").hidden = false;
-  $("#acciones").hidden = false;
+  $("#btnGuardar").textContent = recibo
+    ? (n ? "Guardar la mesa y las entradas" : "Guardar el recibo") : "Guardar las entradas";
+  $("#acciones").hidden = !pases.some(p => p.png);
 
   /* El link con el uuid es el único camino de vuelta si el correo se pierde
      o el teléfono cambia de dueño de pestaña. Se muestra entero y con un
@@ -512,11 +573,13 @@ $("#btnGuardar").addEventListener("click", async () => {
   const b = $("#btnGuardar");
   b.disabled = true;
   try {
-    const como = await window.guardarEntradas(entradas);
+    // El recibo de la mesa (0108) va con las entradas, primero.
+    const todo = pases.filter(p => p.png);
+    const como = await window.guardarEntradas(todo);
     // Después de compartir, el sistema ya dio su propio acuse: otro cartel sobra.
     if (como === "bajada")
-      avisar(`${entradas.length} ${entradas.length === 1
-        ? "entrada guardada" : "entradas guardadas"}.`);
+      avisar(recibo ? `${todo.length} ${todo.length === 1 ? "imagen guardada" : "imágenes guardadas"}.`
+        : `${todo.length} ${todo.length === 1 ? "entrada guardada" : "entradas guardadas"}.`);
   } catch (err) {
     avisar("No se pudieron guardar. Mantené apretada la entrada y elegí Guardar imagen.");
   } finally {
@@ -534,7 +597,7 @@ let enPuerta = -1, volverA = null;
    tiene que volver exactamente ahí, y con el teclado eso es la diferencia
    entre seguir donde estabas y aparecer arriba de todo. */
 function abrirPuerta(i, desde) {
-  if (!entradas[i] || !evento) return;
+  if (!pases[i] || !evento) return;
   enPuerta = i;
   volverA = desde || document.activeElement;
   pintarPuerta();
@@ -544,19 +607,25 @@ function abrirPuerta(i, desde) {
 }
 
 function pintarPuerta() {
-  const e = entradas[enPuerta];
+  const e = pases[enPuerta];
   const caja = $("#puertaQR");
   /* Se dibuja al tamaño que va a ocupar en píxeles del aparato: más chico se
      ve borroso y más grande no aporta nada. */
   const lado = Math.round(Math.min(innerWidth * .84, innerHeight * .46) *
                           (window.devicePixelRatio || 1));
   caja.src = window.dibujarQR(window.payloadEntrada(evento, e), lado);
-  caja.alt = `Código QR de la entrada ${e.etiqueta}, ${e.code}`;
+  const esRecibo = e === recibo;
+  caja.alt = esRecibo ? `Código QR del recibo de ${recibo.tipo}, ${e.code}`
+                      : `Código QR de la entrada ${e.etiqueta}, ${e.code}`;
   $("#puertaCode").textContent = "#" + e.code;
-  $("#puertaQuien").textContent =
-    `${e.etiqueta}${e.estado === "usada" ? " · ya ingresó" : ""} · ${e.cliente || "—"}`;
-  $("#puertaNav").hidden = entradas.length < 2;
-  $("#puertaCuenta").textContent = `${enPuerta + 1} de ${entradas.length}`;
+  /* El recibo lo dice antes de que lo escaneen: no da ingreso. Así el que
+     lo muestra en el molinete por error sabe que tiene que pasar a su
+     entrada, y no discute con el guardia. */
+  $("#puertaQuien").textContent = esRecibo
+    ? `Recibo · ${recibo.tipo} · ${recibo.titular || "—"} · no da ingreso`
+    : `${e.etiqueta}${e.estado === "usada" ? " · ya ingresó" : ""} · ${e.cliente || "—"}`;
+  $("#puertaNav").hidden = pases.length < 2;
+  $("#puertaCuenta").textContent = `${enPuerta + 1} de ${pases.length}`;
 }
 
 function cerrarPuerta() {
@@ -567,12 +636,16 @@ function cerrarPuerta() {
 }
 
 function moverPuerta(paso) {
-  const n = entradas.length;
+  const n = pases.length;
   enPuerta = (enPuerta + paso + n) % n;
   pintarPuerta();
 }
 
 $("#tickets").addEventListener("click", e => {
+  const b = e.target.closest("[data-pase]");
+  if (b) abrirPuerta(Number(b.dataset.pase), b);
+});
+$("#reciboMesa").addEventListener("click", e => {
   const b = e.target.closest("[data-pase]");
   if (b) abrirPuerta(Number(b.dataset.pase), b);
 });

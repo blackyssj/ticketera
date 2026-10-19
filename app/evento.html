@@ -67,7 +67,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&family=Inter:wght@500&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css?v=47">
+<link rel="stylesheet" href="/styles.css?v=49">
 </head>
 <body>
 
@@ -172,6 +172,19 @@
           <!-- Si este teléfono ya compró para ESTE evento, se lo recuerda
                antes de que compre de nuevo por las dudas. -->
           <p class="ya-tenes" id="yaTenes" hidden></p>
+          <!-- Entradas o mesa: dos compras separadas (0108). Una mesa va a
+               nombre de quien paga, con su carnet, y una orden lleva una
+               cosa o la otra; mezclarlas en un carrito era cómo alguien
+               pagaba una mesa creyendo que eran entradas. Aparece sólo si
+               el evento vende las dos (app.js, pintarModo). -->
+          <div class="modo-compra" id="modoCompra" role="radiogroup" aria-label="Qué querés comprar" hidden>
+            <button type="button" role="radio" data-modo="entradas" aria-checked="true">
+              <span class="modo-t">Entradas</span><span class="modo-s" id="modoSubEntradas"></span>
+            </button>
+            <button type="button" role="radio" data-modo="mesas" aria-checked="false">
+              <span class="modo-t">Mesas</span><span class="modo-s" id="modoSubMesas"></span>
+            </button>
+          </div>
           <div class="tipos" id="tipos">
             <article class="tipo esqueleto" aria-hidden="true">
               <span class="hueso" style="width:38%;height:22px"></span>
@@ -231,6 +244,16 @@
                  Si igual algo falla, <a id="dudaWa" href="#" target="_blank" rel="noopener">escribinos
                  por WhatsApp</a> y lo resolvemos.</p>
             </details>
+            <!-- Sólo si el evento vende mesas (0108): es la duda que llega por
+                 WhatsApp después de comprar una — "¿con el QR de la mesa entro?". -->
+            <details id="dudaMesa" hidden>
+              <summary>¿Cómo funciona la mesa?</summary>
+              <p>La mesa va a tu nombre y es una por carnet en este evento. Al pagar te llega
+                 el QR de la mesa con su recibo: ese QR <b>no da ingreso</b>, es para que te
+                 ubiquen. Para entrar necesitás una entrada; si la mesa las incluye, te llegan
+                 junto con el recibo. Si no te presentás con entrada, perdés la mesa, y no
+                 hay devolución si no vas.</p>
+            </details>
             <!-- Sólo cuando el evento no cobra: en uno pago la pregunta sobra. -->
             <details id="dudaGratis" hidden>
               <summary>¿Es gratis de verdad?</summary>
@@ -256,7 +279,7 @@
           </p>
           <form class="form" id="form" novalidate>
             <label class="campo">
-              <span>Nombre y apellido</span>
+              <span id="rotNombre">Nombre y apellido</span>
               <input id="fNombre" name="nombre" type="text" autocomplete="name" required
                      placeholder="Como figura en tu carnet">
               <em class="error" id="eNombre"></em>
@@ -273,37 +296,27 @@
                      placeholder="vos@correo.com">
               <em class="error" id="eMail"></em>
             </label>
-            <!-- La mesa va a nombre de alguien (0107): en la puerta preguntan
-                 por esa persona y su carnet, y puede no ser quien paga. Se ve
-                 sólo con una mesa en el carrito (app.js, hayMesa) y viaja en
-                 crear-orden; el carnet NO se recuerda en este teléfono. -->
-            <fieldset class="campo ancho titular" id="bloqueTitular" hidden>
-              <legend>¿A nombre de quién va la mesa?</legend>
-              <p class="titular-nota">En la puerta van a pedir este carnet.</p>
-              <label class="tc-fila titular-yo" for="fTitYo">
-                <input id="fTitYo" type="checkbox">
-                <span class="tc-texto">Es para mí</span>
-              </label>
-              <label class="campo ancho">
-                <span>Nombre y apellido</span>
-                <input id="fTitNombre" name="titular_nombre" type="text" autocomplete="off"
-                       placeholder="Como figura en su carnet">
-                <em class="error" id="eTitNombre"></em>
-              </label>
+            <!-- El carnet de quien compra la mesa (0108: la mesa va a nombre de
+                 quien paga). En la puerta lo piden, y es una mesa por carnet en
+                 el evento. Se ve sólo con una mesa elegida (app.js, hayMesa) y
+                 viaja en crear-orden; NO se recuerda en este teléfono. -->
+            <fieldset class="campo ancho titular" id="bloqueCarnet" hidden>
+              <legend>Tu carnet</legend>
+              <p class="titular-nota">La mesa va a tu nombre y es una por carnet. En la puerta te lo van a pedir.</p>
               <div class="titular-ci">
                 <label class="campo">
                   <span>Carnet</span>
-                  <input id="fTitCi" name="titular_ci" type="text" inputmode="numeric"
+                  <input id="fCi" name="ci" type="text" inputmode="numeric"
                          autocomplete="off" placeholder="Número de carnet">
                 </label>
                 <label class="campo">
                   <span>Complemento</span>
-                  <input id="fTitComp" name="titular_complemento" type="text" maxlength="2"
+                  <input id="fCiComp" name="ci_complemento" type="text" maxlength="2"
                          autocomplete="off" autocapitalize="characters" placeholder="Si tiene">
                 </label>
                 <label class="campo">
                   <span>Extensión</span>
-                  <select id="fTitExt" name="titular_ext">
+                  <select id="fCiExt" name="ci_ext">
                     <option value="">Sin extensión</option>
                     <option>LP</option><option>CB</option><option>SC</option>
                     <option>OR</option><option>PT</option><option>CH</option>
@@ -311,8 +324,16 @@
                   </select>
                 </label>
               </div>
-              <em class="error" id="eTitCi"></em>
+              <em class="error" id="eCi"></em>
             </fieldset>
+            <!-- Las condiciones de la reserva, otra vez y justo antes de pagar
+                 (ya estaban en la tarjeta de la mesa). Las mismas palabras que
+                 el recibo, el correo y los términos: CONDICIONES_MESA en
+                 ticket.js. -->
+            <div class="campo ancho cond-caja" id="condMesa" hidden>
+              <p class="cond-titulo">Condiciones de la reserva</p>
+              <ul class="cond-mesa" id="condMesaLista"></ul>
+            </div>
             <!-- Obligatorio: crear-orden exige `tc` (la versión vigente, TC_VERSION
                  en app.js) y sin eso no hay orden. Los links abren aparte para no
                  perder lo ya escrito. Clic en un link no tilda el casillero: el
@@ -320,7 +341,7 @@
             <div class="campo ancho tc">
               <label class="tc-fila" for="fTc">
                 <input id="fTc" name="tc" type="checkbox" required>
-                <span class="tc-texto">Acepto los <a href="/terminos/" target="_blank" rel="noopener">términos y condiciones</a> y la <a href="/privacidad/" target="_blank" rel="noopener">política de privacidad</a>.</span>
+                <span class="tc-texto">Acepto los <a href="/terminos/" target="_blank" rel="noopener">términos y condiciones</a> y la <a href="/privacidad/" target="_blank" rel="noopener">política de privacidad</a><span id="tcMesa" hidden>, y las condiciones de la reserva</span>.</span>
               </label>
               <em class="error" id="eTc"></em>
             </div>
@@ -340,6 +361,10 @@
             <h2>Listo</h2>
             <p class="panel-nota" id="listoNota"></p>
           </div>
+          <!-- El recibo de la mesa (0108): su QR no da ingreso, abre el
+               recibo en la puerta. Arriba de las entradas que la mesa incluya;
+               con una mesa sin entradas es lo único que hay. -->
+          <div class="recibo-caja" id="listoMesa" hidden></div>
           <div class="tickets" id="tickets"></div>
           <div class="listo-acciones">
             <button type="button" class="btn primario" id="btnDescargar">Guardar las entradas</button>
@@ -349,7 +374,7 @@
             elegir <b>Guardar imagen</b>, o sacarle una captura de pantalla.</p>
           <div class="link-recuperar">
             <div>
-              <p class="link-recuperar-titulo">Tus entradas viven acá para siempre</p>
+              <p class="link-recuperar-titulo" id="listoLinkTitulo">Tus entradas viven acá para siempre</p>
               <code id="listoLink"></code>
             </div>
             <button type="button" class="btn plano chico" id="btnCopiarLink">Copiar link</button>
@@ -451,10 +476,10 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js" defer></script>
 <script src="/config.js"></script>
 <script src="/datos-demo.js?v=25"></script>
-<script src="/ticket.js?v=29"></script>
+<script src="/ticket.js?v=31"></script>
 <!-- La sesión del comprador. Antes de app.js: crearOrden le pide el token
      y la pantalla "listo" le pide crear/entrar/vincular. -->
 <script src="/cuenta.js?v=4"></script>
-<script src="/app.js?v=56"></script>
+<script src="/app.js?v=58"></script>
 </body>
 </html>

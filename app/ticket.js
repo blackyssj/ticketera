@@ -340,9 +340,13 @@ function dibujarQR(texto, ladoObjetivo) {
 /* Sin loading="lazy": el PNG ya está entero en memoria, así que diferirlo no
    ahorra un solo byte y sí deja la página sin altura hasta que la imagen
    aparece. Con seis entradas eso era el pie saltando mientras uno lee. */
+/* `desde` corre el número del botón de la puerta: en /orden el recibo de la
+   mesa ocupa el primer lugar del carrusel de la puerta (0108) y las
+   entradas vienen detrás. */
 function tira(entradas, opciones) {
   const o = opciones || {};
   const n = entradas.length;
+  const k0 = Number(o.desde) || 0;
   return entradas.map((e, i) => {
     const usada = e.estado === "usada";
     return `<figure class="pase"${usada ? ' data-usada="1"' : ""}>
@@ -355,10 +359,203 @@ function tira(entradas, opciones) {
         <span class="pase-tipo">${esc(e.etiqueta)}</span>
         <span class="pase-code">#${esc(e.code)}</span>
         ${n > 1 ? `<span class="pase-n">${i + 1} de ${n}</span>` : ""}
-        ${o.puerta ? `<button type="button" class="btn pase-puerta" data-pase="${i}">Mostrar en la puerta</button>` : ""}
+        ${o.puerta ? `<button type="button" class="btn pase-puerta" data-pase="${k0 + i}">Mostrar en la puerta</button>` : ""}
       </div>
     </figure>`;
   }).join("");
+}
+
+/* ── la mesa (0108) ──────────────────────────────────────────────
+   Las dos condiciones de la reserva, con estas palabras y no otras: las
+   pidió el dueño así, las devuelve recibo_mesa_orden() con el recibo y van
+   iguales en la tarjeta de la mesa, en el checkout, en el recibo, en el
+   correo y en los términos. Viven acá porque ticket.js es lo único que
+   cargan las dos páginas del comprador (la de compra y /orden). */
+const CONDICIONES_MESA = [
+  "Si no te presentás con entrada, perdés la mesa.",
+  "Sin devolución si no vas.",
+];
+
+/* "Incluye 4 entradas" / "No incluye entradas": la frase de cuántas
+   entradas trae una mesa, igual en la tarjeta, el recibo y la pantalla de
+   listo. Con 0 hay que decir que NO incluye: "entran 0" se leía como un
+   error de carga, y quien no lo lee llega a la puerta sin entrada. */
+function entradasDeMesa(n) {
+  n = Number(n) || 0;
+  return n === 0 ? "No incluye entradas"
+       : n === 1 ? "Incluye 1 entrada" : `Incluye ${n} entradas`;
+}
+
+/* Corta un texto en renglones que entren en `ancho` con la letra que el
+   contexto tiene puesta. Hasta `max` renglones; el último lleva "…" si
+   sobró texto: "lo que incluye" lo escribe el organizador y puede ser
+   largo, y un recibo que se sale del papel no se lee. */
+function renglones(x, txt, ancho, max) {
+  const palabras = String(txt || "").split(/\s+/).filter(Boolean);
+  const out = [];
+  let linea = "";
+  for (const p of palabras) {
+    const prueba = linea ? linea + " " + p : p;
+    if (x.measureText(prueba).width <= ancho || !linea) { linea = prueba; continue; }
+    out.push(linea); linea = p;
+    if (out.length === max) break;
+  }
+  if (linea && out.length < max) out.push(linea);
+  const usadas = out.join(" ").split(/\s+/).filter(Boolean).length;
+  if (usadas < palabras.length && out.length) {
+    let u = out[out.length - 1];
+    while (u && x.measureText(u + "…").width > ancho) u = u.slice(0, -1);
+    out[out.length - 1] = u + "…";
+  }
+  return out;
+}
+
+/* El recibo de la mesa como imagen, para guardarlo con las entradas y
+   mostrarlo sin señal. Es CLARO a propósito —papel crema, tinta violeta—
+   y las entradas son oscuras: en la fila de la puerta el guardia tiene que
+   distinguir de un vistazo "esto es la mesa" de "esto es una entrada", y
+   el comprador también. Arriba, en la banda, lo que más importa: que NO
+   da ingreso. El QR es el mismo `EVT:<evento>:<code>` de siempre; la
+   puerta lo reconoce por el código (MESA…) y abre el recibo, nunca el
+   molinete. */
+async function dibujarRecibo(m, evento) {
+  if (document.fonts && document.fonts.ready) await document.fonts.ready;
+  /* Se dibuja en un papel largo y al final se corta donde terminó lo
+     escrito: "lo que incluye" va de nada a tres renglones, y con un alto
+     fijo la mesa sin nada incluido quedaba con medio recibo en blanco. */
+  const W = 900, H = 1700;
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const x = c.getContext("2d");
+  const TINTA = "#180E3A", PAPEL = "#F6F1E4", FLUOR = "#FFE24B", GRIS = "rgba(24,14,58,.62)";
+
+  x.fillStyle = PAPEL; x.fillRect(0, 0, W, H);
+  x.textAlign = "center"; x.textBaseline = "alphabetic";
+
+  // la banda: qué es y qué no es
+  x.fillStyle = TINTA; x.fillRect(0, 0, W, 196);
+  x.fillStyle = FLUOR;
+  x.font = '800 78px "Big Shoulders Display", sans-serif';
+  x.fillText("RECIBO DE MESA", W / 2, 104);
+  x.fillStyle = PAPEL;
+  x.font = '500 25px "DM Mono", monospace';
+  x.fillText("NO DA INGRESO · SE ENTRA CON UNA ENTRADA", W / 2, 154);
+
+  // el evento
+  const titulo = `${evento.marca_1 || ""} ${evento.marca_2 || ""}`.trim().toUpperCase();
+  x.fillStyle = GRIS;
+  x.font = '400 24px "DM Mono", monospace';
+  x.fillText(renglones(x, [evento.fecha_txt, evento.lugar].filter(Boolean).join(" · "), W - 120, 1)[0] || "",
+             W / 2, 252);
+  x.fillStyle = TINTA;
+  x.font = '800 44px "Big Shoulders Display", sans-serif';
+  x.fillText(renglones(x, titulo, W - 120, 1)[0] || "", W / 2, 306);
+
+  // el tipo de mesa, grande
+  x.font = '800 92px "Big Shoulders Display", sans-serif';
+  x.fillText(renglones(x, String(m.tipo || "Mesa").toUpperCase(), W - 100, 1)[0] || "", W / 2, 404);
+
+  // el QR
+  const box = 430, bx = (W - box) / 2, by = 440;
+  x.fillStyle = "#fff";
+  x.beginPath(); x.roundRect(bx, by, box, box, 14); x.fill();
+  x.strokeStyle = "rgba(24,14,58,.16)"; x.lineWidth = 2;
+  x.beginPath(); x.roundRect(bx, by, box, box, 14); x.stroke();
+  const q = qrcode(0, "M");
+  q.addData(payload(evento, m));
+  q.make();
+  const n = q.getModuleCount(), pad = box * .07, cell = (box - 2 * pad) / n;
+  x.fillStyle = "#000";
+  for (let r = 0; r < n; r++)
+    for (let k = 0; k < n; k++)
+      if (q.isDark(r, k)) x.fillRect(bx + pad + k * cell, by + pad + r * cell, cell + .6, cell + .6);
+
+  x.fillStyle = TINTA;
+  x.font = '500 40px "DM Mono", monospace';
+  x.fillText("#" + m.code, W / 2, by + box + 62);
+
+  // a nombre de quién
+  x.font = '600 38px "Inter Tight", sans-serif';
+  x.fillText(renglones(x, m.titular || "—", W - 120, 1)[0] || "—", W / 2, by + box + 122);
+  x.fillStyle = GRIS;
+  x.font = '400 26px "DM Mono", monospace';
+  if (m.ci) x.fillText(`CI ${m.ci}`, W / 2, by + box + 164);
+
+  // lo que trae
+  let y = by + box + 232;
+  x.fillStyle = TINTA;
+  x.font = '600 30px "Inter Tight", sans-serif';
+  x.fillText(entradasDeMesa(m.entradas_incluidas), W / 2, y);
+  if (m.incluye) {
+    x.font = '400 27px "Inter Tight", sans-serif';
+    x.fillStyle = GRIS;
+    for (const l of renglones(x, "Incluye: " + m.incluye, W - 140, 3)) { y += 40; x.fillText(l, W / 2, y); }
+  }
+
+  // las condiciones, en una caja: es lo que se aceptó al pagar
+  const cond = Array.isArray(m.condiciones) && m.condiciones.length ? m.condiciones : CONDICIONES_MESA;
+  y += 46;
+  const cy = y, ch = 40 + cond.length * 42;
+  x.strokeStyle = TINTA; x.lineWidth = 2.5;
+  x.beginPath(); x.roundRect(70, cy, W - 140, ch, 10); x.stroke();
+  x.fillStyle = TINTA;
+  x.font = '500 26px "Inter Tight", sans-serif';
+  cond.forEach((t, i) => x.fillText(t, W / 2, cy + 52 + i * 42));
+
+  if (m.estado === "anulada") {
+    // Anulada se dice encima de todo, en diagonal: un recibo anulado que
+    // se ve igual que uno válido es una discusión en la puerta.
+    x.save();
+    x.translate(W / 2, by + box / 2); x.rotate(-0.32);
+    x.font = '800 150px "Big Shoulders Display", sans-serif';
+    x.fillStyle = "rgba(196,36,59,.82)";
+    x.fillText("ANULADA", 0, 50);
+    x.restore();
+  }
+
+  // el pie oscuro lleva la firma, que está escrita para fondo oscuro
+  const PIE = 92, Hf = Math.min(H, Math.ceil(cy + ch + 56 + PIE));
+  const f = document.createElement("canvas");
+  f.width = W; f.height = Hf;
+  const y2 = f.getContext("2d");
+  y2.drawImage(c, 0, 0, W, Hf - PIE, 0, 0, W, Hf - PIE);
+  y2.fillStyle = TINTA; y2.fillRect(0, Hf - PIE, W, PIE);
+  firma(y2, W, Hf, { centro: true, y: Hf - 36 });
+  return f.toDataURL("image/png");
+}
+
+/* El recibo en la página: la imagen, lo que dice en letras (para quien no
+   la puede leer de un vistazo y para el lector de pantalla) y el botón de
+   la puerta. `m` es lo que arma recibo_mesa_orden(): el carnet ya viene
+   enmascarado y el correo no se muestra, porque este link se reenvía.
+   `o.png` es la imagen ya dibujada; `o.pase` el número del botón de la
+   puerta (sin él no hay botón). */
+function reciboMesa(m, o) {
+  if (!m || !m.code) return "";
+  o = o || {};
+  const cond = Array.isArray(m.condiciones) && m.condiciones.length ? m.condiciones : CONDICIONES_MESA;
+  const anulada = m.estado === "anulada";
+  const presentado = m.presentado_at
+    ? new Date(m.presentado_at).toLocaleTimeString("es-BO", { hour: "2-digit", minute: "2-digit",
+        hour12: false, timeZone: "America/La_Paz" }) : null;
+  return `<figure class="recibo-mesa${anulada ? " anulada" : ""}">
+    ${o.png ? `<div class="pase-arte recibo-arte"><img src="${o.png}"
+         alt="Recibo de la mesa ${esc(m.tipo)}, código ${esc(m.code)}"></div>` : ""}
+    <figcaption class="recibo-datos">
+      <p class="recibo-rotulo">${anulada ? "Mesa anulada" : "Recibo de mesa · no da ingreso"}</p>
+      <h3 class="recibo-tipo">${esc(m.tipo || "Mesa")}</h3>
+      <dl>
+        <div><dt>A nombre de</dt><dd>${esc(m.titular || "—")}${m.ci ? ` · CI ${esc(m.ci)}` : ""}</dd></div>
+        <div><dt>Entradas</dt><dd>${esc(entradasDeMesa(m.entradas_incluidas))}</dd></div>
+        ${m.incluye ? `<div><dt>Incluye</dt><dd>${esc(m.incluye)}</dd></div>` : ""}
+        <div><dt>Código</dt><dd class="recibo-code">#${esc(m.code)}</dd></div>
+      </dl>
+      ${presentado ? `<p class="recibo-presentado">Ya te presentaste a las ${esc(presentado)}.</p>` : ""}
+      <ul class="cond-mesa">${cond.map(t => `<li>${esc(t)}</li>`).join("")}</ul>
+      ${o.pase != null && !anulada
+        ? `<button type="button" class="btn pase-puerta" data-pase="${Number(o.pase)}">Mostrar la mesa en la puerta</button>` : ""}
+    </figcaption>
+  </figure>`;
 }
 
 /* ── guardarla en el teléfono ────────────────────────────────────
@@ -377,7 +574,9 @@ async function guardar(entradas) {
     // Con arte la entrada es JPEG; la propia, PNG. El nombre sigue al tipo.
     const tipo = b.type || "image/png";
     const ext = tipo === "image/jpeg" ? "jpg" : "png";
-    return new File([b], `entrada-${i + 1}-${e.code}.${ext}`, { type: tipo });
+    // El recibo de la mesa (0108) se llama recibo-mesa-…: guardado junto a
+    // las entradas, tiene que poder distinguirse en el rollo de fotos.
+    return new File([b], `${e.archivo || "entrada"}-${i + 1}-${e.code}.${ext}`, { type: tipo });
   }));
 
   if (navigator.canShare && navigator.canShare({ files: archivos })) {
@@ -405,4 +604,8 @@ window.dibujarQR       = dibujarQR;
 window.payloadEntrada  = payload;
 window.tiraTickets     = tira;
 window.guardarEntradas = guardar;
+window.dibujarRecibo   = dibujarRecibo;
+window.reciboMesa      = reciboMesa;
+window.entradasDeMesa  = entradasDeMesa;
+window.CONDICIONES_MESA = CONDICIONES_MESA;
 })();

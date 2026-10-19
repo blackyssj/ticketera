@@ -13,7 +13,7 @@
      imagen del ticket (crossorigin) van por pilas de conexión distintas. -->
 <link rel="preconnect" href="https://mjotxzcddhqqpuhkcetl.supabase.co" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&family=Inter:wght@500&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../styles.css?v=47">
+<link rel="stylesheet" href="../styles.css?v=49">
 </head>
 <body>
 
@@ -49,6 +49,11 @@
         <div><dt>Puertas</dt><dd id="cuandoHora">—</dd></div>
         <div><dt>Dónde</dt><dd id="cuandoLugar">—</dd></div>
       </dl>
+
+      <!-- El recibo de la mesa (0108), si la compra fue una: su QR no da
+           ingreso, abre el recibo en la puerta. El carnet llega enmascarado
+           desde la función `orden`: este link se reenvía. -->
+      <div class="recibo-caja" id="reciboMesa" hidden></div>
 
       <p class="instruccion" id="instruccion" hidden>
         En la puerta mostrá el QR. Cada entrada vale para un solo ingreso.
@@ -123,7 +128,7 @@
 <script defer src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script defer src="../config.js"></script>
 <script defer src="../cuenta.js?v=4"></script>
-<script defer src="../ticket.js?v=29"></script>
-<script defer src="orden.js?v=31"></script>
+<script defer src="../ticket.js?v=31"></script>
+<script defer src="orden.js?v=33"></script>
 </body>
 </html>

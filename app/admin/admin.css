@@ -2529,3 +2529,59 @@ select{transition:border-color .15s ease,box-shadow .15s ease}
 /* «Mesa a nombre de …» debajo de lo que compró: es la línea que se lee en
    la puerta cuando llega alguien que no es el comprador. */
 .tabla td em.titular-compra{color:var(--dorado);font-size:12px}
+
+/* ══ mesas v2 (0108) ════════════════════════════════════════════════ */
+
+/* «¿Incluye entradas?» Sí / No y, con Sí, cuántas. Los radios vuelven a
+   ser radios: el input de .form-fase es de ancho completo. */
+.form-mesa .incluye-ent{display:flex;flex-wrap:wrap;align-items:center;gap:4px 18px}
+.form-mesa .incluye-ent .rotulo{flex-basis:100%;font:500 13px/1.4 var(--texto);color:var(--txt)}
+.form-mesa .incluye-ent>label{flex-direction:row;align-items:center;gap:8px;min-height:44px;cursor:pointer}
+.form-mesa .incluye-ent input[type="radio"]{width:18px;height:18px;padding:0;margin:0;accent-color:var(--acento)}
+.form-mesa .incluye-ent .cuantas{cursor:default}
+.form-mesa .incluye-ent .cuantas input{width:92px}
+.form-mesa .incluye-ent .ayuda{flex-basis:100%}
+
+/* El tablero de mesas: la misma tabla que «Por fase», con el total en la
+   superficie de arriba. */
+.bloque-mesas{margin:30px 0 26px}
+.tabla-mesas tfoot td{
+  border-top:1px solid var(--linea-2);background:var(--sup-2);
+  font:13px var(--texto);color:var(--txt-2);
+}
+.tabla-mesas tfoot td.n{color:var(--txt)}
+.tabla-mesas tfoot td em,.tabla-mesas td em{display:block;margin-top:3px;font-style:normal;font-size:12px;color:var(--txt-3)}
+
+/* La comisión partida: por entradas, por mesas y el total, que es la que
+   va en violeta. Cinco columnas en la compu; en el teléfono la regla de
+   .fila.venta de más abajo las reparte de a tres. */
+/* Anchos fijos y no `auto`: cada fila es su propia grilla, y con `auto`
+   las columnas de una persona no caían debajo de las de la otra. */
+.fila.venta.venta-partida{grid-template-columns:minmax(0,1fr) 104px 168px 136px 100px}
+/* Y en el total, las dos partes entre el texto y la cifra grande, en la
+   misma tinta de la tarjeta. */
+.total-partes{display:flex;gap:22px;margin:0 0 0 auto}
+.total-partes>div{display:grid;gap:2px;text-align:right}
+.total-partes dt{font:12px var(--texto);color:rgba(246,241,228,.7)}
+.total-partes dd{margin:0;font:600 16px var(--texto);color:var(--crema);font-variant-numeric:tabular-nums}
+.total-partes+.monto{margin-left:22px}
+/* En la cuenta de la liquidación, las dos partes como renglones colgados
+   de «Comisiones de relacionadores». */
+.liq-cifras dl>div.sub{padding:6px 0 6px 14px}
+
+/* La lista de compradores de mesas usa la de compradores; la mesa va en
+   negrita porque es por lo que se busca la fila en la puerta. */
+.tabla-mesas-compras td.detalle b{font-weight:600;color:var(--txt)}
+.tabla-mesas-compras td .prod-nombre+em,.tabla-mesas-compras td em+em{display:block}
+
+@media (max-width:760px){
+  /* La regla de arriba ganaba por especificidad a la de .fila.venta del
+     teléfono: acá vuelve a ser de a tres, con el nombre a lo ancho. */
+  .fila.venta.venta-partida{grid-template-columns:repeat(3,minmax(0,1fr))}
+  /* De a tres no entra "por entradas · 8 × 15 Bs" en un renglón. */
+  .fila.venta.venta-partida .cifra{white-space:normal}
+  .tabla-mesas tfoot td:empty{display:none}
+  .total-partes{margin-left:0}
+  .total-partes>div{text-align:left}
+  .total-partes+.monto{margin-left:0}
+}

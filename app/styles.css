@@ -462,10 +462,10 @@ input{font:inherit}
 .campo.tc .tc-texto{font:inherit;font-size:14px;letter-spacing:0;text-transform:none;color:var(--tinta);line-height:1.45}
 .tc-texto a{color:var(--tinta);text-underline-offset:3px;padding:14px 0}
 
-/* ─── a nombre de quién va la mesa (0107) ───
-   Un recuadro y no tres campos sueltos más: es OTRA persona, no más datos
-   de quien paga, y si se lee como parte de "tus datos" el comprador pone
-   su carnet y en la puerta la mesa aparece a nombre de quien no vino. */
+/* ─── el carnet de quien compra la mesa (0107, 0108) ───
+   Un recuadro y no tres campos sueltos más: el carnet es lo que el guardia
+   va a pedir en la puerta y lo que limita la mesa a una por persona, y
+   suelto entre el teléfono y el correo se leía como un dato opcional. */
 .titular{
   margin:4px 0 0;padding:14px 14px 10px;min-width:0;
   border:1.5px solid var(--tinta-16);border-radius:4px;gap:8px;
@@ -475,7 +475,6 @@ input{font:inherit}
   text-transform:uppercase;color:var(--tinta);
 }
 .titular-nota{margin:0;font-size:13px;color:var(--tinta-60)}
-.titular-yo .tc-texto{font-size:14px;letter-spacing:0;text-transform:none;color:var(--tinta)}
 /* Carnet ancho, complemento y extensión angostos: el número es lo que se
    escribe entero; los otros dos son dos letras o una lista. */
 .titular-ci{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px}
@@ -1000,4 +999,90 @@ body.con-puerta{overflow:hidden}
 .dlg-titulo{
   margin:0 34px 0 0;font-family:var(--display);font-size:22px;
   text-transform:uppercase;line-height:1.05;color:var(--tinta);
+}
+
+/* ══ mesas, compra aparte (0108) ══════════════════════════════════
+   Entradas o mesa: dos compras, y la elección va arriba de la lista como
+   dos opciones del mismo tamaño. No son pestañas de navegación —cambiar
+   vacía el carrito— sino una pregunta: ¿qué venís a comprar? */
+.modo-compra{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 14px}
+.modo-compra button{
+  display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-height:58px;
+  padding:11px 14px;text-align:left;color:var(--tinta);
+  background:var(--tarjeta);border:1.5px solid var(--tinta-16);border-radius:4px;
+  transition:border-color .16s ease,box-shadow .16s ease;
+}
+.modo-compra button:hover{border-color:var(--tinta-40)}
+.modo-compra button[aria-checked="true"]{border-color:var(--tinta);box-shadow:0 0 0 1px var(--tinta)}
+.modo-t{font-family:var(--display);font-size:24px;font-weight:800;text-transform:uppercase;line-height:1}
+.modo-s{font-family:var(--dato);font-size:11.5px;color:var(--tinta-60)}
+.modo-compra button[aria-checked="true"] .modo-t::after{
+  content:"";display:inline-block;width:7px;height:7px;margin-left:8px;vertical-align:4px;
+  border-radius:50%;background:var(--tinta);box-shadow:0 0 0 3px var(--tinta-16);
+}
+
+/* La tarjeta de la mesa: el cuerpo es una columna con todo lo que se
+   compra junto, y a la derecha el precio y el botón de elegir. */
+.tipo.es-mesa .mesa-cuerpo{grid-column:1;grid-row:2;display:grid;gap:7px;min-width:0}
+/* Adentro del cuerpo manda el orden del HTML: .tipo-desc trae su fila
+   fijada para la tarjeta de una entrada y acá la mandaba abajo de todo. */
+.mesa-cuerpo>*{grid-row:auto;grid-column:auto}
+.mesa-chips{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 0}
+.chip{
+  font-family:var(--dato);font-size:11px;letter-spacing:.02em;color:var(--tinta);
+  padding:3px 9px;border-radius:999px;border:1px solid var(--tinta-16);background:var(--tarjeta);
+}
+/* "No incluye entradas" no es un dato más: quien no lo lee llega a la
+   puerta sin entrada y pierde la mesa. Va con el color de alerta. */
+.chip.sin-entrada,.chip.poco{color:var(--alerta);border-color:color-mix(in srgb, var(--alerta) 45%, transparent)}
+.cond-mesa{
+  list-style:none;margin:0;padding:8px 12px;border-left:3px solid var(--tinta);
+  background:color-mix(in srgb, var(--tinta) 6%, transparent);border-radius:0 3px 3px 0;
+  font-size:12.5px;line-height:1.45;color:var(--tinta);
+}
+.cond-mesa li+li{margin-top:2px}
+.elegir-mesa{
+  min-height:44px;min-width:104px;padding:0 16px;border:1.5px solid var(--tinta);border-radius:3px;
+  font-family:var(--dato);font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--tinta);background:var(--tarjeta);transition:background .14s ease,color .14s ease;
+}
+.elegir-mesa:hover:not(:disabled){background:var(--tinta);color:var(--espuma)}
+.elegir-mesa[aria-pressed="true"]{background:var(--tinta);color:var(--espuma)}
+.elegir-mesa:disabled{border-color:var(--tinta-16);color:var(--tinta-40);cursor:not-allowed}
+
+/* Las condiciones otra vez en el checkout, arriba del casillero de los
+   términos que las nombra. */
+.cond-caja{gap:6px}
+/* El agregado "y las condiciones de la reserva" va adentro del texto del
+   casillero; sin esto heredaba la letra de rótulo de `.campo span`. */
+.campo.tc .tc-texto span{font:inherit;letter-spacing:0;text-transform:none;color:inherit}
+.cond-titulo{font-family:var(--dato);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--tinta-60)}
+
+/* ── el recibo de la mesa (listo y /orden) ──
+   Papel claro como el recibo dibujado, y no la tarjeta oscura de una
+   entrada: es otra cosa y tiene que verse como otra cosa. En la compu la
+   imagen al costado de lo que dice; en el teléfono, una arriba de la otra. */
+.recibo-caja{margin:0 0 18px}
+.recibo-mesa{
+  margin:0;display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:18px 22px;
+  align-items:start;padding:16px;background:var(--tarjeta);
+  border:1.5px solid var(--tinta-16);border-radius:6px;color:var(--tinta);
+}
+.recibo-mesa .recibo-arte{border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.14)}
+.recibo-mesa .recibo-arte img{display:block;width:100%;height:auto}
+.recibo-datos{display:grid;gap:10px;min-width:0}
+.recibo-rotulo{font-family:var(--dato);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--tinta-60)}
+.recibo-tipo{font-size:clamp(26px,4vw,36px);color:var(--tinta)}
+.recibo-datos dl{margin:0;display:grid;gap:8px}
+.recibo-datos dl>div{display:grid;gap:2px}
+.recibo-datos dt{font-family:var(--dato);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--tinta-40)}
+.recibo-datos dd{margin:0;font-size:14.5px;line-height:1.45;overflow-wrap:anywhere}
+.recibo-code{font-family:var(--dato);letter-spacing:.04em}
+.recibo-presentado{font-family:var(--dato);font-size:12px;color:var(--tinta-60)}
+.recibo-mesa .pase-puerta{margin-top:4px;border-radius:3px}
+.recibo-mesa.anulada .recibo-rotulo{color:var(--alerta)}
+.recibo-mesa.anulada .recibo-arte{opacity:.7}
+@media (max-width:640px){
+  .recibo-mesa{grid-template-columns:1fr;padding:14px}
+  .recibo-mesa .recibo-arte{max-width:340px;justify-self:center;width:100%}
 }
