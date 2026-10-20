@@ -5906,12 +5906,13 @@ async function cambiarActivo(id) {
    muestra grande y solo, no escondido en una fila de una tabla. */
 async function pantallaPlataforma() {
   $("#main").innerHTML = `<p class="cargando">Cargando el tablero…</p>`;
-  const [rp, rg, re, rr, rs] = await Promise.all([
+  const [rp, rg, re, rr, rs, rpp] = await Promise.all([
     sb.rpc("panel_plataforma"),
     sb.rpc("pagos_plataforma", { p_limite: 25 }),
     sb.rpc("eventos_plataforma"),
     sb.rpc("retiros_plataforma", { p_limite: 25 }),
     sb.rpc("socios_plataforma"),
+    sb.rpc("pagos_pasarela", { p_limite: 25 }),
   ]);
   if (rp.error) { $("#main").innerHTML = `<p class="error">${esc(rp.error.message)}</p>`; return; }
 
@@ -5921,6 +5922,10 @@ async function pantallaPlataforma() {
      diciendo el mismo número después de retirar, y el cuadre contra la
      wallet quedaba corrido por ese monto. */
   const retiros = rr.error ? [] : (rr.data || []);
+  /* Lo que ya se le pagó a la pasarela por su costo (0109). Sale del
+     monedero pero no de la ganancia, que ya lo descuenta. */
+  const pagosPas = rpp.error ? [] : (rpp.data || []);
+  const debemosPas = Number(t.debemos_pasarela ?? t.costo_pasarela ?? 0);
   const disponible = Number(t.disponible ?? t.margen ?? 0);
   /* La parte de cada socio (0106). Si falla no se cae el tablero: es una
      tarjeta más, y el cuadre de la caja no depende de ella. */
@@ -5973,7 +5978,8 @@ async function pantallaPlataforma() {
         <h3>${bs(t.en_pasarela)}</h3>
         <p class="ayuda">Es lo que tiene que haber en la wallet del comercio:
           ${bs(t.cobrado)} cobrados menos ${bs(t.girado)} girados a clientes${
-          Number(t.retirado) ? ` y ${bs(t.retirado)} retirados por nosotros` : ""}.
+          Number(t.retirado) ? `, ${bs(t.retirado)} retirados por nosotros` : ""}${
+          Number(t.pagado_pasarela) ? ` y ${bs(t.pagado_pasarela)} pagados a la pasarela` : ""}.
           Si BeePay dice otra cosa, hay algo cobrado sin registrar o girado de más.</p>
       </div>
       <dl class="plat-cifras">
@@ -5982,6 +5988,7 @@ async function pantallaPlataforma() {
         <div class="tenue"><dt>Ya girado</dt><dd>−${bs(t.girado)}</dd></div>
         <div><dt>Falta girarles</dt><dd>${bs(t.por_girar)}</dd></div>
         ${Number(t.en_camino) ? `<div class="tenue"><dt>En camino</dt><dd>${bs(t.en_camino)}</dd></div>` : ""}
+        ${Number(t.pagado_pasarela) ? `<div class="tenue"><dt>Pagado a la pasarela</dt><dd>−${bs(t.pagado_pasarela)}</dd></div>` : ""}
       </dl>
     </section>
 
@@ -5999,6 +6006,7 @@ async function pantallaPlataforma() {
         <div><dt>Nos queda</dt><dd class="ok">${bs(t.margen)}</dd></div>
         <div class="tenue"><dt>Ya retirado</dt><dd>−${bs(t.retirado)}</dd></div>
         <div><dt>Disponible para retirar</dt><dd${disponible > 0.99 ? ' class="ok"' : ""}>${bs(disponible)}</dd></div>
+        <div><dt>Le debemos a la pasarela</dt><dd>${bs(debemosPas)}</dd></div>
       </dl>
       <label class="liq-auto-min">
         <span>Retiré</span>
@@ -6024,6 +6032,15 @@ async function pantallaPlataforma() {
         cobra por fuera, así que este costo se calcula, no se descuenta.
         Cuando lo empiece a retener, el número del cuadre de arriba se va a
         mover y va a ser por esto.</p>
+      <label class="liq-auto-min">
+        <span>Le pagué a la pasarela</span>
+        <input id="montoPasarela" inputmode="decimal" value="${debemosPas > 0 ? debemosPas.toFixed(2) : ""}" size="8">
+        <span>Bs</span>
+        <input id="refPasarela" type="text" placeholder="referencia o nota (opcional)" size="28">
+        <button type="button" class="btn plano chico" id="btnPagoPasarela">Anotar pago</button>
+      </label>
+      <p class="ayuda">Baja lo que tiene que haber en el monedero; no toca la
+        ganancia ni la parte de los socios, porque ese costo ya está descontado.</p>
     </section>
 
     ${soc ? `
@@ -6133,6 +6150,15 @@ async function pantallaPlataforma() {
       </li>`; }).join("")}</ul>`
     : `<p class="vacio">Todavía no se giró nada a ningún cliente.</p>`}
 
+    <h3 class="titulo-bloque sep">Pagos a la pasarela</h3>
+    ${pagosPas.length ? `<ul class="lista">${pagosPas.map(r => `<li class="fila quieta liq-linea">
+        <span class="fila-nombre">${esc(r.quien || "—")}
+          <em>${esc(r.nota || "")}${r.referencia ? " · ref " + esc(r.referencia) : ""}</em></span>
+        <span class="cifra destacada">${bs(r.monto)}</span>
+        <span class="fila-dato tenue">${fmtFH(r.cuando)}</span>
+      </li>`).join("")}</ul>`
+    : `<p class="vacio">Todavía no se le pagó nada a la pasarela.</p>`}
+
     <h3 class="titulo-bloque sep">Retiros de TICKETAZO</h3>
     ${retiros.length ? `<ul class="lista">${retiros.map(r => `<li class="fila quieta liq-linea">
         <span class="fila-nombre">${r.socio ? `Para ${esc(r.socio)}` : esc(r.quien || "—")}
@@ -6157,6 +6183,19 @@ async function pantallaPlataforma() {
   document.querySelectorAll("[data-girar]").forEach(b => {
     b.onclick = () => girarDesdePlataforma(evs.find(x => x.id === b.dataset.girar), b);
   });
+
+  const bpp = $("#btnPagoPasarela");
+  if (bpp) bpp.onclick = async () => {
+    const v = Number(String($("#montoPasarela").value).replace(",", "."));
+    if (!(v > 0)) { avisar("Poné el monto que le pagaste a la pasarela."); return; }
+    if (!confirm(`Anotar un pago de ${bs(v)} a la pasarela.\n\n` +
+                 `No mueve plata: sólo queda registrado que ya salió del monedero.`)) return;
+    const { data, error } = await sb.rpc("registrar_pago_pasarela",
+      { p_monto: v, p_referencia: $("#refPasarela").value || null });
+    if (error) { avisar(sinCodigo(error.message)); return; }
+    avisar(data.motivo || (data.ok ? "Anotado." : "No se pudo anotar."));
+    if (data.ok) pantallaPlataforma();
+  };
 
   const br = $("#btnRetiro");
   if (br) br.onclick = async () => {
