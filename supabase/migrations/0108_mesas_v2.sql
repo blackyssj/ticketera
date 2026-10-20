@@ -52,6 +52,24 @@
 -- menos de 1 MB (consulta de solo lectura del 19/10).
 set local lock_timeout = '15s';
 
+-- ── 0. la guarda ────────────────────────────────────────────
+-- Esta migración da por hecho que con 0107 no se vendió ninguna mesa (así
+-- estaba el 20/10: cero tipos de mesa, cero órdenes con titular). Si alguna
+-- se vendió entre medio, esa orden no tiene recibo ni la clave del carnet
+-- de abajo, compradores_evento deja de mostrarla por ser mesa y
+-- compradores_mesas no la encuentra: el comprador desaparecería de las dos
+-- listas sin que nadie lo note. Mejor que la migración se caiga entera y
+-- alguien las mire a mano.
+do $guarda$
+begin
+  if exists (select 1 from ordenes o
+              where o.estado in ('pagada', 'pendiente', 'revision_manual')
+                and exists (select 1 from orden_items i join tipo_entrada t on t.id = i.tipo_id
+                             where i.orden_id = o.id and t.categoria = 'mesa')) then
+    raise exception '0108: hay órdenes de mesa de la versión 0107; revisarlas a mano antes de aplicar';
+  end if;
+end $guarda$;
+
 -- ── 1. una mesa puede incluir 0 entradas ────────────────────
 -- El CHECK de 0004 venía en la columna y Postgres le puso nombre solo
 -- (tipo_entrada_manillas_check). Se busca por lo que dice y no por ese
