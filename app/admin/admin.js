@@ -90,7 +90,7 @@ async function cargarPerfil() {
   const { data, error } = await sb.from("perfiles")
     .select("id,nombre,rol,organizador_id,activo,slug").eq("id", user.id).maybeSingle();
   if (error || !data || !data.activo) {
-    await sb.auth.signOut();
+    await sb.auth.signOut({ scope: "local" });   // ver el botón Salir
     throw new Error("Tu cuenta no está habilitada.");
   }
   S.yo = data;
@@ -167,9 +167,14 @@ function limpiarPuerta() {
   return true;
 }
 
+/* `scope: "local"`: Salir cierra la sesión de ESTE aparato. El default de
+   supabase-js es "global", que la cierra en todos los aparatos de la
+   cuenta: con un mismo usuario de portero en dos teléfonos, el que salía
+   en uno dejaba al otro a la hora dando "permission denied" en cada QR,
+   en plena fila. */
 $("#btnSalir").addEventListener("click", async () => {
   if (!limpiarPuerta()) return;
-  await sb.auth.signOut();
+  await sb.auth.signOut({ scope: "local" });
   location.reload();
 });
 
@@ -2029,6 +2034,19 @@ async function zonaPublicar(eventoId, estado, slug) {
   cablearCopiar();
 
   $("#btnPublicar").onclick = async () => {
+    /* Quitar de la venta pasa el evento a borrador, y la Puerta no lista
+       borradores: la noche del evento, el primer teléfono que se
+       desbloquee o recargue se queda sin el escáner. Es la forma más a
+       mano de "cortar la venta", así que se pregunta siempre y se dice
+       cuál es la otra. */
+    if (publicado && !confirm(
+        "¿Quitar el evento de la venta?\n\n" +
+        "Sale de la venta y también de la Puerta: los teléfonos de la " +
+        "entrada dejan de mostrarlo y no pueden escanear sus entradas " +
+        "hasta que lo vuelvas a poner a la venta.\n\n" +
+        "Si sólo querés cortar la venta online, editá la última fase y " +
+        "completá «Cierra»."))
+      return;
     const { data, error } = await sb.rpc("publicar_evento",
       { p_evento: eventoId, p_publicar: !publicado });
     if (error) {

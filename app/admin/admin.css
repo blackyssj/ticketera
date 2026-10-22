@@ -146,6 +146,15 @@ body[data-pantalla="puerta"] label>span{
   text-transform:uppercase;color:var(--txt-3);
 }
 body[data-pantalla="puerta"] .marca{color:var(--txt)}
+/* Tirar la pantalla hacia abajo recarga la página en Chrome de Android y
+   en Safari. En la puerta eso pasa sin querer, con el pulgar, cada vez
+   que se sube a mirar el conteo; y sin señal una recarga es el login, que
+   sin red no entra. Sólo acá: en la oficina recargar así es una comodidad.
+   Va en el body y en el html porque cada navegador lo mira en uno; el del
+   html va en una regla aparte, porque un navegador sin :has() descartaría
+   la regla entera. */
+body[data-pantalla="puerta"]{overscroll-behavior-y:none}
+html:has(> body[data-pantalla="puerta"]){overscroll-behavior-y:none}
 /* Un blanco grande para el dedo de noche: el botón de 14px de la oficina
    acá se erra con la mano fría y la fila empujando. */
 body[data-pantalla="puerta"] .puerta .btn.primario{font-size:17px;min-height:52px}
@@ -1388,6 +1397,11 @@ select{max-width:100%;padding-right:8px;cursor:pointer}
 .puerta-code{font-family:var(--dato);font-size:12px;letter-spacing:.1em;opacity:.72}
 
 .puerta-cartel.neutro{background:var(--sup-3);color:var(--txt)}
+/* Sin señal, un código que no está en la lista del teléfono: puede ser
+   trucho o puede ser una compra de hace diez minutos. Ámbar con letra
+   oscura, que de lejos no se lee ni como el verde ni como el rojo: el
+   portero no deja pasar ni echa, mira el motivo y pide el correo. */
+.puerta-cartel.ambar{background:#E0A21B;color:#1E1503}
 /* El recibo de una mesa (0108): no deja pasar ni es un rechazo. Azul, que
    no se confunde de lejos ni con el verde ni con el rojo, y el título más
    chico porque son tres palabras y abajo hay que leer. */
@@ -1519,6 +1533,24 @@ body[data-pantalla="plataforma"] main{max-width:1440px}
   border-color:rgba(246,180,74,.4);background:var(--aviso-bg);color:var(--aviso);
 }
 .puerta-estado[data-mal="1"] b{color:var(--aviso)}
+/* La sesión cerrada (puerta.js, MOTIVO_SESION). Roja y no ámbar: acá la
+   puerta NO sigue funcionando, cada QR da NO SE PUDO hasta que alguien
+   vuelva a entrar. Pegada debajo de la barra de arriba, porque el portero
+   que bajó hasta el campo de a mano no ve el principio de la pantalla. */
+.puerta-estado[data-sesion="1"]{
+  position:sticky;top:calc(var(--alto-cab) + 6px);z-index:18;
+  background:#3B0D15;border-color:var(--peligro-borde);color:#FFD9DE;
+}
+.app.con-franja .puerta-estado[data-sesion="1"]{
+  top:calc(var(--alto-cab) + var(--alto-franja,44px) + 6px);
+}
+.puerta-estado[data-sesion="1"] b{color:#FFF1F3}
+/* En la letra del texto y no en la mono de la barra: esto se lee entero,
+   y es lo único de la barra que pide hacer algo. */
+.puerta-sesion{
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;
+  font-family:var(--texto);font-size:14px;
+}
 .puerta-link{
   font:inherit;color:inherit;text-decoration:underline;
   background:none;border:0;padding:0;cursor:pointer;

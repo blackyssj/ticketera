@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Big+Shoulders+Display:wght@700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/admin/admin.css?v=60">
+<link rel="stylesheet" href="/admin/admin.css?v=61">
 <link rel="manifest" href="/admin/manifest.json">
 <!-- La tinta de la marca: es lo que hay arriba de todo en la pantalla de
      entrar del teléfono. Adentro del panel lo cambia mostrar() (admin.js):
@@ -88,7 +88,13 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<!-- Versión exacta, igual que en el SHELL de sw.js. Con "@2" a secas cada
+     teléfono corría el 2.x que hubiera el día que se instaló el service
+     worker (sw.js lo guarda como inmutable), y un 2.x nuevo podía cambiar
+     un default —el scope de signOut, un reintento— sin que nadie lo
+     probara en la puerta. Para subirla: cambiarla en los dos lados y
+     subir CACHE. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js"></script>
 <!-- El lector de QR de la puerta, por CDN como qrcode-generator en la landing.
      Si no carga, puerta.js lo dice y el ingreso a mano sigue funcionando. -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
@@ -102,7 +108,7 @@
 <!-- El CSV que se le manda al contador: separador, encoding y la
      neutralizacion de formulas viven ahi, no repartidos por las pantallas. -->
 <script src="/admin/csv.js?v=30"></script>
-<script src="/admin/admin.js?v=81"></script>
-<script src="/admin/puerta.js?v=37"></script>
+<script src="/admin/admin.js?v=82"></script>
+<script src="/admin/puerta.js?v=38"></script>
 </body>
 </html>

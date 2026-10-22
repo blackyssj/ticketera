@@ -101,6 +101,11 @@ const P = {
   tPadron: null,
   tDeshacer: null,
   tConteo: null,
+  tSondeo: null,
+  sondeando: false,   // un sondeo a la vez (ver sondear())
+  intentoPadron: 0,   // cuándo arrancó la última bajada del padrón, con o sin éxito
+  sesion: false,      // la base contestó que no con un error de sesión (ver la barra)
+  reanudar: false,    // la cámara estaba prendida cuando se ocultó la pestaña
 };
 
 /* ── el sonido ──────────────────────────────────────────────────
@@ -110,7 +115,7 @@ const P = {
    un mp3 que no cargó es un portero que cree que el escáner no leyó.
 
    AudioContext no arranca sin un gesto del usuario. No se fuerza: se
-   crea en el primer clic (encender la cámara, mandar un código) y si el
+   crea en el primer toque sobre la puerta (ver dibujar()) y si el
    navegador igual lo rechaza, la puerta sigue andando muda. */
 let audio = null;
 
@@ -119,7 +124,13 @@ function despertarAudio() {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     audio = audio || new AC();
-    if (audio.state === "suspended") audio.resume();
+    /* `!== "running"` y no `=== "suspended"`: iPhone lo deja en
+       "interrupted" después de una llamada o de bloquear la pantalla, y
+       con la comparación vieja ya no se despertaba en toda la noche. */
+    if (audio.state !== "running") {
+      const p = audio.resume();
+      if (p && p.catch) p.catch(() => {});
+    }
   } catch { /* sin audio se trabaja igual */ }
 }
 
@@ -158,7 +169,10 @@ function sonar(cual) {
    Si el evento no es el activo se rechaza acá, sin llamar a la base: es
    una entrada de otra noche y no hay nada que preguntar. Preguntarlo
    igual sería una llamada por cada QR viejo que alguien tenga guardado
-   en el teléfono, y todas con la misma respuesta. */
+   en el teléfono, y todas con la misma respuesta. Y "de otro evento", no
+   "de otra noche": el 30/10 y el 31/10 hay dos o tres eventos la MISMA
+   noche, y un portero que lee "otra fecha" sobre una entrada de hoy
+   discute con el cliente en vez de mandarlo a la otra puerta. */
 const RE_PAYLOAD = /^EVT:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):([0-9A-Z]{4,32})$/i;
 
 function leerPayload(txt) {
@@ -179,7 +193,13 @@ const CARTELES = {
   usada:       { cls: "no",     titulo: "YA ENTRÓ" },
   anulada:     { cls: "no",     titulo: "ANULADA" },
   no_existe:   { cls: "no",     titulo: "NO EXISTE" },
-  otro_evento: { cls: "no",     titulo: "OTRA NOCHE" },
+  /* El "no existe" de la lista del teléfono. Sin señal no se sabe si el
+     código es trucho o si lo compraron después de la última bajada: la
+     venta online sigue abierta durante la fiesta. En rojo, el portero
+     rechaza a alguien que pagó; en ámbar y con un sonido neutro, mira el
+     motivo y pide el correo de compra. */
+  fuera_lista: { cls: "ambar",  titulo: "NO ESTÁ EN LA LISTA", tono: "neutro" },
+  otro_evento: { cls: "no",     titulo: "OTRO EVENTO" },
   ajeno:       { cls: "no",     titulo: "NO ES UNA ENTRADA" },
   error:       { cls: "no",     titulo: "NO SE PUDO" },
   /* Ni verde ni rojo: un recibo no deja pasar a nadie (para entrar se usa
@@ -191,36 +211,98 @@ const CARTELES = {
   devuelta:    { cls: "neutro", titulo: "DEVUELTA" },
 };
 
+/* La hora de Bolivia y no la del teléfono: un teléfono que vino de afuera
+   con otra zona diría que la lista es "de las 03:10" cuando acá son las
+   23:10, y el portero calcula mal de cuándo es lo que tiene. Un Android
+   viejo sin la base de zonas tira RangeError: ahí vale la del teléfono. */
 const hora = t => {
   if (!t) return "";
   const d = new Date(t);
-  return isNaN(d) ? "" : d.toLocaleTimeString("es-BO",
-    { hour: "2-digit", minute: "2-digit", hour12: false });
+  if (isNaN(d)) return "";
+  const f = { hour: "2-digit", minute: "2-digit", hour12: false };
+  try { return d.toLocaleTimeString("es-BO", { ...f, timeZone: "America/La_Paz" }); }
+  catch { return d.toLocaleTimeString("es-BO", f); }
 };
 
 /* ── la pantalla ────────────────────────────────────────────────── */
+
+/* Tope de la lista de eventos. Es una consulta de cincuenta filas: con
+   señal vuelve en menos de un segundo, y si a los cuatro no volvió es que
+   no va a volver. Sin tope, un wifi sin salida a internet dejaba la puerta
+   en "Buscando el evento…" para siempre. */
+const EVENTOS_MS = 4000;
+
+/* La lista de eventos guardada en el teléfono, por cliente: es lo único
+   que le faltaba a la puerta para abrir sin señal (el padrón y la cola ya
+   estaban guardados). Por cliente y no fija, para que un operador que
+   cambió de cliente no vea sin señal los eventos del anterior. Empieza con
+   "puerta:", así que «Salir» la borra junto con el padrón. */
+const llaveEventos = () => {
+  const yo = window.ADMIN.S && window.ADMIN.S.yo;
+  return `puerta:eventos:${(yo && yo.organizador_id) || "-"}`;
+};
+
 async function pantalla() {
   apagar();                     // por si se vuelve a entrar sin recargar
   const gen = P.gen;
 
-  $("#main").innerHTML = `<p class="cargando">Buscando el evento…</p>`;
+  /* Si la puerta ya está dibujada (vuelve de otra app) se deja a la vista
+     mientras se pregunta: el campo de a mano sigue andando contra el mismo
+     evento, y la fila no mira un "Buscando…" por una consulta de rutina. */
+  if (!document.getElementById("puerta"))
+    $("#main").innerHTML = `<p class="cargando">Buscando el evento…</p>`;
 
   /* Se acota del lado del servidor: PostgREST corta en 1000 filas sin
      avisar y un organizador con años de historia dejaría al portero sin
      el evento de esta noche. Un borrador no se puede comprar, así que
      no puede haber nadie en su puerta. */
-  const { data, error } = await sb.from("eventos")
-    .select("id,nombre,fecha,estado")
-    .in("estado", ["publicado", "cerrado"])
-    .order("fecha", { ascending: false })
-    .limit(50);
+  let lista = null, falla = null;
+  const tope = new AbortController();
+  const reloj = setTimeout(() => tope.abort(), EVENTOS_MS);
+  try {
+    const { data, error, status } = await sb.from("eventos")
+      .select("id,nombre,fecha,estado")
+      .in("estado", ["publicado", "cerrado"])
+      .order("fecha", { ascending: false })
+      .limit(50)
+      .abortSignal(tope.signal);
+    if (error) falla = { msg: error.message, status, code: error.code };
+    else lista = data || [];
+  } catch (err) {
+    falla = { msg: (err && err.message) || "sin conexión", status: 0 };
+  } finally {
+    clearTimeout(reloj);
+  }
   if (gen !== P.gen) return;    // se cambió de pestaña mientras cargaba
 
-  if (error) {
-    $("#main").innerHTML = `<p class="error">No se pudieron cargar los eventos: ${esc(error.message)}</p>`;
-    return;
+  if (falla) {
+    /* Sin señal la lista de eventos es lo de menos: el padrón y la cola
+       están guardados en el teléfono y alcanzan para seguir escaneando.
+       Antes acá se pintaba el error y se salía ANTES de cargar la lista
+       local y la cámara: bloquear el teléfono sin señal era perder la
+       puerta entera. Ahora se sigue con los eventos que ya se conocían —
+       los de memoria si la pestaña nunca se cerró, los guardados si no. */
+    const red = esFallaDeRed(falla.msg, falla.status);
+    if (red) P.red = false; else P.sesion = true;
+    const conocidos = P.eventos.length ? P.eventos : (leerJSON(llaveEventos()) || []);
+    if (!conocidos.length) {
+      $("#main").innerHTML = red
+        ? `<p class="error">No se pudieron cargar los eventos: ${esc(falla.msg)}</p>
+           <p class="ayuda">Conectate una vez con señal: después la puerta abre aunque no haya.</p>`
+        : `<p class="error">${esc(MOTIVO_SESION)}</p>
+           <div class="acciones"><button type="button" class="btn primario" id="pReentrar">Volver a entrar</button></div>`;
+      const b = $("#pReentrar");
+      if (b) b.onclick = reentrar;
+      return;
+    }
+    lista = conocidos;
+  } else {
+    P.red = true;
+    P.sesion = false;
+    guardarJSON(llaveEventos(), lista);
   }
-  P.eventos = data || [];
+
+  P.eventos = lista;
   if (!P.eventos.length) {
     $("#main").innerHTML = `<p class="vacio">No hay ningún evento a la venta.
       Cuando el organizador publique uno, la puerta abre acá.</p>`;
@@ -243,9 +325,16 @@ async function pantalla() {
    descendente, así que el más cercano es el último de los que quedan
    adelante; si ya pasaron todos, el más reciente. El portero puede
    cambiarlo, pero abrir en el evento equivocado y no darse cuenta es
-   una noche entera de entradas quemadas contra la fecha que no era. */
+   una noche entera de entradas quemadas contra la fecha que no era.
+
+   "Hoy" se corre ocho horas para atrás: la noche de un evento termina a
+   la mañana del día siguiente. Con la fecha pelada, una recarga a las
+   02:00 del sábado daba por pasado el evento del viernes y abría en el
+   próximo que el cliente ya hubiera publicado. Hasta las 08:00 sigue
+   siendo la noche anterior. */
 function elegirEvento(lista) {
-  const hoy = new Date().toLocaleDateString("en-CA");   // AAAA-MM-DD local
+  const hoy = new Date(Date.now() - 8 * 3600 * 1000)
+    .toLocaleDateString("en-CA");   // AAAA-MM-DD local
   const adelante = lista.filter(e => e.fecha >= hoy);
   return adelante.length ? adelante[adelante.length - 1] : lista[0];
 }
@@ -288,7 +377,7 @@ function dibujar() {
         <label>
           <span>Código a mano</span>
           <input id="pCodigo" inputmode="latin" autocapitalize="characters"
-                 autocorrect="off" spellcheck="false" maxlength="32"
+                 autocorrect="off" spellcheck="false" maxlength="64"
                  placeholder="Ej. 7KMQ3BFHD2XW">
         </label>
         <button class="btn primario" id="pBuscar">Buscar</button>
@@ -321,22 +410,19 @@ function dibujar() {
     bajarPadron({ callado: true });
   };
 
-  /* Una puerta grande tiene dos teléfonos. Actualizar el número solo con
-     los ingresos de ESTE escáner lo deja contando la mitad de la noche y
-     nadie se entera, porque un número que sube parece un número que
-     anda. Una vez por minuto es barato y alcanza para lo que se usa:
-     saber si falta mucha gente. */
-  clearInterval(P.tConteo);
-  P.tConteo = setInterval(refrescarConteo, 60000);
+  armarRelojes();
 
-  /* El padrón se refresca mientras HAY señal, que es cuando no hace
-     falta. Es todo el truco: lo que se baja ahora es lo que se va a
-     usar en el corte que todavía no pasó. De paso reintenta la cola. */
-  clearInterval(P.tPadron);
-  P.tPadron = setInterval(() => {
-    sincronizar({ callado: true });
-    bajarPadron({ callado: true });
-  }, PADRON_MS);
+  /* El sonido se despierta con el primer toque en cualquier lado de la
+     puerta. Antes sólo con Modo filtro, Buscar o Reintentar: un portero
+     que escaneaba con la cámara toda la noche no tocaba ninguno y la
+     puerta quedaba muda. pointerup y no pointerdown: para el navegador
+     un dedo que BAJA todavía no es un gesto (puede ser el comienzo de un
+     scroll) y no deja arrancar el audio; recién cuando sube. No es
+     `once`: iPhone vuelve a dormir el audio al bloquear la pantalla, y
+     despertarAudio() no hace nada si ya está sonando. */
+  const puerta = $("#puerta");
+  puerta.addEventListener("pointerup", despertarAudio, { passive: true });
+  puerta.addEventListener("keydown", despertarAudio, { passive: true });
 
   /* En el teléfono el cartel tapa la pantalla entera, y lo que tapa la
      pantalla entera se tiene que poder sacar: la fila avanza más rápido
@@ -362,9 +448,15 @@ function dibujar() {
   $("#pFormMano").onsubmit = ev => {
     ev.preventDefault();
     despertarAudio();
-    const code = $("#pCodigo").value.trim().toUpperCase();
-    if (!code) return;
+    const crudo = $("#pCodigo").value;
     $("#pCodigo").value = "";
+    /* Si pegaron el QR entero, se lee como lo leería la cámara: una
+       entrada de otro evento es OTRO EVENTO, no un NO EXISTE. */
+    const d = leerPayload(crudo);
+    if (d && d.evento !== String(P.evento.id).toLowerCase())
+      return mostrarCartel({ resultado: "otro_evento", code: d.code });
+    const code = d ? d.code : limpiarCodigo(crudo);
+    if (!code) return;
     /* A mano no pasa por el antirrebote: si alguien tipea el mismo
        código dos veces es porque quiere preguntar de nuevo. Sí marca el
        último visto, para que la cámara no lo vuelva a disparar sola. */
@@ -376,6 +468,65 @@ function dibujar() {
   P.ctx    = P.lienzo.getContext("2d", { willReadFrequently: true });
 }
 
+/* El código como lo tipea o lo pega el portero, llevado a la forma en que
+   está guardado. El ticket y el correo lo muestran como «#7KMQ3BFHD2XW»,
+   así que el # se copia; un espacio o un guion de más también. Cualquiera
+   de esos daba NO EXISTE sobre una entrada buena, que es el peor error de
+   una puerta: el que pagó se queda afuera discutiendo. Los códigos son
+   sólo letras y números (los de entrada y los MESA… del recibo), así que
+   todo lo demás es ruido. Un payload EVT:… roto (le falta un pedazo del
+   uuid) también se pela: lo que vale es lo que viene después de los dos
+   puntos. */
+function limpiarCodigo(txt) {
+  return String(txt || "").trim()
+    .replace(/^EVT:[^:]*:/i, "")
+    .toUpperCase()
+    .replace(/[^0-9A-Z]/g, "");
+}
+
+/* Los relojes de la puerta. Viven aparte de dibujar() porque al volver a
+   primer plano sin señal se rearman sin redibujar nada (ver reanudar()). */
+function armarRelojes() {
+  /* Una puerta grande tiene dos teléfonos. Actualizar el número solo con
+     los ingresos de ESTE escáner lo deja contando la mitad de la noche y
+     nadie se entera, porque un número que sube parece un número que
+     anda. Una vez por minuto es barato y alcanza para lo que se usa:
+     saber si falta mucha gente. */
+  clearInterval(P.tConteo);
+  P.tConteo = setInterval(refrescarConteo, 60000);
+
+  /* El padrón se refresca mientras HAY señal, que es cuando no hace
+     falta. Es todo el truco: lo que se baja ahora es lo que se va a
+     usar en el corte que todavía no pasó. De paso reintenta la cola. */
+  clearInterval(P.tPadron);
+  P.tPadron = setInterval(() => {
+    sincronizar({ callado: true });
+    bajarPadron({ callado: true });
+  }, PADRON_MS);
+
+  /* Mientras se está "sin señal", cada tanto se pregunta si volvió (ver
+     sondear()). Corre siempre y no hace nada mientras hay red: prenderlo
+     y apagarlo con cada caída es una carrera más que cuidar. */
+  clearInterval(P.tSondeo);
+  P.tSondeo = setInterval(sondear, SONDEO_MS);
+}
+
+/* Volver a primer plano SIN señal con la puerta ya armada. pantalla()
+   empieza apagando y redibujando todo, y sin red eso es arriesgar la
+   pantalla que funcionaba por una lista de eventos que no va a llegar.
+   Acá se prende de nuevo lo que apagar() apagó —cámara, relojes, la marca
+   del filtro— sobre el mismo HTML, con el padrón y la cola que ya están
+   en memoria. */
+function reanudar() {
+  P.video = $("#pVideo");
+  if (!P.video || !P.evento) return pantalla();
+  armarRelojes();
+  pintarFiltro();
+  pintarEstado();
+  refrescarConteo();
+  arrancarCamara();
+}
+
 /* ── la cámara ──────────────────────────────────────────────────
    Todo lo que puede salir mal acá termina en el mismo lugar: un cartel
    que dice qué pasó y el campo de a mano, que ya está abajo. No hay
@@ -384,6 +535,10 @@ async function arrancarCamara() {
   const gen = P.gen;
   const caja = $("#pCamara");
   if (!caja) return;
+
+  /* Antes que la cámara, la pantalla prendida: también hace falta con la
+     cámara rota, para el código a mano. */
+  pedirPantalla(gen);
 
   if (!window.jsQR) return fallaCamara(
     "No cargó el lector de QR (jsQR). Revisá la conexión y recargá.");
@@ -424,6 +579,39 @@ async function arrancarCamara() {
   caja.innerHTML = "";
   P.tLectura = 0;
   P.raf = requestAnimationFrame(() => bucle(gen));
+}
+
+/* ── la pantalla prendida ───────────────────────────────────────
+   Un teléfono se bloquea solo a los 30 o 60 segundos, y en una puerta
+   eso es lo normal: entre una tanda y la otra nadie toca la pantalla.
+   Al bloquearse se apaga la cámara (ver el visibilitychange de abajo) y,
+   sin señal, desbloquearlo era arriesgar la puerta entera. Con el
+   candado de pantalla el teléfono no se bloquea mientras la puerta esté
+   a la vista.
+
+   El navegador lo suelta solo cuando la pestaña se oculta, así que se
+   vuelve a pedir al volver. Sin la API (Safari viejo, Firefox) o sin
+   permiso (modo ahorro de batería) no pasa nada: el teléfono se bloquea
+   como antes y el checklist dice de ponerlo en «Nunca». */
+let candado = null;
+
+async function pedirPantalla(gen) {
+  try {
+    if (!navigator.wakeLock || document.hidden) return;
+    if (candado && !candado.released) return;
+    const c = await navigator.wakeLock.request("screen");
+    /* Si mientras se pedía se fueron de la puerta, no queda el teléfono
+       de la oficina con la pantalla prendida para siempre. */
+    if (gen !== undefined && gen !== P.gen) { c.release().catch(() => {}); return; }
+    candado = c;
+    c.addEventListener("release", () => { if (candado === c) candado = null; });
+  } catch { /* sin candado se trabaja igual */ }
+}
+
+function soltarPantalla() {
+  const c = candado;
+  candado = null;
+  if (c && !c.released) c.release().catch(() => {});
 }
 
 function motivoCamara(err) {
@@ -558,14 +746,25 @@ async function resolver(code, { aMano }) {
          de datos NO, porque ahí la base contestó y contestó que no. Dejar
          entrar por local ante un "Sin permiso" sería abrir la puerta
          justamente cuando la base la está cerrando. */
-      if (esDeRed(error.message) || (status >= 500 && status < 600)) {
+      if (esFallaDeRed(error.message, status)) {
         P.red = false; return terminarLocal(code, aMano);
+      }
+      /* "permission denied for function validar_entrada" en inglés no le
+         dice nada a un portero. Casi siempre es la sesión: alguien tocó
+         «Salir» con la misma cuenta en otro aparato, o se venció. Se dice
+         en castellano qué hacer, en el cartel y en la barra de arriba. */
+      if (esDeSesion(error.message, status, error.code)) {
+        marcarSesion();
+        mostrarCartel({ resultado: "error", code, motivo: MOTIVO_SESION });
+        return;
       }
       mostrarCartel({ resultado: "error", code, motivo: error.message });
       return;
     }
     P.red = true;
+    if (P.sesion) { P.sesion = false; pintarEstado(); }
     mostrarCartel(data || { resultado: "no_existe", code });
+    anotarEnPadron(code, data);
     /* El recibo que se acaba de presentar con señal queda presentado
        también en la lista de este teléfono: si la señal se corta antes del
        próximo refresco, el segundo que lo muestre ve "ya se presentó". */
@@ -640,6 +839,26 @@ async function resolver(code, { aMano }) {
    el refresco— y en una feria de 20.000 entradas es 1,4 MB por antena. */
 const PADRON_MS = 5 * 60 * 1000;
 
+/* Tope de una bajada del padrón. Es un "no te quedes colgado", no un
+   "apurate": la lista de LÜMEN pesa ~110 KB y con la antena cargada
+   tarda 10 a 15 s en bajar. Un tope de escaneo (4 s) la cortaría cada
+   vez y la puerta no se actualizaría nunca. */
+const PADRON_TOPE_MS = 30000;
+
+/* Cada cuánto se pregunta si volvió la señal mientras se está "sin
+   señal", y cuánto se espera la respuesta. Antes la única vuelta era el
+   evento "online" del navegador, que no llega nunca cuando el corte fue
+   un escaneo lento: el teléfono nunca se desconectó. Una sola respuesta
+   de más de 4 s dejaba la puerta decidiendo a ciegas hasta el próximo
+   refresco, cinco minutos sin ver a las otras puertas. */
+const SONDEO_MS = 15000;
+const TANTEO_MS = 3000;
+
+/* Un sondeo exitoso baja de nuevo la lista, pero no más de una vez por
+   minuto: con una antena que va y viene, cada vuelta pediría los 110 KB
+   de LÜMEN y la bajada misma ahogaría a los escaneos. */
+const PADRON_SONDEO_MS = 60000;
+
 /* De a cuánto se sube la cola. Tiene que coincidir con el tope de
    sincronizar_puerta(): más que esto y la base rechaza la tanda entera. */
 const TANDA = 500;
@@ -663,6 +882,61 @@ function guardarJSON(k, v) {
    detecta cuando la llamada falla — ahí se marca sin señal y la barra
    lo dice, sin esperar a que el navegador se dé cuenta. */
 function hayRed() { return navigator.onLine !== false && P.red !== false; }
+
+/* Una pregunta corta a la base para saber si hay con quién hablar:
+   conteo_puerta, que es de lectura, liviana y ya se pide una vez por
+   minuto. Devuelve "ok", "sesion" (contestó, pero que no) o "red". */
+async function tantear() {
+  if (!P.evento) return "red";
+  const tope = new AbortController();
+  const reloj = setTimeout(() => tope.abort(), TANTEO_MS);
+  try {
+    const { error, status } = await sb.rpc("conteo_puerta", { p_evento: P.evento.id })
+      .abortSignal(tope.signal);
+    if (!error) return "ok";
+    return esFallaDeRed(error.message, status) ? "red" : "sesion";
+  } catch {
+    return "red";
+  } finally {
+    clearTimeout(reloj);
+  }
+}
+
+/* El sondeo de "¿volvió la señal?". Sólo pregunta mientras P.red es false
+   y el navegador no dice que está desconectado (ahí ni se intenta: el
+   evento "online" avisa solo). Uno a la vez: con una respuesta lenta, el
+   siguiente tic encontraría al anterior todavía en vuelo. */
+async function sondear() {
+  if (P.red !== false || navigator.onLine === false || P.sondeando) return;
+  if (!P.evento || !document.getElementById("puerta")) return;
+  P.sondeando = true;
+  const gen = P.gen;
+  try {
+    const r = await tantear();
+    if (gen !== P.gen || r === "red") return;
+    /* Contestó. Si contestó que no (sesión), igual HAY red: decidir con la
+       lista local cuando la base está diciendo que no sería abrir la
+       puerta justo cuando la están cerrando (ver resolver()). */
+    P.red = true;
+    if (r === "sesion") { marcarSesion(); return; }
+    P.sesion = false;
+    pintarEstado();
+    /* Primero lo que se escaneó a ciegas, después la lista: al revés, la
+       lista nueva llega sin esos ingresos y los vuelve a dar por libres
+       hasta la próxima bajada. sincronizar() ya baja el padrón cuando
+       subió algo; si no había cola, se baja acá. */
+    const habiaCola = P.cola.length > 0;
+    await sincronizar({ callado: true });   // con cola: sube, baja la lista y cuenta
+    if (!habiaCola) {
+      if (Date.now() - P.intentoPadron > PADRON_SONDEO_MS)
+        await bajarPadron({ callado: true });
+      refrescarConteo();
+    }
+    pintarEstado();
+  } finally {
+    P.sondeando = false;
+  }
+}
 
 function indexar(padron) {
   const ix = new Map();
@@ -696,14 +970,21 @@ async function bajarPadron({ callado } = {}) {
   const id = P.evento && P.evento.id;
   if (!id || navigator.onLine === false || P.bajando) return;
   P.bajando = true;
+  P.intentoPadron = Date.now();
   const gen = P.gen;
+  /* Con tope: una bajada colgada dejaba `bajando` en true hasta recargar,
+     y con eso no se refrescaba más la lista en toda la noche. */
+  const tope = new AbortController();
+  const reloj = setTimeout(() => tope.abort(), PADRON_TOPE_MS);
   try {
-    const { data, error } = await sb.rpc("padron_puerta", { p_evento: id });
+    const { data, error, status } = await sb.rpc("padron_puerta", { p_evento: id })
+      .abortSignal(tope.signal);
     if (gen !== P.gen) return;
-    if (error) throw new Error(error.message);
-    if (!data || !data.ok) throw new Error("respuesta inesperada");
+    if (error) throw falla(error, status);
+    if (!data || !data.ok) throw falla({ message: "respuesta inesperada" }, 200);
 
     P.red = true;
+    P.sesion = false;
     P.padron = data;
     P.ix = indexar(data);
     P.rx = indexarRecibos(data);
@@ -726,8 +1007,9 @@ async function bajarPadron({ callado } = {}) {
   } catch (err) {
     /* Que no se pueda bajar el padrón no es un error que interrumpa: se
        sigue con el que había. La barra dice de cuándo es. */
-    P.red = false;
+    anotarFalla(err);
   } finally {
+    clearTimeout(reloj);
     P.bajando = false;
     pintarEstado();
   }
@@ -808,6 +1090,25 @@ function reciboLocal(code) {
   return { ...ficha, presentado_at: at };
 }
 
+/* Lo que la base acaba de contestar con señal, anotado en la lista del
+   teléfono. Sin esto, la lista sólo se enteraba de un ingreso en la
+   próxima bajada: entra X a las 23:41 con señal, se corta a las 23:43, y
+   a las 23:44 la captura reenviada del mismo QR da PASA contra una lista
+   que todavía tiene a X como válida.
+
+   Sólo se anota lo que dejó de servir (usada, anulada), nunca una vuelta
+   a 'valida': con Modo filtro la base contesta el estado sin tocarlo, y
+   si el código está en la cola de este teléfono, para la base todavía es
+   válido aunque acá ya haya entrado. */
+function anotarEnPadron(code, d) {
+  if (!d || !d.estado || d.estado === "valida" || !P.ix || !P.evento) return;
+  const e = P.ix.get(code);
+  if (!e || e.e === d.estado) return;
+  e.e = d.estado;
+  e.u = d.used_at || e.u || null;
+  guardarJSON(llavePadron(P.evento.id), P.padron);
+}
+
 /* Sube la cola y vuelve a bajar el padrón. Se llama al volver la señal,
    al entrar a la pantalla y cada vez que se refresca el padrón. */
 async function sincronizar({ callado } = {}) {
@@ -820,10 +1121,13 @@ async function sincronizar({ callado } = {}) {
   try {
     while (P.cola.length) {
       const tanda = P.cola.slice(0, TANDA);
-      const { data, error } = await sb.rpc("sincronizar_puerta",
+      /* Sin tope a propósito: si se cortara una tanda que la base ya
+         aplicó, al reintentarla volvería entera como "ya entró por otra
+         puerta", que es falso. */
+      const { data, error, status } = await sb.rpc("sincronizar_puerta",
         { p_evento: id, p_ingresos: tanda });
-      if (error) throw new Error(error.message);
-      if (!data || !data.ok) throw new Error("respuesta inesperada");
+      if (error) throw falla(error, status);
+      if (!data || !data.ok) throw falla({ message: "respuesta inesperada" }, 200);
 
       aplicados += Number(data.aplicados || 0);
       /* Un recibo de mesa vuelve como 'recibo_mesa' (0108): se anotó su
@@ -842,6 +1146,7 @@ async function sincronizar({ callado } = {}) {
       pintarEstado();
     }
     P.red = true;
+    P.sesion = false;
     P.conflictos = conflictos;
     await bajarPadron({ callado: true });
     refrescarConteo();
@@ -852,7 +1157,7 @@ async function sincronizar({ callado } = {}) {
           `ya habían entrado por otra puerta.`
         : `Se subieron ${aplicados} ingresos hechos sin señal.`);
   } catch (err) {
-    P.red = false;
+    anotarFalla(err);
     if (!callado) avisar("No se pudo subir lo de la puerta: " +
                          ((err && err.message) || "sin conexión") +
                          ". Queda guardado y se reintenta solo.");
@@ -869,6 +1174,47 @@ async function sincronizar({ callado } = {}) {
    conteo porque cuando está sin señal es lo primero que hay que ver, y
    desaparece del todo cuando no hay nada que decir: una barra verde
    permanente que dice "conectado" es una barra que se deja de mirar. */
+
+/* La sesión cerrada. No dice «tocá Salir»: Salir borra la lista del
+   teléfono y, si quedan ingresos sin subir, pregunta si se pierden —justo
+   lo que no hay que hacer acá—. «Volver a entrar» (ver reentrar()) cierra
+   sólo la sesión y deja la cola guardada, que sube sola al volver. */
+const MOTIVO_SESION = "Se cerró la sesión. Tocá «Volver a entrar» y entrá con tu usuario: " +
+                      "lo escaneado no se pierde.";
+
+function marcarSesion() {
+  P.sesion = true;
+  pintarEstado();
+}
+
+/* Cerrar la sesión de ESTE teléfono y recargar, sin pasar por limpiarPuerta()
+   de admin.js: el padrón y la cola quedan donde están, y al entrar de nuevo
+   pantalla() los levanta y sube la cola. Antes de cerrar se pregunta si la
+   base contesta: sin señal el login no anda (dice "clave incorrecta"), y
+   cerrar la sesión ahí deja al portero sin puerta hasta que vuelva la red.
+   Si contesta bien, la sesión se recuperó sola y no hay nada que cerrar. */
+async function reentrar() {
+  /* Sin evento elegido (la puerta ni llegó a abrir) no hay con qué
+     tantear, pero tampoco hace falta: lo que llevó acá fue una respuesta
+     de la base, así que había red hace un instante. */
+  const r = navigator.onLine === false ? "red" : P.evento ? await tantear() : "sesion";
+  if (r === "red") {
+    avisar("Sin señal no se puede volver a entrar. Esperá a tener señal: " +
+           "lo escaneado queda guardado en el teléfono.");
+    return;
+  }
+  if (r === "ok") {
+    P.red = true;
+    P.sesion = false;
+    pintarEstado();
+    avisar("La sesión volvió a andar. Seguí escaneando.");
+    return;
+  }
+  apagar();
+  try { await sb.auth.signOut({ scope: "local" }); } catch { /* se recarga igual */ }
+  location.reload();
+}
+
 function pintarEstado() {
   const caja = $("#pEstado");
   if (!caja) return;
@@ -881,7 +1227,8 @@ function pintarEstado() {
   const conectado = hayRed();
   const conf = (P.conflictos || []).length;
 
-  if (conectado && !pend && !pendRec && !conf && P.guardado !== false) {
+  caja.dataset.sesion = P.sesion ? "1" : "0";
+  if (conectado && !P.sesion && !pend && !pendRec && !conf && P.guardado !== false) {
     caja.dataset.on = "0";
     caja.innerHTML = "";
     return;
@@ -907,9 +1254,20 @@ function pintarEstado() {
                 `otra puerta: <button type="button" class="puerta-link" ` +
                 `id="pVerConflictos">ver cuáles</button>`);
 
+  /* La sesión va primero, sola y en rojo (ver .puerta-estado[data-sesion]):
+     es lo único de esta barra que frena la puerta, y lo demás —cuántos
+     faltan subir— no se arregla hasta que no se arregle esto. */
+  const sesion = P.sesion
+    ? `<span class="puerta-sesion"><b>${esc(MOTIVO_SESION)}</b>` +
+      `<button type="button" class="btn plano chico" id="pReentrar">Volver a entrar</button></span>`
+    : "";
+
   caja.dataset.on = "1";
   caja.dataset.mal = conectado ? "0" : "1";
-  caja.innerHTML = partes.join(" · ");
+  caja.innerHTML = sesion + partes.join(" · ");
+
+  const r = $("#pReentrar");
+  if (r) r.onclick = reentrar;
 
   const b = $("#pVerConflictos");
   if (b) b.onclick = () => {
@@ -980,6 +1338,10 @@ addEventListener("offline", () => { P.red = false; pintarEstado(); });
    excepción— para que ninguno se quede sin el deshacer o sin el
    antirrebote, que es exactamente cómo se rompen estas cosas. */
 function terminarLocal(code, aMano, motivo) {
+  /* La barra se repinta acá y no sólo cuando algo entra a la cola: el
+     escaneo que acaba de descubrir el corte tiene que dejar dicho "Sin
+     señal" aunque haya sido un YA ENTRÓ o un NO ESTÁ EN LA LISTA. */
+  pintarEstado();
   const r = resolverLocal(code);
   if (r.resultado === "error" && motivo) r.motivo = motivo;
   mostrarCartel(r);
@@ -997,6 +1359,44 @@ function terminarLocal(code, aMano, motivo) {
 function esDeRed(msg) {
   return /failed to fetch|networkerror|load failed|network request failed|timeout|timed out|abort/i
     .test(String(msg || ""));
+}
+
+/* "La base no contestó": un error de red, un tope vencido o un 5xx (la
+   base no dijo que no, no dijo nada). status 0 es como supabase-js marca
+   un fetch que ni salió. */
+function esFallaDeRed(msg, status) {
+  return esDeRed(msg) || status === 0 || (status >= 500 && status < 600);
+}
+
+/* "La base contestó que no a ESTA sesión": token vencido o revocado (un
+   «Salir» en otro aparato con la misma cuenta), la cuenta dada de baja,
+   o la llamada saliendo sin sesión (anon). Ver la barra de estado. */
+function esDeSesion(msg, status, code) {
+  return status === 401 || status === 403 || code === "42501" ||
+         /^PGRST30/.test(String(code || "")) ||
+         /jwt|permission denied|sin permiso|not authorized|unauthorized/i.test(String(msg || ""));
+}
+
+/* El error de una llamada con lo que hace falta para clasificarlo: el
+   `throw new Error(msg)` de antes perdía el status, y sin status un 401
+   y un 503 eran lo mismo. */
+function falla(error, status) {
+  return Object.assign(new Error((error && error.message) || "sin conexión"),
+                       { status, code: error && error.code });
+}
+
+/* Qué se hace cuando falla la bajada del padrón o la subida de la cola.
+   Antes era siempre P.red = false: un «Salir» en otro teléfono o una
+   cuenta que cambió de cliente se veían como "Sin señal", y desde ahí el
+   teléfono decidía con una lista vieja y no subía lo que escaneaba, con
+   señal de sobra y sin que nadie supiera por qué. Ahora sólo lo que es
+   de red marca sin señal; cualquier otra respuesta es la base diciendo
+   que no, y eso se dice como lo que es. */
+function anotarFalla(err) {
+  const status = err && err.status;
+  const msg = (err && err.message) || "";
+  if (esFallaDeRed(msg, status === undefined ? 0 : status)) P.red = false;
+  else marcarSesion();
 }
 
 /* ══ el conteo ════════════════════════════════════════════════════
@@ -1097,7 +1497,7 @@ function pieFiltro(r) {
   if (!pie) return;
   const quien = r.cliente ? ` · ${r.cliente}` : "";
   const que = r.resultado === "no_existe" ? "ese código no existe"
-            : r.resultado === "otro_evento" ? "es de otra fecha"
+            : r.resultado === "otro_evento" ? "es de otro evento"
             : r.resultado === "ajeno" ? "ese QR no es una entrada"
             : r.resultado === "recibo_mesa" ? "es el recibo de una mesa, no una entrada"
             : r.resultado === "usada" ? "ya había entrado"
@@ -1177,6 +1577,14 @@ async function correrDeshacer() {
       { p_evento: P.evento.id, p_code: code });
     if (error) { avisar("No se pudo deshacer: " + error.message); return; }
     soltarDeshacer();
+    /* La lista del teléfono la tenía como usada desde el escaneo (ver
+       anotarEnPadron()). Si no se devuelve también acá, un corte de señal
+       justo después la rechaza como YA ENTRÓ cuando la base ya la liberó. */
+    const e = P.ix && P.ix.get(code);
+    if (data && data.resultado === "valida" && e && e.e === "usada") {
+      e.e = "valida"; e.u = null;
+      guardarJSON(llavePadron(P.evento.id), P.padron);
+    }
     /* La entrada volvió a 'valida', así que tiene que poder escanearse
        de nuevo YA: si el rebote la sigue tapando, el portero la pasa
        por la cámara, no pasa nada, y cree que deshacer la rompió. */
@@ -1202,7 +1610,7 @@ function mostrarCartel(r) {
   if (!caja) return;
 
   /* Con filtro puesto TODO lo que se rechaza se ve igual, venga de la
-     base o de un QR que ni se llegó a preguntar. Si "OTRA NOCHE" y "NO
+     base o de un QR que ni se llegó a preguntar. Si "OTRO EVENTO" y "NO
      EXISTE" se distinguieran, el rechazado sabría cuál de las dos le
      tocó — y de ahí a saber que el problema es la lista y no su ticket
      hay un paso. El error de red queda afuera: eso no es un rechazo,
@@ -1216,7 +1624,10 @@ function mostrarCartel(r) {
   /* El recibo de una mesa (0108) tiene su propio cartel. */
   if (r.resultado === "recibo_mesa") return cartelRecibo(caja, r);
 
-  const c = CARTELES[r.resultado] || CARTELES.error;
+  /* Sin señal, "no está en la lista" no es "no existe" (ver CARTELES). */
+  const fueraDeLista = r.resultado === "no_existe" && r.offline;
+  const c = fueraDeLista ? CARTELES.fuera_lista
+          : (CARTELES[r.resultado] || CARTELES.error);
 
   const detalle = [];
   if (r.cliente) detalle.push(`<strong>${esc(r.cliente)}</strong>`);
@@ -1234,10 +1645,14 @@ function mostrarCartel(r) {
     motivo = `Entró a las ${esc(hora(r.used_at)) || "—"}.`;
   else if (r.resultado === "anulada")
     motivo = "La dieron de baja. No pasa.";
+  else if (fueraDeLista)
+    motivo = `Lista del teléfono de las ${
+      esc(hora(P.padron && P.padron.generado_at)) || "—"}. ` +
+      "Si compró recién, esperá señal o pedí el correo de compra.";
   else if (r.resultado === "no_existe")
     motivo = "Ese código no existe en este evento.";
   else if (r.resultado === "otro_evento")
-    motivo = "Es de otra fecha, no de este evento.";
+    motivo = "Esta entrada es de otro evento.";
   else if (r.resultado === "ajeno")
     motivo = "Ese QR no es una entrada.";
   else if (r.resultado === "error")
@@ -1260,7 +1675,7 @@ function mostrarCartel(r) {
     ${motivo ? `<span class="puerta-motivo">${motivo}</span>` : ""}
     ${r.code ? `<span class="puerta-code">#${esc(r.code)}</span>` : ""}`;
 
-  sonar(c.cls);
+  sonar(c.tono || c.cls);
   clearTimeout(P.tCartel);
   P.tCartel = setTimeout(ocultarCartel, CARTEL_MS);
 }
@@ -1312,7 +1727,9 @@ function apagar() {
   clearTimeout(P.tCartel);
   clearInterval(P.tConteo); P.tConteo = null;
   clearInterval(P.tPadron); P.tPadron = null;
+  clearInterval(P.tSondeo); P.tSondeo = null;
   soltarDeshacer();
+  soltarPantalla();
   if (P.stream) { P.stream.getTracks().forEach(t => t.stop()); P.stream = null; }
   if (P.video) { P.video.srcObject = null; P.video = null; }
   P.ocupado = false;
@@ -1326,16 +1743,29 @@ function apagar() {
 }
 
 /* Un teléfono bloqueado con la pantalla prendida y la cámara comiendo
-   batería toda la noche. Al volver se reanuda sola. */
+   batería toda la noche. Al volver se reanuda sola.
+
+   Cómo se reanuda depende de la señal. Con red, pantalla() de cero: trae
+   los eventos de nuevo y, si no puede, sigue con los que conoce. Sin red,
+   reanudar() sobre la pantalla que ya estaba: es el momento exacto en que
+   antes se perdía la puerta (desbloquear el teléfono en el corte) y ahí no
+   se arriesga nada por una consulta que no va a volver. */
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden && P.stream) {
+  if (document.hidden) {
+    if (!P.stream) return;
     const habia = !!P.video && document.body.contains(P.video);
     apagar();
     if (habia) P.reanudar = true;
-  } else if (!document.hidden && P.reanudar) {
-    P.reanudar = false;
-    if (document.getElementById("puerta")) pantalla();
+    return;
   }
+  const armada = !!document.getElementById("puerta");
+  if (P.reanudar) {
+    P.reanudar = false;
+    if (armada) return (!hayRed() && P.evento) ? reanudar() : pantalla();
+  }
+  /* Sin cámara (permiso negado, a mano) no hubo nada que reanudar, pero
+     el candado de pantalla se soltó igual al ocultarse. */
+  if (armada) pedirPantalla(P.gen);
 });
 
 window.PUERTA = { pantalla, apagar };
