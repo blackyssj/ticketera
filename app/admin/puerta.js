@@ -907,9 +907,17 @@ const PADRON_TOPE_MS = 30000;
    evento "online" del navegador, que no llega nunca cuando el corte fue
    un escaneo lento: el teléfono nunca se desconectó. Una sola respuesta
    de más de 4 s dejaba la puerta decidiendo a ciegas hasta el próximo
-   refresco, cinco minutos sin ver a las otras puertas. */
+   refresco, cinco minutos sin ver a las otras puertas.
+
+   La pregunta espera lo mismo que un escaneo, no menos. Con la antena
+   cargada cada llamada tarda 3 a 4 s: el escaneo contesta dentro de su
+   tope y la puerta anda con señal. Con un tope más corto acá, un solo pico
+   de 4,1 s la pasaba a "sin señal" y el sondeo ya no la sacaba: cortaba a
+   los 3 s una respuesta que iba a llegar a los 3,5, y la puerta quedaba a
+   ciegas hasta el refresco de cinco minutos con una red que andaba. Para
+   volver tiene que alcanzar lo mismo que alcanza para quedarse. */
 const SONDEO_MS = 15000;
-const TANTEO_MS = 3000;
+const TANTEO_MS = ESCANEO_MS;
 
 /* Un sondeo exitoso baja de nuevo la lista, pero no más de una vez por
    minuto: con una antena que va y viene, cada vuelta pediría los 110 KB
