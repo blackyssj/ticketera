@@ -76,6 +76,7 @@ const VENTANA_DESHACER_MS = 20000;
 const P = {
   gen: 0,             // invalida bucles viejos (ver apagar())
   eventos: [],
+  eventosDe: null,    // de qué cliente es P.eventos (la llave de llaveEventos())
   evento: null,
   stream: null,
   video: null,
@@ -264,10 +265,20 @@ async function pantalla() {
   if (!document.getElementById("puerta")) {
     marcarEscaner(false);
     $("#main").innerHTML = `<p class="cargando">Buscando el evento…</p>`;
+  } else {
+    /* apagar() cortó el reloj del cartel pero no lo borró: el PASA verde
+       del último antes de bloquear quedaba tapando la cámara mientras se
+       pregunta, y el siguiente de la fila veía verde (ver reanudar()). */
+    ocultarCartel();
   }
 
-  /* Lo conocido se mira ANTES de preguntar: decide cuánto se espera. */
-  const conocidos = P.eventos.length ? P.eventos : (leerJSON(llaveEventos()) || []);
+  /* Lo conocido se mira ANTES de preguntar: decide cuánto se espera. Lo de
+     memoria, sólo si es de este mismo cliente: operarComo() no recarga la
+     página, y un operador que cambió de cliente seguía, sin señal, con
+     los eventos —y la lista— del anterior. */
+  const llave = llaveEventos();
+  const conocidos = (P.eventosDe === llave && P.eventos.length)
+    ? P.eventos : (leerJSON(llave) || []);
 
   /* Se acota del lado del servidor: PostgREST corta en 1000 filas sin
      avisar y un organizador con años de historia dejaría al portero sin
@@ -301,6 +312,7 @@ async function pantalla() {
     if (gen !== P.gen) return;
     if (red) P.red = false; else P.sesion = true;
     if (!conocidos.length) {
+      marcarEscaner(false);
       /* Sin ningún evento conocido no hay puerta que armar. Con un botón
          para volver a probar: en la app instalada no hay barra para
          recargar, y tocar la pestaña «Puerta» de nuevo no se le ocurre a
@@ -323,10 +335,11 @@ async function pantalla() {
   } else {
     P.red = true;
     P.sesion = false;
-    guardarJSON(llaveEventos(), lista);
+    guardarJSON(llave, lista);
   }
 
   P.eventos = lista;
+  P.eventosDe = llave;
   if (!P.eventos.length) {
     marcarEscaner(false);
     $("#main").innerHTML = `<p class="vacio">No hay ningún evento a la venta.
@@ -785,6 +798,16 @@ async function resolver(code, { aMano }) {
        fila espera mirando la pantalla congelada. Con la lista bajada se
        decide en el acto. */
     if (!hayRed()) return terminarLocal(code, aMano);
+
+    /* Un código que ESTE teléfono dejó entrar a ciegas y todavía no subió
+       se decide con la lista aunque haya señal: para la base sigue
+       'valida' hasta que llegue la cola, y preguntarle es un PASA con la
+       misma manilla ya adentro. Pasa justo al volver la señal —el sondeo
+       da la red por buena apenas contesta y la subida sale después, o se
+       queda colgada (no tiene tope)— y es cuando llega la captura
+       reenviada del que acaba de entrar. La lista lo tiene como usada
+       desde el escaneo, así que da YA ENTRÓ. */
+    if (P.cola.some(i => i.code === code)) return terminarLocal(code, aMano);
 
     /* La única diferencia entre dejar entrar y filtrar es CUÁL función se
        llama. marcar_filtro_entrada() no tiene un update adentro: la
