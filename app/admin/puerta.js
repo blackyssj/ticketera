@@ -346,7 +346,14 @@ async function pantalla() {
      guardar (P.guardado false) es lo ÚNICO que hay. Releer acá dejaba la
      cola vacía —los ingresos hechos a ciegas, perdidos— cada vez que se
      volvía de otra app. */
-  if (P.padronEv !== P.evento.id) cargarPadronLocal(); else pintarEstado();
+  if (P.padronEv !== P.evento.id) {
+    cargarPadronLocal();
+    /* dibujar() ya pidió el conteo, pero sin lista todavía: abriendo sin
+       señal decía "sin lista guardada" con la lista recién levantada y la
+       barra de arriba diciendo cuántas entradas trae. Hasta el reloj del
+       minuto, el portero creía que no tenía respaldo. */
+    if (!hayRed()) conteoLocal();
+  } else pintarEstado();
   arrancarCamara();
   /* Si los eventos no llegaron, la subida y la bajada irían contra la
      misma red que acaba de no contestar: la subida no tiene tope (ver
@@ -1663,15 +1670,23 @@ async function refrescarConteo() {
   if (!hayRed()) return conteoLocal();
   const gen = P.gen;
 
-  const { data, error } = await sb.rpc("conteo_puerta", { p_evento: P.evento.id });
+  const { data, error, status } = await sb.rpc("conteo_puerta", { p_evento: P.evento.id });
   if (gen !== P.gen || !document.getElementById("pConteo")) return;
 
   /* Que el conteo falle no puede tapar el escáner: dejar entrar gente es
-     lo que hay que hacer, saber cuántos van es lo que estaría bueno. */
+     lo que hay que hacer, saber cuántos van es lo que estaría bueno.
+
+     Si la base no contestó, el número sale de la lista, igual que sin
+     señal: en el lugar del conteo quedaba "TypeError: Failed to fetch"
+     hasta el minuto siguiente, y la lista sí sabe cuántos van. Si contestó
+     que no por la sesión, la barra de arriba ya dice qué hacer, en
+     castellano; acá el "permission denied" en inglés sobraba. */
   if (error || !data || data.emitidas === undefined) {
+    if (error && esFallaDeRed(error.message, status)) return conteoLocal();
+    const crudo = error && !esDeSesion(error.message, status, error.code);
     caja.dataset.on = "0";
     caja.innerHTML = `<span class="puerta-conteo-pie">No se pudo traer el conteo${
-      error ? ": " + esc(error.message) : "."}</span>`;
+      crudo ? ": " + esc(error.message) : "."}</span>`;
     return;
   }
 
