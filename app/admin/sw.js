@@ -55,14 +55,33 @@ const SHELL = [
    archivos nuestros van por red primero, para que un despliegue llegue. */
 const INMUTABLE = /^https:\/\/(cdn\.jsdelivr\.net|fonts\.gstatic\.com|fonts\.googleapis\.com)\//;
 
+/* Sin estos la puerta no arranca: sin supabase-js admin.js revienta al
+   cargar (no hay ni login), y sin jsQR no hay cámara. Salen de SHELL por
+   nombre y no con su ?v= copiado: una lista aparte con versiones se queda
+   atrás en el próximo despliegue, y desde ahí la instalación falla para
+   siempre buscando un archivo que ya no se pide. */
+const IMPRESCINDIBLE = SHELL.filter(u =>
+  /\/admin\/(index\.html|admin\.js|puerta\.js)|\/supabase-js@|\/jsqr@/.test(u));
+
 self.addEventListener("install", ev => {
   /* addAll falla entero si UN pedido falla, y con eso el portero se
      queda sin nada guardado por un CDN lento. De a uno: lo que entra,
-     entra. */
+     entra.
+
+     Pero si lo que no entró es imprescindible, la instalación falla a
+     propósito. Tragarse ese fallo era instalar igual, y al activarse se
+     borra el cache anterior: un teléfono que abrió el panel una sola vez
+     después del deploy, con una raya de señal, quedaba con un cache nuevo
+     sin supabase-js y sin el viejo, y la noche del evento, recargando sin
+     señal, no tenía ni login. Fallando, sigue al mando el service worker
+     anterior —que igual guarda en su cache lo nuevo que la página pide—
+     y el navegador reintenta la actualización en la próxima visita. */
   ev.waitUntil((async () => {
     const cache = await caches.open(CACHE);
     await Promise.all(SHELL.map(u =>
       cache.add(new Request(u, { cache: "reload" })).catch(() => {})));
+    for (const u of IMPRESCINDIBLE)
+      if (!(await cache.match(u))) throw new Error("no se pudo guardar " + u);
     await self.skipWaiting();
   })());
 });

@@ -152,9 +152,11 @@ body[data-pantalla="puerta"] .marca{color:var(--txt)}
    sin red no entra. Sólo acá: en la oficina recargar así es una comodidad.
    Va en el body y en el html porque cada navegador lo mira en uno; el del
    html va en una regla aparte, porque un navegador sin :has() descartaría
-   la regla entera. */
-body[data-pantalla="puerta"]{overscroll-behavior-y:none}
-html:has(> body[data-pantalla="puerta"]){overscroll-behavior-y:none}
+   la regla entera. Y sólo con el escáner armado (data-escaner, ver
+   marcarEscaner() en puerta.js): en "Buscando…" o en un error no hay
+   nada que perder, y tirar para recargar es una salida. */
+body[data-pantalla="puerta"][data-escaner="1"]{overscroll-behavior-y:none}
+html:has(> body[data-pantalla="puerta"][data-escaner="1"]){overscroll-behavior-y:none}
 /* Un blanco grande para el dedo de noche: el botón de 14px de la oficina
    acá se erra con la mano fría y la fila empujando. */
 body[data-pantalla="puerta"] .puerta .btn.primario{font-size:17px;min-height:52px}

@@ -92,7 +92,11 @@ const P = {
   padron: null,       // la lista bajada, tal cual la devolvió la base
   ix: null,           // code -> entrada, para no recorrer la lista por QR
   rx: null,           // code -> recibo de mesa (0108), aparte de las entradas
+  padronEv: null,     // de qué evento son el padrón y la cola que están en memoria
   cola: [],           // ingresos hechos a ciegas, pendientes de subir
+  resueltos: new Map(), // code -> lo que contestó la base con señal (ver recordar())
+  padronPendiente: null, // la lista esperando a guardarse (ver guardarPadronLuego())
+  tGuardaPadron: null,
   conflictos: [],     // los que al subir resultaron ya usados por otra puerta
   red: true,          // lo que sabemos de la conexión por cómo fue la última llamada
   guardado: true,     // false si el navegador rechaza localStorage
@@ -229,8 +233,16 @@ const hora = t => {
 /* Tope de la lista de eventos. Es una consulta de cincuenta filas: con
    señal vuelve en menos de un segundo, y si a los cuatro no volvió es que
    no va a volver. Sin tope, un wifi sin salida a internet dejaba la puerta
-   en "Buscando el evento…" para siempre. */
+   en "Buscando el evento…" para siempre.
+
+   Los cuatro segundos valen cuando hay a qué volver: eventos en memoria o
+   guardados. Sin ninguno (el primer arranque de cada teléfono con esta
+   versión, o después de «Salir») cortar a los cuatro es cambiar una
+   espera por una pantalla de error, y con la antena del boliche cargada
+   una consulta lenta que iba a terminar bien terminaba en "no se pudo".
+   Ahí se espera más: no hay nada mejor que mostrar mientras tanto. */
 const EVENTOS_MS = 4000;
+const EVENTOS_SIN_LISTA_MS = 20000;
 
 /* La lista de eventos guardada en el teléfono, por cliente: es lo único
    que le faltaba a la puerta para abrir sin señal (el padrón y la cola ya
@@ -249,29 +261,29 @@ async function pantalla() {
   /* Si la puerta ya está dibujada (vuelve de otra app) se deja a la vista
      mientras se pregunta: el campo de a mano sigue andando contra el mismo
      evento, y la fila no mira un "Buscando…" por una consulta de rutina. */
-  if (!document.getElementById("puerta"))
+  if (!document.getElementById("puerta")) {
+    marcarEscaner(false);
     $("#main").innerHTML = `<p class="cargando">Buscando el evento…</p>`;
+  }
+
+  /* Lo conocido se mira ANTES de preguntar: decide cuánto se espera. */
+  const conocidos = P.eventos.length ? P.eventos : (leerJSON(llaveEventos()) || []);
 
   /* Se acota del lado del servidor: PostgREST corta en 1000 filas sin
      avisar y un organizador con años de historia dejaría al portero sin
      el evento de esta noche. Un borrador no se puede comprar, así que
      no puede haber nadie en su puerta. */
   let lista = null, falla = null;
-  const tope = new AbortController();
-  const reloj = setTimeout(() => tope.abort(), EVENTOS_MS);
   try {
-    const { data, error, status } = await sb.from("eventos")
+    const { data, error, status } = await conTope(sb.from("eventos")
       .select("id,nombre,fecha,estado")
       .in("estado", ["publicado", "cerrado"])
       .order("fecha", { ascending: false })
-      .limit(50)
-      .abortSignal(tope.signal);
+      .limit(50), conocidos.length ? EVENTOS_MS : EVENTOS_SIN_LISTA_MS);
     if (error) falla = { msg: error.message, status, code: error.code };
     else lista = data || [];
   } catch (err) {
     falla = { msg: (err && err.message) || "sin conexión", status: 0 };
-  } finally {
-    clearTimeout(reloj);
   }
   if (gen !== P.gen) return;    // se cambió de pestaña mientras cargaba
 
@@ -281,18 +293,30 @@ async function pantalla() {
        Antes acá se pintaba el error y se salía ANTES de cargar la lista
        local y la cámara: bloquear el teléfono sin señal era perder la
        puerta entera. Ahora se sigue con los eventos que ya se conocían —
-       los de memoria si la pestaña nunca se cerró, los guardados si no. */
-    const red = esFallaDeRed(falla.msg, falla.status);
+       los de memoria si la pestaña nunca se cerró, los guardados si no.
+
+       Un "permission denied" puede ser una renovación de sesión que no
+       salió por falta de señal (ver renovacionCaida()): eso es red. */
+    const red = esFallaDeRed(falla.msg, falla.status) || await renovacionCaida();
+    if (gen !== P.gen) return;
     if (red) P.red = false; else P.sesion = true;
-    const conocidos = P.eventos.length ? P.eventos : (leerJSON(llaveEventos()) || []);
     if (!conocidos.length) {
-      $("#main").innerHTML = red
-        ? `<p class="error">No se pudieron cargar los eventos: ${esc(falla.msg)}</p>
+      /* Sin ningún evento conocido no hay puerta que armar. Con un botón
+         para volver a probar: en la app instalada no hay barra para
+         recargar, y tocar la pestaña «Puerta» de nuevo no se le ocurre a
+         nadie. El texto crudo de supabase-js ("AbortError: signal is
+         aborted…") no le dice nada al portero. */
+      $("#main").innerHTML = (red
+        ? `<p class="error">No hay señal para traer los eventos.</p>
            <p class="ayuda">Conectate una vez con señal: después la puerta abre aunque no haya.</p>`
-        : `<p class="error">${esc(MOTIVO_SESION)}</p>
-           <div class="acciones"><button type="button" class="btn primario" id="pReentrar">Volver a entrar</button></div>`;
+        : `<p class="error">${esc(MOTIVO_SESION)}</p>`) +
+        `<div class="acciones">
+           ${red ? "" : `<button type="button" class="btn primario" id="pReentrar">Volver a entrar</button>`}
+           <button type="button" class="btn${red ? " primario" : " plano"}" id="pReintentar">Reintentar</button>
+         </div>`;
       const b = $("#pReentrar");
       if (b) b.onclick = reentrar;
+      $("#pReintentar").onclick = () => pantalla();
       return;
     }
     lista = conocidos;
@@ -304,6 +328,7 @@ async function pantalla() {
 
   P.eventos = lista;
   if (!P.eventos.length) {
+    marcarEscaner(false);
     $("#main").innerHTML = `<p class="vacio">No hay ningún evento a la venta.
       Cuando el organizador publique uno, la puerta abre acá.</p>`;
     return;
@@ -314,11 +339,24 @@ async function pantalla() {
   dibujar();
   /* Primero lo guardado y después la red: si el portero abre la puerta
      ya sin señal, tiene la lista de la última vez desde el primer QR en
-     vez de una pantalla vacía esperando una llamada que no va a volver. */
-  cargarPadronLocal();
+     vez de una pantalla vacía esperando una llamada que no va a volver.
+
+     Pero si lo que hay en memoria ya es de este evento, se queda eso: es
+     igual o más nuevo que lo guardado, y con el teléfono que no deja
+     guardar (P.guardado false) es lo ÚNICO que hay. Releer acá dejaba la
+     cola vacía —los ingresos hechos a ciegas, perdidos— cada vez que se
+     volvía de otra app. */
+  if (P.padronEv !== P.evento.id) cargarPadronLocal(); else pintarEstado();
   arrancarCamara();
-  sincronizar({ callado: true });
-  bajarPadron({ callado: true });
+  /* Si los eventos no llegaron, la subida y la bajada irían contra la
+     misma red que acaba de no contestar: la subida no tiene tope (ver
+     sincronizar()) y quedaría trabada en vuelo, y con ella la cola,
+     aunque la señal vuelva. De eso se encarga el sondeo, que pregunta
+     primero con una llamada chica. */
+  if (!falla) {
+    sincronizar({ callado: true });
+    bajarPadron({ callado: true });
+  }
 }
 
 /* El de esta noche es el primero que todavía no pasó. La lista viene
@@ -339,7 +377,18 @@ function elegirEvento(lista) {
   return adelante.length ? adelante[adelante.length - 1] : lista[0];
 }
 
+/* La marca que apaga el tirar-para-recargar (ver admin.css). Sólo con el
+   escáner a la vista: en "Buscando…", en una pantalla de error o en la
+   bitácora no hay puerta armada que perder, y tirar para recargar es una
+   salida más para el portero; en la app instalada, la única además del
+   botón «Reintentar». */
+function marcarEscaner(on) {
+  if (on) document.body.dataset.escaner = "1";
+  else delete document.body.dataset.escaner;
+}
+
 function dibujar() {
+  marcarEscaner(true);
   $("#main").innerHTML = `
     <div class="puerta" id="puerta">
       <div class="puerta-cab">
@@ -442,6 +491,7 @@ function dibujar() {
   $("#pBitacora").onclick = () => {
     const ev = P.evento.id;
     apagar();
+    marcarEscaner(false);
     window.ADMIN.bitacora(ev, { volver: () => pantalla(), volverTxt: "Puerta" });
   };
 
@@ -520,6 +570,10 @@ function armarRelojes() {
 function reanudar() {
   P.video = $("#pVideo");
   if (!P.video || !P.evento) return pantalla();
+  /* apagar() cortó el reloj del cartel pero el cartel quedó dibujado: sin
+     esto, el PASA verde del último antes de bloquear sigue tapando la
+     cámara al volver, y el siguiente de la fila ve verde. */
+  ocultarCartel();
   armarRelojes();
   pintarFiltro();
   pintarEstado();
@@ -736,11 +790,8 @@ async function resolver(code, { aMano }) {
        una barra de señal el fetch espera el timeout del navegador (medio
        minuto o más) y la fila mira una pantalla congelada. Un 5xx es lo
        mismo que un corte: la base no contestó que no, no contestó. */
-    const tope = new AbortController();   // AbortSignal.timeout() falta en Android viejos
-    const reloj = setTimeout(() => tope.abort(), ESCANEO_MS);
-    const { data, error, status } = await sb.rpc(fn,
-      { p_evento: P.evento.id, p_code: code }).abortSignal(tope.signal);
-    clearTimeout(reloj);   // si tiró, el abort tardío cae sobre un fetch ya cerrado: inocuo
+    const { data, error, status } = await conTope(sb.rpc(fn,
+      { p_evento: P.evento.id, p_code: code }), ESCANEO_MS);
     if (error) {
       /* Un error de red se trata como el corte que es; uno de permisos o
          de datos NO, porque ahí la base contestó y contestó que no. Dejar
@@ -754,6 +805,11 @@ async function resolver(code, { aMano }) {
          «Salir» con la misma cuenta en otro aparato, o se venció. Se dice
          en castellano qué hacer, en el cartel y en la barra de arriba. */
       if (esDeSesion(error.message, status, error.code)) {
+        /* Salvo que no haya sido la base: con el token vencido y la
+           renovación caída por falta de señal, supabase-js manda la
+           llamada sin sesión y el "permission denied" es eso. Ahí se
+           decide con la lista, como en cualquier corte. */
+        if (await renovacionCaida()) { P.red = false; return terminarLocal(code, aMano); }
         marcarSesion();
         mostrarCartel({ resultado: "error", code, motivo: MOTIVO_SESION });
         return;
@@ -769,8 +825,9 @@ async function resolver(code, { aMano }) {
        también en la lista de este teléfono: si la señal se corta antes del
        próximo refresco, el segundo que lo muestre ve "ya se presentó". */
     if (data && data.resultado === "recibo_mesa" && data.presentado_at && P.rx) {
+      recordar(code, { p: data.presentado_at });
       const r = P.rx.get(code);
-      if (r && !r.p) { r.p = data.presentado_at; guardarJSON(llavePadron(P.evento.id), P.padron); }
+      if (r && !r.p) { r.p = data.presentado_at; guardarPadronLuego(); }
     }
     /* El deshacer se arma solo cuando ESTE escaneo consumió la entrada.
        Con filtro no hay nada que deshacer, y sobre una 'usada' el botón
@@ -888,54 +945,55 @@ function hayRed() { return navigator.onLine !== false && P.red !== false; }
    minuto. Devuelve "ok", "sesion" (contestó, pero que no) o "red". */
 async function tantear() {
   if (!P.evento) return "red";
-  const tope = new AbortController();
-  const reloj = setTimeout(() => tope.abort(), TANTEO_MS);
   try {
-    const { error, status } = await sb.rpc("conteo_puerta", { p_evento: P.evento.id })
-      .abortSignal(tope.signal);
+    const { error, status } = await conTope(
+      sb.rpc("conteo_puerta", { p_evento: P.evento.id }), TANTEO_MS);
     if (!error) return "ok";
-    return esFallaDeRed(error.message, status) ? "red" : "sesion";
+    if (esFallaDeRed(error.message, status)) return "red";
+    /* Un "permission denied" justo después de un corte suele ser la
+       renovación de la sesión que todavía no pudo salir (ver
+       renovacionCaida()): no es la base diciendo que no. */
+    return (await renovacionCaida()) ? "red" : "sesion";
   } catch {
     return "red";
-  } finally {
-    clearTimeout(reloj);
   }
 }
 
 /* El sondeo de "¿volvió la señal?". Sólo pregunta mientras P.red es false
    y el navegador no dice que está desconectado (ahí ni se intenta: el
    evento "online" avisa solo). Uno a la vez: con una respuesta lenta, el
-   siguiente tic encontraría al anterior todavía en vuelo. */
+   siguiente tic encontraría al anterior todavía en vuelo.
+
+   El candado cubre SÓLO la pregunta. La subida de la cola no tiene tope
+   (ver sincronizar()), y esperarla con el candado puesto era apagar el
+   sondeo justo con la antena que va y viene: la señal se corta a mitad de
+   la subida, el fetch queda colgado minutos, y la puerta a ciegas hasta
+   el refresco de cinco minutos. La subida y la bajada salen sin esperar:
+   cada una tiene su propio "una a la vez". */
 async function sondear() {
   if (P.red !== false || navigator.onLine === false || P.sondeando) return;
   if (!P.evento || !document.getElementById("puerta")) return;
   P.sondeando = true;
   const gen = P.gen;
-  try {
-    const r = await tantear();
-    if (gen !== P.gen || r === "red") return;
-    /* Contestó. Si contestó que no (sesión), igual HAY red: decidir con la
-       lista local cuando la base está diciendo que no sería abrir la
-       puerta justo cuando la están cerrando (ver resolver()). */
-    P.red = true;
-    if (r === "sesion") { marcarSesion(); return; }
-    P.sesion = false;
-    pintarEstado();
-    /* Primero lo que se escaneó a ciegas, después la lista: al revés, la
-       lista nueva llega sin esos ingresos y los vuelve a dar por libres
-       hasta la próxima bajada. sincronizar() ya baja el padrón cuando
-       subió algo; si no había cola, se baja acá. */
-    const habiaCola = P.cola.length > 0;
-    await sincronizar({ callado: true });   // con cola: sube, baja la lista y cuenta
-    if (!habiaCola) {
-      if (Date.now() - P.intentoPadron > PADRON_SONDEO_MS)
-        await bajarPadron({ callado: true });
-      refrescarConteo();
-    }
-    pintarEstado();
-  } finally {
-    P.sondeando = false;
-  }
+  let r;
+  try { r = await tantear(); }
+  finally { P.sondeando = false; }
+  if (gen !== P.gen || r === "red") return;
+  /* Contestó. Si contestó que no (sesión), igual HAY red: decidir con la
+     lista local cuando la base está diciendo que no sería abrir la
+     puerta justo cuando la están cerrando (ver resolver()). */
+  P.red = true;
+  if (r === "sesion") { marcarSesion(); return; }
+  P.sesion = false;
+  pintarEstado();
+  /* Primero lo que se escaneó a ciegas, después la lista: al revés, la
+     lista nueva llega sin esos ingresos y los vuelve a dar por libres
+     hasta la próxima bajada. sincronizar() ya baja el padrón y cuenta
+     cuando subió algo (con el mismo freno de un minuto); si no había
+     cola, se hace acá. */
+  if (P.cola.length) { sincronizar({ callado: true, freno: true }); return; }
+  if (Date.now() - P.intentoPadron > PADRON_SONDEO_MS) bajarPadron({ callado: true });
+  refrescarConteo();
 }
 
 function indexar(padron) {
@@ -959,6 +1017,8 @@ function indexarRecibos(padron) {
 function cargarPadronLocal() {
   const id = P.evento && P.evento.id;
   if (!id) return;
+  vaciarPadron();     // lo pendiente del evento anterior, antes de leer
+  P.padronEv = id;
   P.padron = leerJSON(llavePadron(id));
   P.ix = indexar(P.padron);
   P.rx = indexarRecibos(P.padron);
@@ -970,24 +1030,41 @@ async function bajarPadron({ callado } = {}) {
   const id = P.evento && P.evento.id;
   if (!id || navigator.onLine === false || P.bajando) return;
   P.bajando = true;
-  P.intentoPadron = Date.now();
+  const inicio = P.intentoPadron = Date.now();
   const gen = P.gen;
   /* Con tope: una bajada colgada dejaba `bajando` en true hasta recargar,
      y con eso no se refrescaba más la lista en toda la noche. */
-  const tope = new AbortController();
-  const reloj = setTimeout(() => tope.abort(), PADRON_TOPE_MS);
+  let vencida = false, otro = false;
   try {
-    const { data, error, status } = await sb.rpc("padron_puerta", { p_evento: id })
-      .abortSignal(tope.signal);
+    const resp = await conTope(sb.rpc("padron_puerta", { p_evento: id }), PADRON_TOPE_MS);
+    vencida = !!resp.vencida;
+    const { data, error, status } = resp;
     if (gen !== P.gen) return;
+    /* Otro evento elegido mientras bajaba: esta lista ya no es la que se
+       está usando, y ponerla en P.padron haría decidir la puerta de un
+       evento con la lista del otro. La del evento nuevo no salió (había
+       una bajada en vuelo, ésta): se pide apenas termina. */
+    if (!P.evento || P.evento.id !== id) { otro = !!P.evento; return; }
     if (error) throw falla(error, status);
     if (!data || !data.ok) throw falla({ message: "respuesta inesperada" }, 200);
 
     P.red = true;
     P.sesion = false;
     P.padron = data;
+    P.padronEv = id;
     P.ix = indexar(data);
     P.rx = indexarRecibos(data);
+    /* Lo resuelto con señal desde que arrancó esta bajada (ver recordar()):
+       la foto que llegó puede ser de antes. Lo anterior ya está en la foto
+       y se olvida. Va ANTES que la cola: lo de la cola se hizo a ciegas,
+       después, y manda. */
+    P.resueltos.forEach((x, code) => {
+      if (x.ev !== id || x.at < inicio) { P.resueltos.delete(code); return; }
+      const r = P.rx.get(code);
+      if (r) { if (x.p && !r.p) r.p = x.p; return; }
+      const e = P.ix.get(code);
+      if (e && x.e) { e.e = x.e; e.u = x.u || null; }
+    });
     /* Los ingresos que todavía no se subieron se vuelven a aplicar
        sobre el padrón recién bajado. Sin esto, el portero escanea sin
        señal, el padrón se refresca en un respiro de conexión antes de
@@ -1000,18 +1077,34 @@ async function bajarPadron({ callado } = {}) {
       const e = P.ix.get(i.code);
       if (e && e.e === "valida") { e.e = "usada"; e.u = i.at; }
     });
+    /* Lo que esperaba guardarse era la lista vieja: ésta la reemplaza. */
+    if (P.padronPendiente && P.padronPendiente.id === id) {
+      clearTimeout(P.tGuardaPadron);
+      P.padronPendiente = null;
+    }
     P.guardado = guardarJSON(llavePadron(id), data);
     if (!callado && data.truncado)
       avisar(`El evento tiene ${data.total} entradas y sin señal solo se ` +
              `pueden usar las primeras 20.000.`);
   } catch (err) {
     /* Que no se pueda bajar el padrón no es un error que interrumpa: se
-       sigue con el que había. La barra dice de cuándo es. */
-    anotarFalla(err);
+       sigue con el que había. La barra dice de cuándo es.
+
+       Si lo que venció fue el tope PROPIO de la lista, no se marca "Sin
+       señal": una lista que tarda más de 30 s con una antena que anda
+       despacio no dice nada de los escaneos, que pesan 1 KB y contestan.
+       Marcarlo ponía la puerta a ciegas con señal, y el sondeo la volvía
+       a bajar enseguida, que volvía a vencer: un vaivén cada 15 s. Se
+       pregunta con la llamada chica: si ésa tampoco contesta, sí es la
+       red. */
+    if (!vencida) anotarFalla(err);
+    else tantear().then(r => {
+      if (r === "red" && gen === P.gen) { P.red = false; pintarEstado(); }
+    });
   } finally {
-    clearTimeout(reloj);
     P.bajando = false;
     pintarEstado();
+    if (otro) bajarPadron({ callado: true });
   }
 }
 
@@ -1103,15 +1196,61 @@ function reciboLocal(code) {
 function anotarEnPadron(code, d) {
   if (!d || !d.estado || d.estado === "valida" || !P.ix || !P.evento) return;
   const e = P.ix.get(code);
+  /* Se recuerda aunque la lista ya lo tenga igual: una bajada en vuelo
+     puede traer una foto de antes y pisarlo (ver recordar()). */
+  recordar(code, { e: d.estado, u: d.used_at || (e && e.u) || null });
   if (!e || e.e === d.estado) return;
   e.e = d.estado;
   e.u = d.used_at || e.u || null;
-  guardarJSON(llavePadron(P.evento.id), P.padron);
+  guardarPadronLuego();
+}
+
+/* Lo que se resolvió CON señal mientras podía haber una bajada del padrón
+   en vuelo. La lista de LÜMEN tarda 10 a 15 s en bajar; la foto que trae
+   es de cuando arrancó. Si en ese lapso X entra con señal, la lista que
+   llega lo trae como 'valida' y lo pisa, y un corte justo después le da
+   PASA a la captura reenviada de X — lo que anotarEnPadron() quería
+   evitar. Al revés con un deshacer: volvía a quedar 'usada' y sin señal
+   esa persona recibía YA ENTRÓ. bajarPadron() lo vuelve a aplicar sobre
+   la lista nueva, igual que hace con la cola, y lo olvida cuando ya es
+   más viejo que la bajada que terminó. */
+function recordar(code, cambio) {
+  if (!P.evento) return;
+  P.resueltos.set(code, { ...cambio, ev: P.evento.id, at: Date.now() });
+}
+
+/* La lista entera se guarda de a ratos y no en cada escaneo con señal:
+   en una feria de 20.000 entradas son ~2 MB de JSON.stringify y setItem
+   en el hilo de la cámara, decenas o cientos de milisegundos por QR en un
+   Android barato, con la fila mirando. Lo que decide sin señal es P.ix,
+   que se marca al instante; perder un segundo y medio de lo guardado no
+   pierde nada, porque es una copia de lo que ya sabe el servidor. La
+   cola, que es lo único que sólo existe acá, se sigue guardando en cada
+   escaneo. apagar() y el cambio de evento la vacían. */
+const GUARDA_PADRON_MS = 1500;
+
+function guardarPadronLuego() {
+  if (!P.evento || !P.padron) return;
+  P.padronPendiente = { id: P.evento.id, padron: P.padron };
+  clearTimeout(P.tGuardaPadron);
+  P.tGuardaPadron = setTimeout(vaciarPadron, GUARDA_PADRON_MS);
+}
+
+function vaciarPadron() {
+  clearTimeout(P.tGuardaPadron);
+  P.tGuardaPadron = null;
+  const p = P.padronPendiente;
+  P.padronPendiente = null;
+  if (p) guardarJSON(llavePadron(p.id), p.padron);
 }
 
 /* Sube la cola y vuelve a bajar el padrón. Se llama al volver la señal,
-   al entrar a la pantalla y cada vez que se refresca el padrón. */
-async function sincronizar({ callado } = {}) {
+   al entrar a la pantalla y cada vez que se refresca el padrón. Con
+   `freno` (desde el sondeo) la lista se vuelve a bajar como mucho una vez
+   por minuto: con la antena que va y viene, cada vuelta subía un par de
+   ingresos y bajaba la lista entera, y la bajada ahogaba a los escaneos.
+   Lo subido ya está marcado en la lista de acá, así que no se pierde. */
+async function sincronizar({ callado, freno } = {}) {
   const id = P.evento && P.evento.id;
   if (!id || P.sincronizando || navigator.onLine === false || !P.cola.length) return;
   P.sincronizando = true;
@@ -1132,9 +1271,15 @@ async function sincronizar({ callado } = {}) {
       aplicados += Number(data.aplicados || 0);
       /* Un recibo de mesa vuelve como 'recibo_mesa' (0108): se anotó su
          presentación, no es un ingreso y no es un conflicto. */
+      /* Lo que sale de la cola deja de reaplicarse sobre cada lista nueva.
+         Si había una bajada en vuelo desde antes de la subida, su foto lo
+         trae libre: se recuerda como resuelto con señal para que no vuelva
+         a dar PASA (ver recordar()). */
+      const cuando = new Map(tanda.map(i => [i.code, i.at]));
       (data.detalle || []).forEach(d => {
-        if (d.resultado !== "valida" && d.resultado !== "recibo_mesa")
-          conflictos.push({ code: d.code, resultado: d.resultado, used_at: d.used_at });
+        if (d.resultado === "valida") recordar(d.code, { e: "usada", u: cuando.get(d.code) || null });
+        else if (d.resultado === "recibo_mesa") recordar(d.code, { p: cuando.get(d.code) || null });
+        else conflictos.push({ code: d.code, resultado: d.resultado, used_at: d.used_at });
       });
 
       /* Se saca de la cola SOLO lo que se confirmó. Si la llamada
@@ -1148,7 +1293,8 @@ async function sincronizar({ callado } = {}) {
     P.red = true;
     P.sesion = false;
     P.conflictos = conflictos;
-    await bajarPadron({ callado: true });
+    if (!freno || Date.now() - P.intentoPadron > PADRON_SONDEO_MS)
+      await bajarPadron({ callado: true });
     refrescarConteo();
 
     if (!callado && (aplicados || conflictos.length))
@@ -1199,6 +1345,13 @@ async function reentrar() {
      de la base, así que había red hace un instante. */
   const r = navigator.onLine === false ? "red" : P.evento ? await tantear() : "sesion";
   if (r === "red") {
+    /* Ahora la base no contesta: lo que hay es un corte (o la renovación
+       de la sesión que no sale, que es lo mismo). Se trabaja con la lista
+       como en cualquier corte, y el sondeo vuelve a preguntar; si la
+       sesión de verdad estaba cerrada, lo va a decir de nuevo. */
+    P.red = false;
+    P.sesion = false;
+    pintarEstado();
     avisar("Sin señal no se puede volver a entrar. Esperá a tener señal: " +
            "lo escaneado queda guardado en el teléfono.");
     return;
@@ -1208,10 +1361,32 @@ async function reentrar() {
     P.sesion = false;
     pintarEstado();
     avisar("La sesión volvió a andar. Seguí escaneando.");
+    /* Lo que quedó en la cola mientras la base decía que no, sube ya y
+       no en el refresco de cinco minutos. */
+    sincronizar({ callado: true });
     return;
   }
+  /* La promesa de "lo escaneado no se pierde" depende de que la cola esté
+     guardada en el teléfono. Con el teléfono que no deja guardar (la barra
+     lo dice) vive sólo en memoria, y recargar la tira. Se intenta guardar
+     una vez más; si tampoco, se pregunta antes de perderla. */
+  const id = P.evento && P.evento.id;
+  if (id && P.cola.length && !guardarJSON(llaveCola(id), P.cola) && !confirm(
+      `Este teléfono no pudo guardar ${P.cola.length} ingreso${P.cola.length === 1 ? "" : "s"} ` +
+      `sin subir. Si volvés a entrar ahora, se pierden.\n\n` +
+      `Cancelá y dejá la puerta abierta hasta que haya señal para subirlos, o aceptá para entrar igual.`))
+    return;
   apagar();
-  try { await sb.auth.signOut({ scope: "local" }); } catch { /* se recarga igual */ }
+  let error = null;
+  try { ({ error } = await sb.auth.signOut({ scope: "local" })); } catch { /* se recarga igual */ }
+  /* signOut no borra nada si la sesión que tiene es una renovación que no
+     salió por falta de señal: recargar ahí da el mismo panel con el mismo
+     problema, o el login sin red. Se avisa y se sigue con la puerta. */
+  if (error && error.name === "AuthRetryableFetchError") {
+    avisar("Todavía no hay señal para renovar la sesión. Esperá un minuto y probá de nuevo: " +
+           "lo escaneado queda guardado en el teléfono.");
+    return pantalla();
+  }
   location.reload();
 }
 
@@ -1395,8 +1570,70 @@ function falla(error, status) {
 function anotarFalla(err) {
   const status = err && err.status;
   const msg = (err && err.message) || "";
-  if (esFallaDeRed(msg, status === undefined ? 0 : status)) P.red = false;
-  else marcarSesion();
+  if (esFallaDeRed(msg, status === undefined ? 0 : status)) { P.red = false; return; }
+  renovacionCaida().then(caida => {
+    if (caida) { P.red = false; pintarEstado(); }
+    else marcarSesion();
+  });
+}
+
+/* Una llamada a la base con tope de tiempo. AbortController y no
+   AbortSignal.timeout(), que falta en los Android viejos.
+
+   El abort solo no alcanza. supabase-js, ANTES del fetch, le pide la
+   sesión a su módulo de auth; si el token venció (el teléfono estuvo
+   bloqueado más de una hora: con la pestaña oculta no lo renueva), esa
+   pedida lo renueva contra la red, con reintentos de hasta 30 s y cada
+   intento sin tope. Todo eso queda afuera del abort, que sólo corta el
+   fetch. Por eso se corre una carrera contra un reloj: a los `ms` se
+   contesta "venció" aunque supabase-js siga renovando. El abort se dispara
+   igual, y el fetch tardío —si alguna vez sale— sale ya abortado y no
+   llega a la base. En resolver() eso importa: un validar_entrada que
+   llegara después de haber decidido con la lista consumiría la entrada
+   dos veces.
+
+   `vencida` marca que fue el reloj y no la red, para el que necesite
+   distinguirlo (ver bajarPadron()). */
+function conTope(consulta, ms) {
+  const corte = new AbortController();
+  let reloj;
+  const vence = new Promise(res => {
+    reloj = setTimeout(() => {
+      res({ data: null, error: { message: "timeout" }, status: 0, vencida: true });
+      corte.abort();   // después de contestar: así gana siempre el reloj
+    }, ms);
+  });
+  return Promise.race([consulta.abortSignal(corte.signal), vence])
+    .finally(() => clearTimeout(reloj));
+}
+
+/* ¿El "permission denied" fue la base o fue la renovación de la sesión?
+   Con el token vencido y la renovación caída por falta de señal,
+   supabase-js guarda el fallo un minuto y mientras tanto manda las
+   llamadas SIN sesión (con la llave pública): la base contesta "permission
+   denied", con un 401, aunque la sesión esté bien y sólo falte señal.
+   Tomarlo como sesión cerrada era, justo al volver de un corte y con la
+   fila más larga, un NO SE PUDO en cada QR durante un minuto, y un
+   «Volver a entrar» que cerraba la sesión sin red para el login.
+
+   Se le pregunta a supabase-js: si la sesión que tiene da un error de
+   reintento (AuthRetryableFetchError), es la red. Si la pregunta misma se
+   cuelga, está renovando contra una red que no contesta: también es la
+   red. Con la sesión sana —token vigente, nada que renovar— contesta al
+   instante sin salir a internet, y ahí el "no" sí fue de la base. */
+const RENOVACION_MS = 1500;
+
+async function renovacionCaida() {
+  try {
+    const r = await Promise.race([
+      sb.auth.getSession(),
+      new Promise(res => setTimeout(res, RENOVACION_MS, { colgada: true })),
+    ]);
+    if (!r || r.colgada) return true;
+    return !!(r.error && r.error.name === "AuthRetryableFetchError");
+  } catch {
+    return true;
+  }
 }
 
 /* ══ el conteo ════════════════════════════════════════════════════
@@ -1581,9 +1818,9 @@ async function correrDeshacer() {
        anotarEnPadron()). Si no se devuelve también acá, un corte de señal
        justo después la rechaza como YA ENTRÓ cuando la base ya la liberó. */
     const e = P.ix && P.ix.get(code);
-    if (data && data.resultado === "valida" && e && e.e === "usada") {
-      e.e = "valida"; e.u = null;
-      guardarJSON(llavePadron(P.evento.id), P.padron);
+    if (data && data.resultado === "valida") {
+      recordar(code, { e: "valida", u: null });
+      if (e && e.e === "usada") { e.e = "valida"; e.u = null; guardarPadronLuego(); }
     }
     /* La entrada volvió a 'valida', así que tiene que poder escanearse
        de nuevo YA: si el rebote la sigue tapando, el portero la pasa
@@ -1730,6 +1967,7 @@ function apagar() {
   clearInterval(P.tSondeo); P.tSondeo = null;
   soltarDeshacer();
   soltarPantalla();
+  vaciarPadron();     // lo que esperaba guardarse (ver guardarPadronLuego())
   if (P.stream) { P.stream.getTracks().forEach(t => t.stop()); P.stream = null; }
   if (P.video) { P.video.srcObject = null; P.video = null; }
   P.ocupado = false;
@@ -1752,6 +1990,9 @@ function apagar() {
    se arriesga nada por una consulta que no va a volver. */
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
+    /* Oculta, el navegador puede matar la pestaña sin otro aviso: lo que
+       esperaba guardarse se guarda ya, haya cámara o no. */
+    vaciarPadron();
     if (!P.stream) return;
     const habia = !!P.video && document.body.contains(P.video);
     apagar();
