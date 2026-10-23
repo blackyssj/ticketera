@@ -463,7 +463,9 @@ begin
   if not v_ok then raise exception 'TEST_FAIL: se emitió una cortesía en el espejo'; end if;
 
   begin
-    perform cerrar_evento(v_ev1, 'prueba');
+    -- con la confirmación de 0113: la fecha es futura y lo que se prueba
+    -- es que el espejo no se cierra, no la guardia de la fecha
+    perform cerrar_evento(v_ev1, 'prueba', true);
     v_ok := false;
   exception when others then v_ok := sqlerrm like '%ESPEJO_PUERTA%';
   end;

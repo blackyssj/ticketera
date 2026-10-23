@@ -2214,14 +2214,16 @@ function pintarCierre() {
   const d = LIQ.datos, hoy = d.hoy || {}, foto = d.foto, sin = d.sin_resolver || {};
   const cerrado = d.evento && d.evento.cerrado;
   const pend = Number(sin.revision_manual || 0) + Number(sin.pendientes_vivas || 0);
+  /* Pasó = la fecha es anterior a hoy en La Paz, la misma regla que
+     disponible_de y que cerrar_evento (0113). El día del evento no pasó. */
+  const paso = String(LIQ.ev.fecha || "") < new Date().toLocaleDateString("en-CA", { timeZone: RELOJ_BO });
 
-  $("#main").innerHTML = `
-    <div class="cab-seccion">
-      <button class="btn plano chico" id="btnVolver">← ${esc(LIQ.ev.nombre)}</button>
-      <h2>Cierre y liquidación</h2>
-    </div>
-
-    ${!cerrado ? `
+  /* El cierre va AL FINAL y, antes de la fecha, sin botón primario. Era el
+     primer botón violeta de la pantalla, arriba de la plata: cerrar corta
+     la venta y los links de los relacionadores, y el giro siguiente manda
+     el 100% en vez del adelanto. La base exige la confirmación igual
+     (0113); acá se pide con la consecuencia escrita. */
+  const sinCerrar = `
       <section class="tarjeta">
         <h3>Todavía sin cerrar</h3>
         <p class="ayuda">Cerrar congela las cifras. Lo que se le pague a cada
@@ -2241,11 +2243,24 @@ function pintarCierre() {
           <button type="button" class="btn plano chico" id="btnIrTablero">Ver el tablero →</button>
         </div>` : `<p class="liq-ok">✓ No quedó nada sin resolver.</p>`}
         ${cuadroCifras(hoy, "Así quedaría la liquidación")}
+        ${paso ? `
         <div class="acciones">
           <button class="btn primario" id="btnCerrar">Cerrar el evento y liquidar</button>
-        </div>
-      </section>`
-    : `
+        </div>` : `
+        <p class="ayuda liq-antes">Se cierra después del evento. Cerrarlo antes corta
+          la venta y los links de tus relacionadores.</p>
+        <div class="acciones">
+          <button type="button" class="btn plano chico" id="btnCerrarAntes">Cerrar antes de la fecha…</button>
+        </div>`}
+      </section>`;
+
+  $("#main").innerHTML = `
+    <div class="cab-seccion">
+      <button class="btn plano chico" id="btnVolver">← ${esc(LIQ.ev.nombre)}</button>
+      <h2>Tu plata y el cierre</h2>
+    </div>
+
+    ${cerrado ? `
       <section class="tarjeta">
         <div class="liq-cab">
           <div>
@@ -2267,13 +2282,16 @@ function pintarCierre() {
         <ul class="lista">${foto.lineas.map(l => filaLinea(l)).join("")}</ul>
         ${resumenPagos(foto.lineas)}`
       : `<p class="vacio">Ningún relacionador vendió en este evento, así que no hay
-           comisiones que pagar.</p>`}`}
+           comisiones que pagar.</p>`}` : ""}
 
-    ${bloqueOrganizador()}`;
+    ${bloqueOrganizador()}
+
+    ${!cerrado ? `<h3 class="titulo-bloque">Cerrar el evento</h3>${sinCerrar}` : ""}`;
 
   $("#btnVolver").onclick = () => abrirEvento(LIQ.evento);
   const irT = $("#btnIrTablero"); if (irT) irT.onclick = () => pantallaTablero(LIQ.evento);
-  const bc = $("#btnCerrar"); if (bc) bc.onclick = () => pedirCierre();
+  const bc = $("#btnCerrar"); if (bc) bc.onclick = () => pedirCierre(false);
+  const bca = $("#btnCerrarAntes"); if (bca) bca.onclick = () => pedirCierre(true);
   const br = $("#btnReabrir"); if (br) br.onclick = () => pedirReapertura();
   const bl = $("#btnCsvLiq"); if (bl) bl.onclick = () => conBoton(bl, "Armando…", bajarLiquidacion);
   document.querySelectorAll("#main [data-pagar]").forEach(b =>
@@ -2865,12 +2883,19 @@ function resumenPagos(lineas) {
 
 /* El motivo es obligatorio en la base, así que la pantalla lo pide en vez
    de dejar que la base rebote con un error que el usuario no pidió. */
-async function pedirCierre() {
+async function pedirCierre(antes) {
+  if (antes && !confirm("El evento todavía no pasó.\n\n" +
+      "Cerrarlo ahora corta la venta online y los links de tus relacionadores, " +
+      "congela la liquidación y desde ahí el retiro ya no es un adelanto.\n\n" +
+      "¿Lo cerrás igual?")) return;
   const motivo = prompt("¿Por qué se cierra? Queda escrito con la liquidación.",
-                        "Evento terminado");
+                        antes ? "" : "Evento terminado");
   if (motivo === null) return;
-  const { data, error } = await sb.rpc("cerrar_evento",
-    { p_evento: LIQ.evento, p_motivo: motivo });
+  /* p_antes_de_fecha viaja sólo cuando se confirmó: así, con la base de
+     antes de 0113, cerrar un evento pasado sigue andando. */
+  const { data, error } = await sb.rpc("cerrar_evento", antes
+    ? { p_evento: LIQ.evento, p_motivo: motivo, p_antes_de_fecha: true }
+    : { p_evento: LIQ.evento, p_motivo: motivo });
   if (error) { avisar(sinCodigo(error.message)); return; }
   avisar(data.motivo);
   await pantallaCierre(LIQ.evento);

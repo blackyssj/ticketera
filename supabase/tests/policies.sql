@@ -2781,7 +2781,19 @@ begin
     if sqlerrm not like 'MOTIVO_REQUERIDO%' then raise; end if;
   end;
 
-  x := cerrar_evento(v_ev, 'evento terminado');
+  -- 0113: el evento es de dentro de 5 días; sin la confirmación no se
+  -- cierra (y no queda nada escrito), con ella sí.
+  begin
+    x := cerrar_evento(v_ev, 'evento terminado');
+    raise exception 'TEST_FAIL: cerro un evento que no paso sin confirmarlo';
+  exception when others then
+    if sqlerrm not like 'EVENTO_FUTURO%' then raise; end if;
+  end;
+  if (select estado from eventos where id = v_ev) = 'cerrado'
+     or exists (select 1 from liquidacion where evento_id = v_ev) then
+    raise exception 'TEST_FAIL: el cierre rechazado dejo el evento cerrado o una liquidacion';
+  end if;
+  x := cerrar_evento(v_ev, 'evento terminado', true);
   if (select estado from eventos where id = v_ev) <> 'cerrado' then
     raise exception 'TEST_FAIL: el evento no quedo cerrado';
   end if;
@@ -4258,7 +4270,7 @@ begin
   -- el cierre guarda la comisión partida y el pago la anota
   set local role authenticated;
   perform set_config('request.jwt.claim.sub', v_admin::text, true);
-  v_r := cerrar_evento(v_ev, 'cierre de prueba 0108');
+  v_r := cerrar_evento(v_ev, 'cierre de prueba 0108', true);   -- fecha futura (0113)
   if (v_r->>'comisiones')::numeric <> 200
      or (v_r->>'comisiones_entradas')::numeric <> 60 or (v_r->>'comisiones_mesas')::numeric <> 140 then
     raise exception 'TEST_FAIL: el cierre no partio la comision (120 + 50 + 30): %', v_r;
