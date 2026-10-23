@@ -2516,7 +2516,10 @@ function filaPagoOrg(p) {
   const [txt, color] = ESTADO_PAGO[p.estado] || [p.estado, "amarilla"];
   return `
     <li class="fila quieta liq-linea">
-      <span class="fila-nombre">${esc(p.titular)}
+      <span class="fila-nombre">${
+        /* Al staff la base no le manda el titular (0112): sólo banco y
+           ···últimos 4. */
+        p.titular ? esc(p.titular) : "A la cuenta para cobrar"}
         <em>${esc(p.banco)} · ${esc(p.cuenta)}${p.referencia ? " · ref " + esc(p.referencia) : ""}</em></span>
       <span class="cifra destacada">${bs(p.monto)}</span>
       <span class="pastilla ${color}">${esc(txt)}</span>
@@ -5883,7 +5886,7 @@ function formAlta() {
 
 const AYUDA_ROL = {
   admin:   "Todo: la plata, la cuenta para cobrar y el equipo, incluida esta pantalla. Que haya más de uno es lo que evita quedarse afuera.",
-  staff:   "Eventos, precios, cortesías y el tablero. No ve la cuenta para cobrar, no retira plata y no da de alta a nadie.",
+  staff:   "Eventos, precios, cortesías y el tablero. De la cuenta para cobrar ve sólo el banco y los últimos números; no la cambia, no retira plata y no da de alta a nadie.",
   rrpp:    "Solo lo suyo: su link, sus ventas y su comisión.",
   portero: "Solo la pantalla de Puerta, para escanear en el ingreso.",
 };

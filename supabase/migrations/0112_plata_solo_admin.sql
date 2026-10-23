@@ -24,8 +24,21 @@
 -- desde su panel. Hoy no hay ningún perfil staff activo: no le cambia
 -- nada a nadie que esté trabajando.
 --
--- Los pagos nuevos dejan en la bitácora la cuenta tapada: la bitácora la
--- lee el staff (admin_bitacora, puede_editar()).
+-- ── la bitácora también ──
+-- Las filas 'organizador_pagado' guardan en el motivo «Pago de X Bs a
+-- <titular>, cuenta <número>», y la bitácora la lee cualquiera con
+-- puede_editar(): sin esto, el staff que no puede ver la cuenta en Cobros
+-- la leía entera en la pestaña Bitácora (dos filas de septiembre, y cada
+-- giro que TICKETAZO le haga al cliente desde Plataforma, porque 0080 la
+-- escribe completa). Tres cambios:
+--   · los pagos nuevos (del cliente y desde Plataforma) escriben la cuenta
+--     tapada;
+--   · bitacora_admin, a quien no es admin, le arma el motivo de esas filas
+--     de nuevo con banco y ···últimos 4, sin titular. Las filas viejas no
+--     se reescriben: la bitácora es append-only (0038) y el admin las
+--     sigue viendo como se escribieron;
+--   · la policy de lectura directa deja esas filas sólo para el admin: si
+--     sólo se tapara en la función, un SELECT por PostgREST las mostraría.
 -- ============================================================
 
 -- La cuenta tapada: el banco y los últimos 4. Alcanza para que un staff
@@ -173,7 +186,9 @@ begin
              'id', p.id, 'monto', p.monto, 'estado', p.estado,
              'banco', p.banco_nombre,
              'cuenta', case when v_admin then p.cuenta else cuenta_tapada(p.cuenta) end,
-             'titular', p.titular,
+             -- Sin titular para el staff, como en disponible_organizador:
+             -- nombre + banco + últimos 4 ya es medio camino a la cuenta.
+             'titular', case when v_admin then p.titular end,
              'referencia', p.referencia, 'motivo', p.motivo,
              'pedido_at', p.pedido_at, 'pedido_por', q.nombre)
            order by p.pedido_at desc)
@@ -192,6 +207,142 @@ create policy "cuenta bancaria: la de mi organizador" on cuenta_bancaria for sel
 drop policy if exists "pago organizador: el de mi organizador" on pago_organizador;
 create policy "pago organizador: el de mi organizador" on pago_organizador for select to authenticated
   using (organizador_id = mi_organizador() and mi_rol() = 'admin');
+
+-- ── el giro desde Plataforma: la cuenta tapada en la bitácora ──
+-- Cuerpo de 0080 tal cual; cambia sólo el format de la bitácora. La
+-- bitácora es del CLIENTE (ver 0080) y la lee su staff.
+create or replace function pedir_pago_plataforma(p_evento uuid, p_monto numeric default null)
+  returns jsonb
+  language plpgsql volatile security definer set search_path = public as $function$
+declare
+  v_org uuid; v_yo uuid := auth.uid();
+  d jsonb; c cuenta_bancaria; v_monto numeric(12,2); p pago_organizador;
+begin
+  if not es_plataforma() then raise exception 'Sin permiso'; end if;
+
+  select e.organizador_id into v_org from eventos e where e.id = p_evento;
+  if v_org is null then
+    return jsonb_build_object('ok', false, 'motivo', 'Ese evento no existe.');
+  end if;
+
+  -- El mismo candado que el pago del cliente y que el automático: los tres
+  -- compiten por el mismo disponible y no pueden leerlo a la vez.
+  perform pg_advisory_xact_lock(hashtext('pago_organizador:' || p_evento::text));
+
+  d := disponible_de(v_org, p_evento);
+
+  select * into c from cuenta_bancaria where organizador_id = v_org and vigente;
+  if not found then
+    return jsonb_build_object('ok', false, 'falta', 'cuenta',
+      'motivo', 'Ese cliente todavía no tiene cargada su cuenta bancaria.');
+  end if;
+
+  v_monto := round(coalesce(p_monto, (d->>'disponible')::numeric), 2);
+
+  if v_monto < 0.01 then
+    return jsonb_build_object('ok', false, 'falta', 'saldo', 'disponible', d->>'disponible',
+      'motivo', 'No hay nada para girarle todavía.');
+  end if;
+  if v_monto > (d->>'disponible')::numeric then
+    return jsonb_build_object('ok', false, 'falta', 'saldo', 'disponible', d->>'disponible',
+      'motivo', format('Sólo hay %s Bs disponibles.', d->>'disponible'));
+  end if;
+
+  insert into pago_organizador (organizador_id, evento_id, cuenta_id, monto,
+                                banco_nombre, cuenta, titular, pedido_por)
+  values (v_org, p_evento, c.id, v_monto, c.banco_nombre, c.cuenta,
+          btrim(c.titular_nombres || ' ' || c.titular_apellido || ' ' ||
+                coalesce(c.titular_apellido2, '')), v_yo)
+  returning * into p;
+
+  -- En la bitácora DEL CLIENTE, diciendo que lo pidió TICKETAZO.
+  insert into admin_bitacora (organizador_id, evento_id, accion, motivo, actor_id, detalle)
+  values (v_org, p_evento, 'organizador_pagado',
+          format('Pago de %s Bs a %s, cuenta %s — pedido por TICKETAZO',
+                 p.monto, p.titular, cuenta_tapada(p.cuenta)), v_yo,
+          jsonb_build_object('pago', p.id, 'monto', p.monto,
+                             'banco', p.banco_nombre, 'via', 'plataforma'));
+
+  return jsonb_build_object('ok', true, 'pago', p.id, 'monto', p.monto,
+    'beneficiario', jsonb_build_object(
+      'banco_codigo', c.banco_codigo, 'cuenta', c.cuenta,
+      'nombres', c.titular_nombres, 'apellido', c.titular_apellido,
+      'apellido2', c.titular_apellido2,
+      'documento_tipo', c.documento_tipo, 'documento_numero', c.documento_numero,
+      'documento_extension', c.documento_extension, 'ciudad_codigo', c.ciudad_codigo),
+    'motivo', format('Pedido el pago de %s Bs a %s.', p.monto, p.titular));
+end $function$;
+revoke execute on function pedir_pago_plataforma(uuid, numeric) from anon, public;
+grant execute on function pedir_pago_plataforma(uuid, numeric) to authenticated;
+
+-- ── leer la bitácora: al staff, los pagos sin la cuenta ─────
+-- Cuerpo de 0040; cambia sólo el motivo de 'organizador_pagado' para
+-- quien no es admin. Se arma de nuevo desde pago_organizador (detalle
+-- trae el id del pago desde 0052) en vez de tapar con una expresión
+-- regular, porque el número de cuenta se guarda como lo escribió el
+-- cliente —con guiones o espacios, a veces— y un patrón que se lo pierda
+-- es una fuga silenciosa. Sin titular, igual que en Cobros.
+create or replace function bitacora_admin(p_evento uuid, p_desde int default 0,
+                                          p_tope int default 200) returns jsonb
+  language plpgsql stable security definer set search_path = public as $function$
+declare v_org   uuid := mi_organizador();
+        v_admin boolean := coalesce(mi_rol(), '') = 'admin';
+        v_desde int  := greatest(coalesce(p_desde, 0), 0);
+        v_tope  int  := least(greatest(coalesce(p_tope, 200), 1), 5000);
+        v_total int;
+        v_filas jsonb;
+begin
+  if not puede_editar() then raise exception 'Sin permiso'; end if;
+  if not exists (select 1 from eventos e
+                  where e.id = p_evento and e.organizador_id = v_org) then
+    raise exception 'Sin permiso';
+  end if;
+
+  -- El total se cuenta sin el tope: es lo único con lo que después se
+  -- puede decir la verdad sobre si la lista quedó cortada.
+  select count(*) into v_total from admin_bitacora b
+   where b.organizador_id = v_org and b.evento_id = p_evento;
+
+  select coalesce(jsonb_agg(to_jsonb(d) order by d.ocurrio_at desc, d.id desc), '[]'::jsonb)
+    into v_filas
+    from (
+      select b.id, b.ocurrio_at, b.accion,
+             case when b.accion = 'organizador_pagado' and not v_admin
+               then format('Pago de %s Bs a %s', coalesce(pg.monto::text, b.detalle->>'monto', '—'),
+                           coalesce(pg.banco_nombre || ' ' || cuenta_tapada(pg.cuenta),
+                                    'la cuenta para cobrar'))
+                    || case when b.detalle->>'via' = 'plataforma' then ' — pedido por TICKETAZO' else '' end
+               else b.motivo end as motivo,
+             b.detalle,
+             b.orden_id, b.entrada_id,
+             b.actor_id, pa.nombre as actor,
+             o.comprador_nombre as comprador,
+             e.code
+        from admin_bitacora b
+        left join perfiles pa on pa.id = b.actor_id
+        left join ordenes  o  on o.id  = b.orden_id   and o.organizador_id  = v_org
+        left join entradas e  on e.id  = b.entrada_id and e.organizador_id  = v_org
+        left join pago_organizador pg on pg.id::text = b.detalle->>'pago'
+                                     and pg.organizador_id = v_org
+       where b.organizador_id = v_org and b.evento_id = p_evento
+       order by b.ocurrio_at desc, b.id desc
+       limit v_tope offset v_desde
+    ) d;
+
+  return jsonb_build_object('evento', p_evento, 'total', v_total,
+                            'desde', v_desde, 'tope', v_tope,
+                            'devueltas', jsonb_array_length(v_filas),
+                            'cortada', v_total > v_desde + jsonb_array_length(v_filas),
+                            'filas', v_filas);
+end $function$;
+revoke execute on function bitacora_admin(uuid, int, int) from anon, public;
+grant execute on function bitacora_admin(uuid, int, int) to authenticated;
+
+-- Por PostgREST directo, las filas de pagos sólo para el admin.
+drop policy if exists "admin bitacora leer" on admin_bitacora;
+create policy "admin bitacora leer" on admin_bitacora for select to authenticated
+  using (organizador_id = mi_organizador() and puede_editar()
+         and (accion <> 'organizador_pagado' or mi_rol() = 'admin'));
 
 -- ── control ─────────────────────────────────────────────────
 select * from chequeo_funciones_sin_guardia();
