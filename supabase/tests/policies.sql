@@ -4314,4 +4314,284 @@ begin
   raise notice 'OK con ventas hechas, una mesa no cambia de entradas incluidas ni de categoria';
 end $$;
 
+-- ============================================================
+-- 0111 — socios: la cuenta de cada uno cierra con la caja, y la caja manda
+--
+-- Lo que se prueba es lo que sostiene la tarjeta Socios:
+--   1) la suma de los «le queda» es EXACTAMENTE el disponible del cuadre
+--      de panel_plataforma, al centavo. Con los datos que haya: la
+--      igualdad vale para cualquier base, y es lo primero que se rompe si
+--      una migración cambia cómo se calcula el margen en un lado solo.
+--   2) se puede hoy = max(0, min(le queda, caja)).
+--   3) registrar_retiro_plataforma rechaza lo que pasa la caja y lo que
+--      pasa la parte del socio, con un centavo de tolerancia; lo que entra
+--      se anota y la suma sigue cerrando.
+--   4) ser operador no es ser socio: darle Plataforma a alguien no le da
+--      una parte ni se le puede anotar un retiro como socio.
+--   5) quien no es operador recibe «Sin permiso».
+-- ============================================================
+do $$
+declare v_org uuid := '01110111-0111-4111-8111-000000000001';
+        v_op  uuid := '01110111-0111-4111-8111-000000000002';  -- operador, no socio
+        v_cli uuid := '01110111-0111-4111-8111-000000000003';  -- admin de un cliente
+        v_ev  uuid := '01110111-0111-4111-8111-000000000004';
+        s jsonb; v_disp numeric; v_suma numeric; v_n int;
+        v_soc uuid; v_queda numeric; v_hoy numeric; v_r jsonb;
+begin
+  insert into organizadores (id, slug, nombre) values (v_org, 'prueba-0111', 'Prueba 0111');
+  insert into auth.users (id, email) values
+    (v_op, 'op-0111@prueba.test'), (v_cli, 'cli-0111@prueba.test');
+  insert into perfiles (id, organizador_id, nombre, rol) values
+    (v_op,  v_org, 'Operador 0111', 'admin'),
+    (v_cli, v_org, 'Cliente 0111',  'admin');
+  insert into eventos (id, organizador_id, slug, nombre, fecha) values
+    (v_ev, v_org, 'evento-0111', 'Evento 0111', current_date - 1);
+
+  -- ── 5) sin ser operador, nada ──
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_cli::text, true);
+  begin
+    perform socios_plataforma();
+    raise exception 'TEST_FAIL: quien no es operador leyo socios_plataforma';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  begin
+    perform registrar_retiro_plataforma(1);
+    raise exception 'TEST_FAIL: quien no es operador anoto un retiro de plataforma';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  reset role;
+
+  -- ── 4) operador sin ser socio ──
+  select count(*) into v_n from plataforma_operador where socio;
+  insert into plataforma_operador (perfil_id, nota) values (v_op, 'prueba 0111');
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_op::text, true);
+  s := socios_plataforma();
+  if (s->>'cantidad')::int <> v_n
+     or exists (select 1 from jsonb_array_elements(s->'socios') x where (x->>'id')::uuid = v_op) then
+    raise exception 'TEST_FAIL: darle Plataforma a alguien lo hizo socio (cantidad %, antes %)', s->>'cantidad', v_n;
+  end if;
+
+  -- ── 1) y 2) con la caja de hoy ──
+  v_disp := (panel_plataforma()->'total'->>'disponible')::numeric;
+  if v_n > 0 then
+    select sum((x->>'queda')::numeric) into v_suma from jsonb_array_elements(s->'socios') x;
+    if v_suma is distinct from v_disp or (s->>'disponible')::numeric is distinct from v_disp then
+      raise exception 'TEST_FAIL: la suma de los le queda (%) no es el disponible del cuadre (%)', v_suma, v_disp;
+    end if;
+    if exists (select 1 from jsonb_array_elements(s->'socios') x
+                where (x->>'se_puede_hoy')::numeric
+                      <> greatest(0, least((x->>'queda')::numeric, v_disp))) then
+      raise exception 'TEST_FAIL: se_puede_hoy no es max(0, min(le queda, caja)): %', s->'socios';
+    end if;
+  end if;
+
+  -- ── 3) con la caja de hoy, lo que la pasa rebota (aunque esté en negativo) ──
+  v_r := registrar_retiro_plataforma(greatest(v_disp, 0) + 0.02, 'prueba 0111', null, null);
+  if coalesce((v_r->>'ok')::boolean, true) then
+    raise exception 'TEST_FAIL: se anoto un retiro por encima de la caja: %', v_r;
+  end if;
+
+  -- Caja positiva con datos propios: una venta de prueba con comisión
+  -- grande, así la parte de cada socio alcanza y se puede probar cada
+  -- guardia por separado.
+  reset role;
+  insert into ordenes (organizador_id, evento_id, estado, expira_at, subtotal, fee, total, pago_ref)
+  values (v_org, v_ev, 'pagada', now() + interval '1 day', 100, 30000, 30100, 'PRUEBA-0111');
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_op::text, true);
+  s := socios_plataforma();
+  v_disp := (panel_plataforma()->'total'->>'disponible')::numeric;
+  select sum((x->>'queda')::numeric) into v_suma from jsonb_array_elements(s->'socios') x;
+  if v_n > 0 and v_suma is distinct from v_disp then
+    raise exception 'TEST_FAIL: con caja positiva la suma de los le queda (%) no es el disponible (%)', v_suma, v_disp;
+  end if;
+
+  -- un operador que no es socio no cobra como socio
+  v_r := registrar_retiro_plataforma(0.01, 'prueba 0111', null, v_op);
+  if coalesce((v_r->>'ok')::boolean, true) or v_r->>'motivo' <> 'Ese socio no existe.' then
+    raise exception 'TEST_FAIL: se le anoto un retiro como socio a un operador que no es socio: %', v_r;
+  end if;
+
+  if v_n > 0 then
+    select (x->>'id')::uuid, (x->>'queda')::numeric, (x->>'se_puede_hoy')::numeric
+      into v_soc, v_queda, v_hoy
+      from jsonb_array_elements(s->'socios') x order by (x->>'queda')::numeric desc limit 1;
+    -- lo suyo + 2 centavos rebota por SU parte (no por la caja)
+    if v_queda > 0 and v_queda + 0.02 <= v_disp then
+      v_r := registrar_retiro_plataforma(v_queda + 0.02, 'prueba 0111', null, v_soc);
+      if coalesce((v_r->>'ok')::boolean, true) or v_r->>'motivo' not like '%le quedan%' then
+        raise exception 'TEST_FAIL: a un socio se le anoto mas de lo que le queda: %', v_r;
+      end if;
+    end if;
+    -- lo que se puede hoy entra, y la cuenta sigue cerrando
+    if v_hoy > 0 then
+      v_r := registrar_retiro_plataforma(v_hoy, 'prueba 0111', null, v_soc);
+      if not coalesce((v_r->>'ok')::boolean, false) then
+        raise exception 'TEST_FAIL: no se pudo anotar lo que se podia hoy: %', v_r;
+      end if;
+      s := socios_plataforma();
+      v_disp := (panel_plataforma()->'total'->>'disponible')::numeric;
+      select sum((x->>'queda')::numeric) into v_suma from jsonb_array_elements(s->'socios') x;
+      if v_suma is distinct from v_disp then
+        raise exception 'TEST_FAIL: despues de un retiro la suma (%) no es el disponible (%)', v_suma, v_disp;
+      end if;
+    end if;
+  end if;
+  -- sin socio: la caja + 2 centavos rebota por la caja
+  if v_disp > 0 then
+    v_r := registrar_retiro_plataforma(v_disp + 0.02, 'prueba 0111', null, null);
+    if coalesce((v_r->>'ok')::boolean, true) or v_r->>'motivo' not like 'En la caja hay%' then
+      raise exception 'TEST_FAIL: se anoto un retiro sin socio por encima de la caja: %', v_r;
+    end if;
+  end if;
+
+  reset role;
+  perform set_config('request.jwt.claim.sub', '', true);
+  raise notice 'OK socios: la suma cierra con la caja, la caja y la parte de cada uno mandan, y operador no es socio';
+end $$;
+
+-- ============================================================
+-- 0112 — la plata del cliente, sólo para su admin
+--
+-- Un staff ve las cifras de su evento pero no la cuenta para cobrar
+-- (banco y ···últimos 4, sin titular), no la cambia, no pide el giro y no
+-- la lee en la bitácora: ni por bitacora_admin ni por SELECT directo. El
+-- admin del mismo cliente sí llega a todo, y el giro que TICKETAZO hace
+-- desde Plataforma deja la cuenta tapada en la bitácora del cliente.
+-- Con datos propios: la cuenta se escribe con guiones, como la cargan
+-- algunos clientes, para que el tapado no dependa de que sean sólo dígitos.
+-- ============================================================
+do $$
+declare v_org   uuid := '01120112-0112-4112-8112-000000000001';
+        v_admin uuid := '01120112-0112-4112-8112-000000000002';
+        v_staff uuid := '01120112-0112-4112-8112-000000000003';
+        v_op    uuid := '01120112-0112-4112-8112-000000000004';
+        v_ev    uuid := '01120112-0112-4112-8112-000000000005';
+        v_cid   uuid := '01120112-0112-4112-8112-000000000006';
+        v_pago  uuid := '01120112-0112-4112-8112-000000000007';
+        v_cta   text := '201-5012345678-3';
+        v_tap   text := '···6783';
+        v_r jsonb; v_n int; v_m text;
+begin
+  insert into organizadores (id, slug, nombre) values (v_org, 'prueba-0112', 'Prueba 0112');
+  insert into auth.users (id, email) values
+    (v_admin, 'admin-0112@prueba.test'), (v_staff, 'staff-0112@prueba.test'),
+    (v_op, 'op-0112@prueba.test');
+  insert into perfiles (id, organizador_id, nombre, rol) values
+    (v_admin, v_org, 'Admin 0112',    'admin'),
+    (v_staff, v_org, 'Staff 0112',    'staff'),
+    (v_op,    v_org, 'Operador 0112', 'admin');
+  insert into plataforma_operador (perfil_id, nota) values (v_op, 'prueba 0112');
+  -- pasado: el disponible es el 100% de lo vendido
+  insert into eventos (id, organizador_id, slug, nombre, fecha) values
+    (v_ev, v_org, 'evento-0112', 'Evento 0112', current_date - 2);
+  insert into ordenes (organizador_id, evento_id, estado, expira_at, subtotal, fee, total, pago_ref)
+  values (v_org, v_ev, 'pagada', now() + interval '1 day', 500, 35, 535, 'PRUEBA-0112');
+  insert into cuenta_bancaria (id, organizador_id, banco_codigo, banco_nombre, cuenta,
+                               titular_nombres, titular_apellido, documento_tipo, documento_numero)
+  values (v_cid, v_org, '1014', 'Banco Unión', v_cta, 'Titular', 'Prueba', 'CI', '1234567');
+  -- un giro de antes de 0112, con la cuenta entera en la bitácora
+  insert into pago_organizador (id, organizador_id, evento_id, cuenta_id, monto,
+                                banco_nombre, cuenta, titular, pedido_por, estado)
+  values (v_pago, v_org, v_ev, v_cid, 100, 'Banco Unión', v_cta, 'Titular Prueba', v_admin, 'pagado');
+  insert into admin_bitacora (organizador_id, evento_id, accion, motivo, actor_id, detalle)
+  values (v_org, v_ev, 'organizador_pagado', 'Pago de 100.00 Bs a Titular Prueba, cuenta ' || v_cta,
+          v_admin, jsonb_build_object('pago', v_pago, 'monto', 100, 'banco', 'Banco Unión'));
+
+  -- ── TICKETAZO gira desde Plataforma: la cuenta va tapada ──
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_op::text, true);
+  v_r := pedir_pago_plataforma(v_ev, 50);
+  if not coalesce((v_r->>'ok')::boolean, false) then
+    raise exception 'TEST_FAIL: pedir_pago_plataforma no giro: %', v_r;
+  end if;
+  reset role;
+  select b.motivo into v_m from admin_bitacora b
+   where b.detalle->>'pago' = v_r->>'pago' and b.accion = 'organizador_pagado';
+  if v_m is null or v_m ~ '\d{6,}' or v_m like '%' || v_cta || '%' or v_m not like '%' || v_tap || '%' then
+    raise exception 'TEST_FAIL: el giro desde Plataforma dejo la cuenta en la bitacora: %', v_m;
+  end if;
+
+  -- ── el staff ──
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_staff::text, true);
+  begin
+    perform guardar_cuenta_bancaria(jsonb_build_object('banco_codigo', '1014',
+      'banco_nombre', 'Banco Unión', 'cuenta', '999999', 'titular_nombres', 'Staff',
+      'titular_apellido', 'Ladron', 'documento_numero', '1'));
+    raise exception 'TEST_FAIL: un staff cambio la cuenta para cobrar';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  begin
+    perform pedir_pago_organizador(v_ev, 1);
+    raise exception 'TEST_FAIL: un staff pidio el giro';
+  exception when others then
+    if sqlerrm not like 'Sin permiso%' then raise; end if;
+  end;
+  v_r := disponible_organizador(v_ev);
+  if v_r->>'disponible' is null or (v_r->>'disponible')::numeric <> 350
+     or v_r->'cuenta'->>'cuenta' is distinct from v_tap
+     or (v_r->'cuenta') ? 'titular'
+     or not coalesce((v_r->'cuenta'->>'oculta')::boolean, false) then
+    raise exception 'TEST_FAIL: el staff no ve las cifras o ve la cuenta: %', v_r;
+  end if;
+  v_r := pagos_organizador(v_ev);
+  if jsonb_array_length(v_r) <> 2
+     or exists (select 1 from jsonb_array_elements(v_r) x
+                 where x->>'cuenta' is distinct from v_tap or x->>'titular' is not null) then
+    raise exception 'TEST_FAIL: pagos_organizador le muestra la cuenta o el titular al staff: %', v_r;
+  end if;
+  v_r := bitacora_admin(v_ev);
+  if (v_r->>'total')::int <> 2
+     or exists (select 1 from jsonb_array_elements(v_r->'filas') x
+                 where x->>'motivo' ~ '\d{6,}' or x->>'motivo' like '%Titular%'
+                    or (x->>'accion' = 'organizador_pagado' and x->>'motivo' not like '%' || v_tap || '%')) then
+    raise exception 'TEST_FAIL: la bitacora le muestra la cuenta o el titular al staff: %', v_r->'filas';
+  end if;
+  select count(*) into v_n from admin_bitacora where accion = 'organizador_pagado';
+  if v_n <> 0 then raise exception 'TEST_FAIL: el staff lee % pagos en admin_bitacora por SELECT', v_n; end if;
+  select count(*) into v_n from cuenta_bancaria;
+  if v_n <> 0 then raise exception 'TEST_FAIL: el staff lee cuenta_bancaria por SELECT'; end if;
+  select count(*) into v_n from pago_organizador;
+  if v_n <> 0 then raise exception 'TEST_FAIL: el staff lee pago_organizador por SELECT'; end if;
+
+  -- ── el admin del mismo cliente: todo ──
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  v_r := disponible_organizador(v_ev);
+  if v_r->'cuenta'->>'cuenta' is distinct from v_cta then
+    raise exception 'TEST_FAIL: el admin no ve su cuenta: %', v_r->'cuenta';
+  end if;
+  v_r := pagos_organizador(v_ev);
+  if exists (select 1 from jsonb_array_elements(v_r) x
+              where x->>'cuenta' is distinct from v_cta or x->>'titular' is null) then
+    raise exception 'TEST_FAIL: el admin no ve sus pagos completos: %', v_r;
+  end if;
+  v_r := bitacora_admin(v_ev);
+  if not exists (select 1 from jsonb_array_elements(v_r->'filas') x
+                  where x->>'motivo' like '%' || v_cta || '%') then
+    raise exception 'TEST_FAIL: al admin se le tapo la bitacora tal como se escribio';
+  end if;
+  select count(*) into v_n from admin_bitacora where accion = 'organizador_pagado';
+  if v_n <> 2 then raise exception 'TEST_FAIL: el admin lee % pagos en admin_bitacora, no 2', v_n; end if;
+  v_r := guardar_cuenta_bancaria(jsonb_build_object('banco_codigo', '1005',
+    'banco_nombre', 'Banco de Crédito BCP', 'cuenta', '1', 'titular_nombres', 'X',
+    'titular_apellido', 'Y', 'documento_tipo', 'CI', 'documento_numero', '1'));
+  if v_r->>'falta' is distinct from 'extension' then
+    raise exception 'TEST_FAIL: el admin no llego a la validacion de la cuenta: %', v_r;
+  end if;
+  v_r := pedir_pago_organizador(v_ev, 999999);
+  if coalesce((v_r->>'ok')::boolean, true) or v_r->>'motivo' not like 'Sólo hay%' then
+    raise exception 'TEST_FAIL: el admin pidio de mas y no recibio el motivo: %', v_r;
+  end if;
+
+  reset role;
+  perform set_config('request.jwt.claim.sub', '', true);
+  raise notice 'OK la cuenta y el giro del cliente, solo para su admin; el staff no la ve ni en la bitacora';
+end $$;
+
 rollback;
