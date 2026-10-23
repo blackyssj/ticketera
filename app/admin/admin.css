@@ -1457,6 +1457,9 @@ body[data-pantalla="puerta"][data-filtro="1"] .puerta-conteo{border-color:rgba(2
 .liq-auto-cab b{font-size:15px}
 .liq-auto[data-on="1"] .liq-auto-cab b{color:var(--ok)}
 .liq-auto .ayuda{margin:6px 0 0}
+/* El próximo giro en negro: es la respuesta a «¿cuándo me llega?», la
+   frase de arriba es la explicación. */
+.liq-auto .ayuda.liq-auto-prox{color:var(--txt);font-weight:500}
 /* Una frase con campos adentro («Mandar a partir de [ ] Bs [Guardar]»), no
    un rótulo arriba de un campo. Es un `label`, y el `label` general es una
    columna: sin el `row` explícito la frase se apilaba renglón por renglón,

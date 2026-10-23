@@ -2189,11 +2189,15 @@ async function pantallaCierre(eventoId) {
   /* Las cuatro juntas: la pantalla no sirve de a pedazos, y el disponible
      del organizador se mira ANTES de cerrar (los anticipos son durante la
      venta), así que no puede colgar de que el evento esté cerrado. */
-  const [ev, res, disp, pagos] = await Promise.all([
+  /* pago_hora es el turno del giro automático del cliente (0099): sin él
+     la pantalla no puede decir a qué hora sale la plata. Con S.yo
+     .organizador_id, que al operar como cliente ya es el del cliente. */
+  const [ev, res, disp, pagos, org] = await Promise.all([
     sb.from("eventos").select("id,nombre,slug,fecha,estado").eq("id", eventoId).single(),
     sb.rpc("liquidacion_evento", { p_evento: eventoId }),
     sb.rpc("disponible_organizador", { p_evento: eventoId }),
     sb.rpc("pagos_organizador", { p_evento: eventoId }),
+    sb.from("organizadores").select("pago_hora").eq("id", S.yo.organizador_id).maybeSingle(),
   ]);
   if (ev.error || !ev.data) { avisar("Ese evento ya no existe."); mostrar("eventos"); return; }
   if (res.error) { $("#main").innerHTML = `<p class="error">${esc(res.error.message)}</p>`; return; }
@@ -2201,6 +2205,7 @@ async function pantallaCierre(eventoId) {
                        pagando: null, cerrando: false,
                        disp: disp.error ? null : disp.data,
                        pagos: pagos.error ? [] : (pagos.data || []),
+                       hora: Number((org.data || {}).pago_hora) || 8,
                        editandoCuenta: false });
   pintarCierre();
 }
@@ -2282,25 +2287,17 @@ function pintarCierre() {
   const bau = $("#btnAuto");
   if (bau) bau.onclick = () => {
     const prender = !(LIQ.disp && LIQ.disp.automatico);
-    const min = Number($("#autoMin").value) || Number(LIQ.disp.minimo);
     /* Prenderlo se confirma; apagarlo no. Prender es empezar a mover plata
        sola, apagar es dejar de hacerlo: el que se equivoca apagando pierde
        comodidad, el que se equivoca prendiendo pierde el control de cuándo
-       sale un giro. */
+       sale un giro. El mínimo guardado no se toca: con null la base se
+       queda con el que ya tiene (el campo para cambiarlo se fue). */
     if (prender && !confirm(
-        `A partir de ahora la plata se le va a mandar sola al organizador, ` +
-        `cada quince minutos, apenas pase los ${bs(min)}.\n\n` +
+        `${textoAutomatico(LIQ.disp)}\n\n` +
         `Se manda a: ${LIQ.disp.cuenta ? LIQ.disp.cuenta.titular + " · " +
-          LIQ.disp.cuenta.banco + " · " + LIQ.disp.cuenta.cuenta : "—"}\n\n¿Prendemos?`))
+          LIQ.disp.cuenta.banco + " · " + LIQ.disp.cuenta.cuenta : "—"}\n\n¿Lo prendemos?`))
       return;
-    guardarPagoAuto(prender, min);
-  };
-
-  const bam = $("#btnAutoMin");
-  if (bam) bam.onclick = () => {
-    const min = Number($("#autoMin").value);
-    if (!(min >= 0.01)) { avisar("Poné un monto."); return; }
-    guardarPagoAuto(!!(LIQ.disp && LIQ.disp.automatico), min);
+    guardarPagoAuto(prender, null);
   };
 }
 
@@ -2425,15 +2422,46 @@ function topeRealManda(d) {
    La promesa comercial entera de TICKETAZO frente a la competencia es
    ésta: el organizador no espera a fin de mes ni llama a nadie. Pero es
    plata saliendo sola de una cuenta, así que la pantalla tiene que decir
-   exactamente qué va a pasar y quién puede prenderlo.
+   exactamente qué va a pasar y cuándo.
+
+   Decía que salía cada cuarto de hora y no era cierto desde 0095: hay un
+   giro por evento por día, en el turno del cliente (pago_hora, 8 o 9 de
+   La Paz) y con dos reintentos dos y cuatro horas después (0099). Un
+   cliente que lee eso se queda refrescando el banco a las 2 de la mañana.
+   Manda lo disponible EN ESE MOMENTO, no «lo vendido hasta anoche».
 
    Sólo admin. Un staff carga eventos y vende; que pueda arrancar un giro
    automático a una cuenta bancaria no es de ese trabajo, y la base lo
    rechaza igual — esto es para que el botón no aparezca y prometa algo
    que después no se puede hacer. */
+const hh = h => String(h).padStart(2, "0") + ":00";
+
+function textoAutomatico(d) {
+  const h = LIQ.hora || 8, min = Number(d.minimo || 0);
+  return `Todos los días a las ${hh(h)} (hora de Bolivia) te mandamos lo que tengas ` +
+    `para retirar${min > 1 && !d.evento_pasado ? `, si junta al menos ${bs(min)}` : ""}. ` +
+    `Si el banco lo rechaza, se reintenta a las ${hh(h + 2)} y a las ${hh(h + 4)}.`;
+}
+
+/* El próximo turno: hoy, si queda uno y todavía no salió el giro
+   automático de hoy (los rechazados no cuentan, como en 0099); si no,
+   mañana a la hora del cliente. Es la cuenta de eventos_a_pagar mirada
+   desde la pantalla, sin preguntarle nada nuevo a la base. */
+function proximoGiro(d) {
+  const h = LIQ.hora || 8, ahora = new Date();
+  const horaBo = Number(new Intl.DateTimeFormat("en-US",
+    { timeZone: RELOJ_BO, hour: "numeric", hourCycle: "h23" }).format(ahora));
+  const diaBo = t => new Date(t).toLocaleDateString("en-CA", { timeZone: RELOJ_BO });
+  const hoyYaSalio = (LIQ.pagos || []).some(p => !p.pedido_por && p.estado !== "rechazado"
+    && diaBo(p.pedido_at) === diaBo(ahora));
+  const turno = hoyYaSalio ? null : [h, h + 2, h + 4].find(t => t > horaBo);
+  return turno != null ? `hoy a las ${hh(turno)}` : `mañana a las ${hh(h)}`;
+}
+
 function bloqueAutomatico(d) {
   if (!S.yo || S.yo.rol !== "admin") return "";
-  const on = !!d.automatico, min = Number(d.minimo || 0);
+  const on = !!d.automatico, min = Number(d.minimo || 0), disp = Number(d.disponible || 0);
+  const falta = !d.evento_pasado && min > 1 && disp < min;
   return `
     <div class="liq-auto" data-on="${on ? 1 : 0}">
       <div class="liq-auto-cab">
@@ -2441,18 +2469,12 @@ function bloqueAutomatico(d) {
         <button type="button" class="btn ${on ? "plano" : "primario"} chico" id="btnAuto">
           ${on ? "Apagar" : "Prender"}</button>
       </div>
-      <p class="ayuda">${on
-        ? `Puesto. Cada quince minutos, lo disponible se manda solo apenas
-           pasa los ${bs(min)}. No hay que apretar nada.`
-        : `Apagado. La plata sale sólo cuando alguien aprieta «Pagar».`}</p>
-      <label class="liq-auto-min">
-        <span>Mandar a partir de</span>
-        <input id="autoMin" inputmode="decimal" value="${min}" size="6">
-        <span>Bs</span>
-        <button type="button" class="btn plano chico" id="btnAutoMin">Guardar</button>
-      </label>
-      <p class="ayuda explica">El piso evita una transferencia bancaria por cada
-        entrada suelta: debajo de ese monto la plata se junta.</p>
+      <p class="ayuda">${on ? esc(textoAutomatico(d))
+        : "Apagado. La plata sale cuando tocás «Retirar»."}</p>
+      ${on ? `<p class="ayuda liq-auto-prox">Próximo giro: ${
+        disp < 0.01 ? `${proximoGiro(d)}, si para entonces tenés algo para retirar.`
+        : falta ? `cuando juntes ${bs(min)} (hoy tenés ${bs(disp)}).`
+        : `${proximoGiro(d)} · ≈ ${bs(disp)}`}</p>` : ""}
     </div>`;
 }
 
@@ -2460,10 +2482,13 @@ async function guardarPagoAuto(activo, minimo) {
   const { data, error } = await sb.rpc("guardar_pago_automatico",
     { p_activo: activo, p_minimo: minimo });
   if (error) { avisar(sinCodigo(error.message)); return; }
-  avisar(data.motivo);
-  /* Se recarga el disponible entero y no sólo el interruptor: el mínimo
-     nuevo cambia qué va a mandar el reloj, y mostrar el número viejo al
-     lado del switch nuevo es cómo alguien cree que guardó y no guardó. */
+  /* El texto de la base (0057) habla del botón «Pagar» y del mínimo, que
+     ya no están en esta pantalla: si salió bien, se dice acá. */
+  avisar(data.ok === false ? data.motivo
+    : activo ? "Pago automático prendido." : "Pago automático apagado. La plata sale cuando tocás «Retirar».");
+  /* Se recarga el disponible entero y no sólo el interruptor: mostrar el
+     estado viejo al lado del switch nuevo es cómo alguien cree que guardó
+     y no guardó. */
   const { data: disp } = await sb.rpc("disponible_organizador", { p_evento: LIQ.evento });
   if (disp) LIQ.disp = disp;
   pintarCierre();
@@ -2492,12 +2517,15 @@ function filaPagoOrg(p) {
    banco es más código y más confusión que un campo opcional de más. */
 function formCuenta(c) {
   return `
-    <h3>${c ? "Cambiar la cuenta" : "Cuenta del organizador"}</h3>
+    <h3>${c ? "Cambiar tu cuenta" : "Tu cuenta para cobrar"}</h3>
     <p class="ayuda">${c ? "La anterior queda guardada: los pagos viejos siguen diciendo a dónde fueron." : ""}
       El titular tiene que estar escrito como en el banco.</p>
     <form class="form-persona" id="formCuenta">
       <label><span>Banco</span>
-        <select id="cuBanco">
+        <select id="cuBanco" required>
+          <!-- Sin banco elegido de entrada: con el BCP preseleccionado, una
+               cuenta del Unión se guardaba como BCP y el giro rebotaba. -->
+          <option value="" disabled${c && BANCOS.some(b => b[1] === c.banco) ? "" : " selected"}>Elegí tu banco</option>
           ${BANCOS.map(([cod, nom]) =>
             `<option value="${cod}"${c && c.banco === nom ? " selected" : ""}>${esc(nom)}</option>`).join("")}
         </select></label>
@@ -2528,6 +2556,7 @@ function formCuenta(c) {
 
 async function guardarCuenta() {
   const cod = $("#cuBanco").value;
+  if (!cod) { avisar("Elegí tu banco."); return; }
   const datos = {
     banco_codigo: cod,
     banco_nombre: (BANCOS.find(b => b[0] === cod) || ["", cod])[1],
