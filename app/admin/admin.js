@@ -6074,15 +6074,21 @@ async function pantallaPlataforma() {
     hoy: x.se_puede_hoy != null ? Number(x.se_puede_hoy)
        : Math.max(0, Math.min(Number(x.queda || 0), disponible)) }));
   const yoSocio = socios.find(x => x.id === S.yo.id);
+  /* Sin la cuenta de socios no se ofrece anotar nada. Si no, la lista
+     queda vacía, el select cae en «Nadie» y el campo se completaba con la
+     caja entera: un socio que se giró su parte la anotaba como común, no
+     le sumaba a su «cobró» y la parte se les bajaba a los tres. */
+  const sociosOk = socios.length > 0;
   /* Hasta cuánto se puede anotar hoy, para un socio o para nadie. La base
      decide igual (0111); esto es para no ofrecer lo que va a rebotar. */
   const topeRetiro = id => {
-    if (!(disponible > 0)) return 0;
+    if (!sociosOk || !(disponible > 0)) return 0;
     if (!id) return disponible;
     const x = socios.find(s => s.id === id);
     return x ? x.hoy : 0;
   };
   const motivoRetiro = id => {
+    if (!sociosOk) return "No se pudo cargar la cuenta de socios: recargá la pantalla antes de anotar un retiro.";
     if (!(disponible > 0)) return "La caja de ganancia está en 0: no hay nada para retirar.";
     if (!id) return `Se puede anotar hasta ${bs(disponible)}: lo que hay en la caja.`;
     const x = socios.find(s => s.id === id);
@@ -6192,8 +6198,13 @@ async function pantallaPlataforma() {
         <button type="button" class="btn plano chico" id="btnRetiro"${montoInicial > 0 ? "" : " disabled"}>Anotar retiro</button>
       </label>
       <p class="ayuda${montoInicial > 0 ? "" : " plat-tope-no"}" id="retiroTope">${esc(motivoRetiro(socioInicial))}</p>
-      <p class="ayuda">El giro se hace a mano en BeePay; acá sólo queda anotado
-        para que el disponible y el cuadre digan la verdad.</p>
+      <!-- Antes decía «el giro se hace en BeePay; acá sólo queda anotado»,
+           o sea girar primero y anotar después. Pero la base rechaza lo que
+           pasa la caja (0111): un giro que ya salió y no se puede anotar
+           deja el cuadre de arriba inflado. Por eso el orden es el inverso. -->
+      <p class="ayuda"><b>Anotalo antes de girar en BeePay.</b> Si acá rebota, no
+        gires: lo que pasa la caja es plata de clientes. Anotar no mueve plata;
+        deja escrito el retiro para que el disponible y el cuadre digan la verdad.</p>
       <label class="liq-auto-min">
         <span>La pasarela nos cobra</span>
         <input id="pctPasarela" inputmode="decimal" value="${(pctPas * 100).toFixed(2)}" size="5">
@@ -6400,7 +6411,7 @@ async function pantallaPlataforma() {
        lo que se sabe que rebota sólo cambia el mensaje de lugar. */
     if (v > topeRetiro(socio) + 0.01) { avisar(motivoRetiro(socio)); return; }
     if (!confirm(`Anotar un retiro de ${bs(v)}${para ? ` para ${para}` : " que no es de ningún socio"}.\n\n` +
-                 `No mueve plata: sólo queda registrado que ya salió del monedero.`)) return;
+                 `No mueve plata: deja registrado que sale del monedero. Girá en BeePay después de anotarlo.`)) return;
     const { data, error } = await sb.rpc("registrar_retiro_plataforma",
       { p_monto: v, p_nota: $("#notaRetiro").value || null, p_socio: socio || null });
     if (error) { avisar(sinCodigo(error.message)); return; }
