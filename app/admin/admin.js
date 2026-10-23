@@ -193,7 +193,9 @@ const PANTALLAS = [
 function arrancarApp() {
   $("#pantallaEntrar").hidden = true;
   $("#app").hidden = false;
-  $("#yo").textContent = `${S.yo.nombre} · ${ROLES_TXT[S.yo.rol] || S.yo.rol}`;
+  /* En la barra, el rol sin la aclaración entre paréntesis: ahí sólo hace
+     falta saber quién sos, y la frase larga empujaba el botón de salir. */
+  $("#yo").textContent = `${S.yo.nombre} · ${(ROLES_TXT[S.yo.rol] || S.yo.rol).replace(/ \(.*\)$/, "")}`;
   let mias = PANTALLAS.filter(p =>
     p.roles.includes(S.yo.rol) && (!p.plataforma || S.plataforma));
   /* Para una cuenta de TICKETAZO, Plataforma va primera y es la que abre.
@@ -2317,11 +2319,17 @@ function bloqueOrganizador() {
   if (!d) return "";
   const c = d.cuenta, disponible = Number(d.disponible || 0);
   const retiene = !d.evento_pasado && Number(d.anticipo_pct) < 1;
+  /* La cuenta y el retiro son del admin (0112): la base ya le dice «Sin
+     permiso» a un staff, esto es para no ofrecerle botones que rebotan. */
+  const esAdmin = !!S.yo && S.yo.rol === "admin";
 
   return `
     <h3 class="titulo-bloque">Pagarle al organizador</h3>
     <section class="tarjeta">
-      ${c && !LIQ.editandoCuenta ? `
+      ${!esAdmin ? `
+        <h3>${bs(disponible)} disponibles</h3>
+        <p class="ayuda">La plata y la cuenta para cobrar las maneja el administrador.</p>`
+      : c && !LIQ.editandoCuenta ? `
         <div class="liq-cab">
           <div>
             <h3>${bs(disponible)} disponibles</h3>
@@ -5359,7 +5367,10 @@ async function resolverRevision(ordenId, decision, motivo) {
 
 const EQ = { gente: [], editando: null, alta: false, clave: null, pendiente: null, eventos: [], busca: "" };
 
-const ROLES_TXT = { admin: "Administrador", staff: "Staff",
+/* «Encargado» y no «Staff»: el nombre tiene que decir qué NO hace. Desde
+   0112 el staff no ve la cuenta para cobrar ni retira plata, y un dueño
+   que lee «Staff» no tiene forma de saberlo antes de dárselo a alguien. */
+const ROLES_TXT = { admin: "Administrador", staff: "Encargado (sin plata ni equipo)",
                     rrpp: "Relacionador", portero: "Portero" };
 
 /* Se llama con `fetch` y no con sb.functions.invoke a propósito: invoke
@@ -5770,8 +5781,8 @@ function formAlta() {
 }
 
 const AYUDA_ROL = {
-  admin:   "Todo, incluida esta pantalla. Que haya más de uno es lo que evita quedarse afuera.",
-  staff:   "Eventos, precios y el tablero. No da de alta a nadie.",
+  admin:   "Todo: la plata, la cuenta para cobrar y el equipo, incluida esta pantalla. Que haya más de uno es lo que evita quedarse afuera.",
+  staff:   "Eventos, precios, cortesías y el tablero. No ve la cuenta para cobrar, no retira plata y no da de alta a nadie.",
   rrpp:    "Solo lo suyo: su link, sus ventas y su comisión.",
   portero: "Solo la pantalla de Puerta, para escanear en el ingreso.",
 };
