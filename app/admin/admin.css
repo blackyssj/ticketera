@@ -2546,7 +2546,12 @@ select{transition:border-color .15s ease,box-shadow .15s ease}
 .plat-socios{margin-top:18px}
 .plat-socios .tabla-scroll{margin-top:14px}
 .plat-socios tr.yo td{background:var(--acento-suave)}
-.plat-socios .aviso-caja{margin-top:12px;color:var(--aviso)}
+/* La caja en negativo no se muestra con signo menos: se dice cuánto salió
+   de más, en rojo, porque esa plata es de clientes que esperan su giro. */
+.plat-de-mas{margin:-6px 0 0;font:600 14px/1.45 var(--texto);color:var(--peligro);max-width:60ch}
+/* La línea del tope cuando no hay nada para anotar: sin color de alarma,
+   pero que no se confunda con la ayuda gris de al lado. */
+.plat-cuadre .ayuda.plat-tope-no{color:var(--aviso)}
 
 /* ─── mesas y combos (0107) ───
    La marca va en ámbar como el «Incluye»: es lo que se le promete al

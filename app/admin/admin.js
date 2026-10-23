@@ -5944,12 +5944,45 @@ async function pantallaPlataforma() {
      monedero pero no de la ganancia, que ya lo descuenta. */
   const pagosPas = rpp.error ? [] : (rpp.data || []);
   const debemosPas = Number(t.debemos_pasarela ?? t.costo_pasarela ?? 0);
+  /* Puede ser negativo: el 23/10 estaba en −287 porque salió más ganancia
+     de la que entró. El número se guarda tal cual para las cuentas, pero
+     en pantalla nunca se muestra con signo menos (ver «de más» abajo). */
   const disponible = Number(t.disponible ?? t.margen ?? 0);
-  /* La parte de cada socio (0106). Si falla no se cae el tablero: es una
-     tarjeta más, y el cuadre de la caja no depende de ella. */
+  const deMas = disponible < -0.004 ? -disponible : 0;
+  /* La parte de cada socio (0111). Si falla no se cae el tablero: es una
+     tarjeta más, y el cuadre de la caja no depende de ella. `hoy` es lo
+     que se le puede anotar a cada uno: lo suyo, pero nunca más que la
+     caja. Si la base todavía es la de 0106 (front desplegado antes que
+     la migración) se calcula acá con la misma fórmula. */
   const soc = rs.error ? null : (rs.data || null);
-  const socios = (soc && soc.socios) || [];
+  const socios = ((soc && soc.socios) || []).map(x => ({ ...x,
+    hoy: x.se_puede_hoy != null ? Number(x.se_puede_hoy)
+       : Math.max(0, Math.min(Number(x.queda || 0), disponible)) }));
   const yoSocio = socios.find(x => x.id === S.yo.id);
+  /* Hasta cuánto se puede anotar hoy, para un socio o para nadie. La base
+     decide igual (0111); esto es para no ofrecer lo que va a rebotar. */
+  const topeRetiro = id => {
+    if (!(disponible > 0)) return 0;
+    if (!id) return disponible;
+    const x = socios.find(s => s.id === id);
+    return x ? x.hoy : 0;
+  };
+  const motivoRetiro = id => {
+    if (!(disponible > 0)) return "La caja de ganancia está en 0: no hay nada para retirar.";
+    if (!id) return `Se puede anotar hasta ${bs(disponible)}: lo que hay en la caja.`;
+    const x = socios.find(s => s.id === id);
+    if (!x) return "";
+    if (x.hoy > 0) return `A ${x.nombre} se le puede anotar hasta ${bs(x.hoy)} hoy.`;
+    return Number(x.queda) < 0
+      ? `${x.nombre} ya cobró ${bs(-Number(x.queda))} por adelantado: no le queda nada para retirar.`
+      : `A ${x.nombre} no le queda nada para retirar.`;
+  };
+  const socioInicial = yoSocio ? yoSocio.id : "";
+  const montoInicial = topeRetiro(socioInicial);
+  /* Lo común: lo que salió para los tres (los giros sin socio). Viene de
+     la base desde 0111; con la de antes se reconstruye del cuadre. */
+  const comun = soc && soc.comun != null ? Number(soc.comun)
+    : Number(t.retirado || 0) - socios.reduce((a, x) => a + Number(x.cobro || 0), 0);
   /* La plata no se liquida por cliente, se liquida por evento: cada fecha
      tiene su tope del 70%, su disponible y sus giros. Sin esta tabla, para
      saber cuál de las dos noches de un cliente tiene plata lista había que
@@ -6023,21 +6056,27 @@ async function pantallaPlataforma() {
           <dd>−${bs(t.costo_pasarela)}</dd></div>
         <div><dt>Nos queda</dt><dd class="ok">${bs(t.margen)}</dd></div>
         <div class="tenue"><dt>Ya retirado</dt><dd>−${bs(t.retirado)}</dd></div>
-        <div><dt>Disponible para retirar</dt><dd${disponible > 0.99 ? ' class="ok"' : ""}>${bs(disponible)}</dd></div>
+        <div><dt>Disponible para retirar</dt><dd${disponible > 0.99 ? ' class="ok"' : ""}>${bs(Math.max(0, disponible))}</dd></div>
         <div><dt>Le debemos a la pasarela</dt><dd>${bs(debemosPas)}</dd></div>
       </dl>
+      ${deMas ? `<p class="plat-de-mas">Se retiraron ${bs(deMas)} de más. Es plata de
+        clientes y se cubre con la ganancia que entre.</p>` : ""}
+      <!-- Con la caja en cero el campo no se completa solo y el botón queda
+           apagado con el motivo al lado: el 23/10 el panel ofrecía «Retiré
+           598,99» con la caja en −287, y la base lo aceptaba. -->
       <label class="liq-auto-min">
         <span>Retiré</span>
-        <input id="montoRetiro" inputmode="decimal" value="${yoSocio && Number(yoSocio.queda) > 0
-          ? Number(yoSocio.queda).toFixed(2) : ""}" size="8">
+        <input id="montoRetiro" inputmode="decimal" value="${montoInicial > 0
+          ? montoInicial.toFixed(2) : ""}"${montoInicial > 0 ? ' data-auto="1"' : ""} size="8">
         <span>Bs para</span>
         <select id="socioRetiro">
-          ${socios.map(x => `<option value="${esc(x.id)}"${x.id === S.yo.id ? " selected" : ""}>${esc(x.nombre)}</option>`).join("")}
-          <option value="">Nadie (no es de un socio)</option>
+          ${socios.map(x => `<option value="${esc(x.id)}"${x.id === socioInicial ? " selected" : ""}>${esc(x.nombre)}</option>`).join("")}
+          <option value=""${socioInicial ? "" : " selected"}>Nadie (no es de un socio)</option>
         </select>
         <input id="notaRetiro" type="text" placeholder="nota o referencia (opcional)" size="28">
-        <button type="button" class="btn plano chico" id="btnRetiro">Anotar retiro</button>
+        <button type="button" class="btn plano chico" id="btnRetiro"${montoInicial > 0 ? "" : " disabled"}>Anotar retiro</button>
       </label>
+      <p class="ayuda${montoInicial > 0 ? "" : " plat-tope-no"}" id="retiroTope">${esc(motivoRetiro(socioInicial))}</p>
       <p class="ayuda">El giro se hace a mano en BeePay; acá sólo queda anotado
         para que el disponible y el cuadre digan la verdad.</p>
       <label class="liq-auto-min">
@@ -6064,27 +6103,32 @@ async function pantallaPlataforma() {
     ${soc ? `
     <section class="tarjeta plat-socios">
       <h3>Socios</h3>
-      <p class="ayuda">${soc.corte
-        ? `En el cierre del ${fechaBO(soc.corte.al)} se repartieron
-           ${bs(soc.corte.repartido)}. Desde ahí la ganancia nueva es
-           <b>${bs(soc.ganancia_nueva)}</b> y se suma sola, en partes iguales.`
-        : `La ganancia se reparte en partes iguales entre los ${num(soc.cantidad)} socios.`}
-        Cada retiro se anota a nombre de quien lo cobró.</p>
+      <!-- Ya no habla del corte del 17/10: esa base no contaba el reparto
+           del 02/10 y la cuenta de cada uno no cerraba con la caja (0111). -->
+      <p class="ayuda">La ganancia (${bs(soc.ganancia ?? t.margen)}) menos lo que salió
+        para todos (${bs(comun)}) se reparte en partes iguales entre los
+        ${num(soc.cantidad)} socios. Cada retiro se anota a nombre de quien lo cobró;
+        lo que se puede retirar hoy nunca pasa lo que hay en la caja.</p>
       <div class="tabla-scroll">
         <table class="tabla">
           <thead><tr><th>Socio</th><th class="num">Le toca</th><th class="num">Cobró</th>
-            <th class="num">Le queda</th></tr></thead>
-          <tbody>${socios.map(x => `<tr${x.id === S.yo.id ? ' class="yo"' : ""}>
+            <th class="num">Le queda</th><th class="num">Se puede retirar hoy</th></tr></thead>
+          <tbody>${socios.map(x => {
+            const q = Number(x.queda || 0);
+            return `<tr${x.id === S.yo.id ? ' class="yo"' : ""}>
             <td><b>${esc(x.nombre)}</b>${x.id === S.yo.id ? ` <em class="ayuda">vos</em>` : ""}</td>
             <td class="num">${bs(x.le_toca)}</td>
-            <td class="num tenue">−${bs(x.cobro)}</td>
-            <td class="num${Number(x.queda) > 0.99 ? " ok" : ""}"><b>${bs(x.queda)}</b></td>
-          </tr>`).join("")}</tbody>
+            <td class="num tenue">${bs(x.cobro)}</td>
+            <td class="num">${q < -0.004
+              /* Negativo es que cobró antes de que entrara su parte: se dice
+                 así y sin signo menos, que en una tabla de plata se lee como
+                 una deuda con alguien de afuera. */
+              ? `<span class="tenue">adelantado ${bs(-q)}</span>`
+              : `<b${q > 0.99 ? ' class="ok"' : ""}>${bs(q)}</b>`}</td>
+            <td class="num${x.hoy > 0.99 ? " ok" : ""}"><b>${bs(x.hoy)}</b></td>
+          </tr>`; }).join("")}</tbody>
         </table>
       </div>
-      ${disponible < 0 ? `<p class="ayuda aviso-caja">Ojo: ya se retiró ${bs(-disponible)} más de la
-        ganancia que entró. Lo que falta cobrar sale de la ganancia que venga, no
-        del monedero de hoy: ahí lo que hay es de los clientes.</p>` : ""}
     </section>` : ""}
 
     <h3 class="titulo-bloque sep">Por cliente</h3>
@@ -6215,12 +6259,31 @@ async function pantallaPlataforma() {
     if (data.ok) pantallaPlataforma();
   };
 
+  /* Cambiar de socio cambia el tope: la línea de abajo lo dice, el botón
+     se apaga si no hay nada para ese socio, y el monto se rellena sólo si
+     lo había puesto la pantalla (lo que escribió una persona no se pisa). */
+  const sr = $("#socioRetiro"), mr = $("#montoRetiro");
+  if (mr) mr.oninput = () => { delete mr.dataset.auto; };
+  if (sr) sr.onchange = () => {
+    const tope = topeRetiro(sr.value), linea = $("#retiroTope");
+    linea.textContent = motivoRetiro(sr.value);
+    linea.classList.toggle("plat-tope-no", !(tope > 0));
+    $("#btnRetiro").disabled = !(tope > 0);
+    if (mr.dataset.auto || !mr.value) {
+      mr.value = tope > 0 ? tope.toFixed(2) : "";
+      if (tope > 0) mr.dataset.auto = "1"; else delete mr.dataset.auto;
+    }
+  };
+
   const br = $("#btnRetiro");
   if (br) br.onclick = async () => {
     const v = Number(String($("#montoRetiro").value).replace(",", "."));
     if (!(v > 0)) { avisar("Poné el monto que retiraste."); return; }
     const sel = $("#socioRetiro"), socio = sel ? sel.value : "";
     const para = socio ? (socios.find(x => x.id === socio) || {}).nombre : null;
+    /* El mismo tope que la base (0111), con su centavo de margen: mandar
+       lo que se sabe que rebota sólo cambia el mensaje de lugar. */
+    if (v > topeRetiro(socio) + 0.01) { avisar(motivoRetiro(socio)); return; }
     if (!confirm(`Anotar un retiro de ${bs(v)}${para ? ` para ${para}` : " que no es de ningún socio"}.\n\n` +
                  `No mueve plata: sólo queda registrado que ya salió del monedero.`)) return;
     const { data, error } = await sb.rpc("registrar_retiro_plataforma",
