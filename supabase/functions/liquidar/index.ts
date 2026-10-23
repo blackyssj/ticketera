@@ -302,8 +302,9 @@ Deno.serve(async (req) => {
   /* Que sea un token de PERSONA, no la anon key: la reja del gateway acepta
      cualquier JWT firmado por el proyecto, y la anon key es uno. Se le
      pregunta a /auth/v1/user, igual que en `equipo`. El rol no se mira acá
-     —de eso se encarga puede_editar() adentro de la base— pero un token que
-     no es de nadie tiene que morir antes de tocar una tabla. */
+     —de eso se encarga la base: sólo el admin del cliente (mi_rol() =
+     'admin', 0112) o un operador de Plataforma— pero un token que no es de
+     nadie tiene que morir antes de tocar una tabla. */
   const quien = await fetch(`${SB}/auth/v1/user`, {
     headers: { apikey: KEY, Authorization: `Bearer ${token}` },
   }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
@@ -315,8 +316,9 @@ Deno.serve(async (req) => {
     if (!evento) return json({ ok: false, motivo: "Falta el evento." }, 400);
 
     /* Dos puertas para el mismo trámite. `pedir_pago_organizador` es la del
-       cliente girándose a sí mismo (guardia: puede_editar sobre SU
-       organizador). `pedir_pago_plataforma` es la de TICKETAZO girándole a
+       cliente girándose a sí mismo (guardia: sólo el admin de SU
+       organizador, mi_rol() = 'admin' desde 0112; un staff recibe «Sin
+       permiso»). `pedir_pago_plataforma` es la de TICKETAZO girándole a
        un cliente sin entrar con sus credenciales (guardia: es_plataforma).
 
        Quién puede usar cuál lo decide la BASE, no esta bandera: las dos
