@@ -2355,8 +2355,10 @@ function bloqueOrganizador() {
   const adelanto = !d.evento_pasado && Number(d.anticipo_pct) < 1;
   const techoManda = topeRealManda(d);
   /* Lo que manda hoy es el menor de los dos techos; lo retirado se le
-     resta. Si se retiró más (una anulación después de un giro), la cuenta
-     no puede dar negativa: se dice cuánto y de dónde sale. */
+     resta. Si se retiró más, la cuenta no puede dar negativa: se dice
+     cuánto, sin inventar la causa. Puede ser una anulación después de un
+     giro, o un evento que se cerró antes de la fecha, se retiró el 100% y
+     se reabrió: vuelve el adelanto y lo retirado queda arriba del tope. */
   const manda = techoManda ? Number(d.techo_real) : tope;
   const deMas = pagado - manda > 0.004 ? pagado - manda : 0;
 
@@ -2372,7 +2374,9 @@ function bloqueOrganizador() {
       </dl>
     </div>
     ${deMas ? `<p class="ayuda aviso-real">Ya retiraste ${bs(deMas)} más de lo que
-      hay hoy (hubo anulaciones después de un retiro). Se descuenta de lo que vendas.</p>` : ""}
+      podés retirar hoy. ${adelanto
+        ? "Se acomoda con lo que vendas y, cuando pase el evento, con el resto de lo vendido."
+        : "Se descuenta de lo que vendas."}</p>` : ""}
     ${adelanto ? `<p class="ayuda">Hasta que pase el evento podés retirar el
       ${Math.round(Number(d.anticipo_pct) * 100)}% de lo vendido. El resto queda
       para después, por si hay que devolver entradas.</p>` : ""}
@@ -2384,14 +2388,29 @@ function bloqueOrganizador() {
 
   /* Las comisiones de los relacionadores: el cliente se las paga a su
      gente, no pasan por nosotros. Con el evento cerrado y líneas marcadas
-     como pagadas, se cuenta sólo lo que falta. */
-  const lineas = (LIQ.datos && LIQ.datos.foto && LIQ.datos.foto.lineas) || null;
+     como pagadas, se cuenta sólo lo que falta. Las líneas son de la FOTO
+     y sólo valen con el evento cerrado: reabrir (0039) deja la foto
+     vieja como vigente, y sus líneas no cuentan lo vendido después. Ahí
+     manda d.comisiones (la cuenta de hoy), y lo pagado con la foto vieja
+     se dice aparte en vez de restarlo: la línea de hoy de un relacionador
+     no es la misma que la de la foto. */
+  const datosLiq = LIQ.datos || {};
+  const cerradoLiq = !!(datosLiq.evento && datosLiq.evento.cerrado);
+  const fotoLineas = (datosLiq.foto && datosLiq.foto.lineas) || null;
+  const lineas = cerradoLiq ? fotoLineas : null;
   const debe = lineas
     ? lineas.filter(l => !l.pagada).reduce((a, l) => a + Number(l.comision || 0), 0)
     : Number(d.comisiones || 0);
+  const pagadoFotoVieja = !cerradoLiq && fotoLineas
+    ? fotoLineas.filter(l => l.pagada)
+        .reduce((a, l) => a + Number(l.pagado_monto ?? l.comision ?? 0), 0)
+    : 0;
   const comisiones = debe > 0.004
-    ? `<p class="ayuda tu-comisiones">A tus relacionadores les debés <b>${bs(debe)}</b> de
-        comisiones. Las pagás vos: no se descuentan de tu retiro.</p>`
+    ? `<p class="ayuda tu-comisiones">${pagadoFotoVieja > 0.004
+        ? `Las comisiones de tus relacionadores suman <b>${bs(debe)}</b>; con el cierre
+           anterior ya pagaste ${bs(pagadoFotoVieja)}.`
+        : `A tus relacionadores les debés <b>${bs(debe)}</b> de comisiones.`}
+        Las pagás vos: no se descuentan de tu retiro.</p>`
     : (Number(d.comisiones || 0) > 0 && lineas
       ? `<p class="ayuda tu-comisiones">Las comisiones de tus relacionadores ya están pagadas.</p>` : "");
 
