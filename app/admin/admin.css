@@ -1712,6 +1712,15 @@ body[data-pantalla="puerta"][data-filtro="1"] .puerta-visor::before{
 .liq-difiere b,.liq-pendiente b{color:var(--aviso)}
 .liq-pendiente .ayuda,.liq-difiere .ayuda{margin-bottom:0}
 .liq-ok{color:var(--ok);font-size:14px;margin:14px 0 0}
+/* «Tu plata»: la cuenta arranca arriba de la tarjeta (sin el margen de
+   cuando venía debajo de un título) y el total es lo que podés retirar. */
+.liq-cifras.tu-cuenta{margin-top:0}
+.tu-destino{align-items:center;margin-top:10px}
+.tu-destino .ayuda{margin:0;flex:1 1 16em}
+.tu-comisiones{margin-top:14px}
+/* Las comisiones fuera de la resta (0065): un renglón suelto debajo del
+   total, con el mismo dibujo, para que no parezca que se descuentan. */
+.liq-cifras dl.liq-aparte{margin-top:14px}
 
 .liq-linea{align-items:center}
 /* Los pagos y los retiros en columnas en la compu, como la lista de

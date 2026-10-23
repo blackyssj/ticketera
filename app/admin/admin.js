@@ -2304,76 +2304,112 @@ function pintarCierre() {
   };
 }
 
-/* ══ pagarle al organizador ══════════════════════════════════════
+/* ══ tu plata ═════════════════════════════════════════════════════
    Vive en esta pantalla y no en una propia porque es la misma pregunta que
    ya se está mirando: cuánto entró, cuánto es de cada uno. Y aparece esté
-   el evento cerrado o no — los anticipos se piden mientras se vende, que es
-   justo cuando el organizador los necesita.
+   el evento cerrado o no — los adelantos se piden mientras se vende, que es
+   justo cuando el cliente los necesita.
 
-   Lo que se muestra es el DISPONIBLE, no el neto: hasta que el evento no
-   pasa se retiene una parte, porque si el evento se cae los reembolsos los
-   ponemos nosotros. Decirle "tenés 50.000" y dejarlo sacar 35.000 sin
+   Le habla al cliente en segunda persona y con UNA cuenta que cierra:
+   vendiste · adelanto · ya retiraste = podés retirar. Antes decía
+   «Pagarle al organizador» y «Pagar 5.000»: la organizadora de Distrito no
+   lo tocaba porque creía que le tenía que pagar a TICKETAZO. Y mostraba
+   «Se vendió 10.000 · Comisiones −1.500 · Le corresponde 10.000», una resta
+   que no da porque desde 0065 las comisiones no se descuentan del giro:
+   ahora van aparte y sin signo menos.
+
+   Lo que se muestra es el DISPONIBLE, no lo vendido: hasta que el evento
+   pasa se retiene una parte, porque si el evento se cae los reembolsos
+   los ponemos nosotros. Decirle "tenés 50.000" y dejarlo sacar 35.000 sin
    explicar por qué es cómo se pierde la confianza que este botón vende. */
+const bancoCorto = n => /BCP/.test(n || "") ? "BCP"
+  : String(n || "").replace(/^Banco (de (la )?)?/i, "");
+const ult4 = cta => {
+  const t = String(cta || "");
+  return t.startsWith("···") ? t : "···" + t.replace(/\D/g, "").slice(-4);
+};
+
 function bloqueOrganizador() {
   const d = LIQ.disp;
   if (!d) return "";
   const c = d.cuenta, disponible = Number(d.disponible || 0);
-  const retiene = !d.evento_pasado && Number(d.anticipo_pct) < 1;
   /* La cuenta y el retiro son del admin (0112): la base ya le dice «Sin
      permiso» a un staff, esto es para no ofrecerle botones que rebotan. */
   const esAdmin = !!S.yo && S.yo.rol === "admin";
+  const bruto = Number(d.bruto || 0), tope = Number(d.tope || 0), pagado = Number(d.pagado || 0);
+  const adelanto = !d.evento_pasado && Number(d.anticipo_pct) < 1;
+  const techoManda = topeRealManda(d);
+  /* Lo que manda hoy es el menor de los dos techos; lo retirado se le
+     resta. Si se retiró más (una anulación después de un giro), la cuenta
+     no puede dar negativa: se dice cuánto y de dónde sale. */
+  const manda = techoManda ? Number(d.techo_real) : tope;
+  const deMas = pagado - manda > 0.004 ? pagado - manda : 0;
 
-  return `
-    <h3 class="titulo-bloque">Pagarle al organizador</h3>
-    <section class="tarjeta">
-      ${!esAdmin ? `
-        <h3>${bs(disponible)} disponibles</h3>
-        <p class="ayuda">La plata y la cuenta para cobrar las maneja el administrador.</p>`
-      : c && !LIQ.editandoCuenta ? `
-        <div class="liq-cab">
-          <div>
-            <h3>${bs(disponible)} disponibles</h3>
-            <p class="ayuda">A ${esc(c.titular)} · ${esc(c.banco)} · cuenta ${esc(c.cuenta)}</p>
-          </div>
-          <button type="button" class="btn plano chico" id="btnCuenta">Cambiar la cuenta</button>
-        </div>
-        ${retiene ? `<p class="ayuda">De los ${bs(d.neto)} que le corresponden se
-          puede adelantar el ${Math.round(Number(d.anticipo_pct) * 100)}% hasta que
-          pase el evento. El resto queda para después, por si hay que devolver
-          entradas.</p>` : ""}
-        ${topeRealManda(d) ? `<p class="ayuda aviso-real">El disponible está
-          limitado por lo que <b>realmente entró</b> por la pasarela:
-          ${bs(d.cobrado_real)}.${Number(d.simuladas) ? ` Hay ${d.simuladas}
-          ${Number(d.simuladas) === 1 ? "orden de prueba" : "órdenes de prueba"}
-          por ${bs(d.simuladas_bs)} que suman al total del evento pero nunca se
-          cobraron.` : ""}</p>` : ""}
-        <div class="liq-cifras">
-          <dl>
-            <div><dt>Se vendió</dt><dd>${bs(d.bruto)}</dd></div>
-            <div class="tenue"><dt>Comisiones de relacionadores</dt><dd>−${bs(d.comisiones)}</dd></div>
-            <div><dt>Le corresponde</dt><dd>${bs(d.neto)}</dd></div>
-            <div class="tenue"><dt>Entró por la pasarela</dt><dd>${bs(d.cobrado_real)}</dd></div>
-            <div class="tenue"><dt>Tope de hoy</dt><dd>${bs(d.tope)}</dd></div>
-            <div class="tenue"><dt>Ya pedido</dt><dd>−${bs(d.pagado)}</dd></div>
-            <div><dt>Disponible ahora</dt><dd>${bs(disponible)}</dd></div>
-          </dl>
-        </div>
+  const cuenta = `
+    <div class="liq-cifras tu-cuenta">
+      <dl>
+        <div><dt>Vendiste</dt><dd>${bs(bruto)}</dd></div>
+        ${adelanto ? `<div><dt>Adelanto ${Math.round(Number(d.anticipo_pct) * 100)}% hasta el evento</dt>
+          <dd>${bs(tope)}</dd></div>` : ""}
+        ${techoManda ? `<div><dt>Entró por la pasarela</dt><dd>${bs(d.techo_real)}</dd></div>` : ""}
+        ${pagado ? `<div class="tenue"><dt>Ya retiraste</dt><dd>−${bs(pagado)}</dd></div>` : ""}
+        <div class="total"><dt>Podés retirar</dt><dd>${bs(disponible)}</dd></div>
+      </dl>
+    </div>
+    ${deMas ? `<p class="ayuda aviso-real">Ya retiraste ${bs(deMas)} más de lo que
+      hay hoy (hubo anulaciones después de un retiro). Se descuenta de lo que vendas.</p>` : ""}
+    ${adelanto ? `<p class="ayuda">Hasta que pase el evento podés retirar el
+      ${Math.round(Number(d.anticipo_pct) * 100)}% de lo vendido. El resto queda
+      para después, por si hay que devolver entradas.</p>` : ""}
+    ${techoManda ? `<p class="ayuda aviso-real">Lo que podés retirar está limitado
+      por lo que <b>realmente entró</b> por la pasarela: ${bs(d.cobrado_real)}.${
+      Number(d.simuladas) ? ` Hay ${d.simuladas}
+      ${Number(d.simuladas) === 1 ? "orden de prueba" : "órdenes de prueba"}
+      por ${bs(d.simuladas_bs)} que suman a lo vendido pero nunca se cobraron.` : ""}</p>` : ""}`;
+
+  /* Las comisiones de los relacionadores: el cliente se las paga a su
+     gente, no pasan por nosotros. Con el evento cerrado y líneas marcadas
+     como pagadas, se cuenta sólo lo que falta. */
+  const lineas = (LIQ.datos && LIQ.datos.foto && LIQ.datos.foto.lineas) || null;
+  const debe = lineas
+    ? lineas.filter(l => !l.pagada).reduce((a, l) => a + Number(l.comision || 0), 0)
+    : Number(d.comisiones || 0);
+  const comisiones = debe > 0.004
+    ? `<p class="ayuda tu-comisiones">A tus relacionadores les debés <b>${bs(debe)}</b> de
+        comisiones. Las pagás vos: no se descuentan de tu retiro.</p>`
+    : (Number(d.comisiones || 0) > 0 && lineas
+      ? `<p class="ayuda tu-comisiones">Las comisiones de tus relacionadores ya están pagadas.</p>` : "");
+
+  const retirar = !esAdmin
+    ? `<p class="ayuda">La plata y la cuenta para cobrar las maneja el administrador.${
+        c ? ` Sale a ${esc(bancoCorto(c.banco))} ${esc(ult4(c.cuenta))}.` : ""}</p>`
+    : LIQ.editandoCuenta ? formCuenta(c)
+    : c ? `
         <div class="acciones">
           <button class="btn primario" id="btnPagarOrg"${disponible < 0.01 ? " disabled" : ""}>
-            ${disponible < 0.01 ? "Nada para pagar" : `Pagar ${bs(disponible)}`}</button>
+            ${disponible < 0.01 ? "Nada para retirar"
+              : `Retirar ${bs(disponible)} a mi ${esc(bancoCorto(c.banco))} ${esc(ult4(c.cuenta))}`}</button>
         </div>
-        ${bloqueAutomatico(d)}`
-      : LIQ.editandoCuenta ? formCuenta(c)
-      : `<h3>Falta la cuenta bancaria</h3>
-         <p class="ayuda">Sin ella no se le puede depositar. El nombre del titular
-           tiene que ser el que figura en el banco: si no coincide, la
-           transferencia rebota.</p>
-         <div class="acciones">
-           <button class="btn primario" id="btnCuenta">Cargar la cuenta</button>
-         </div>`}
+        <div class="liq-cab tu-destino">
+          <p class="ayuda">Tu cuenta: ${esc(c.titular)} · ${esc(c.banco)} · ${esc(c.cuenta)}</p>
+          <button type="button" class="btn plano chico" id="btnCuenta">Cambiar tu cuenta</button>
+        </div>`
+    : `<h4 class="liq-sub">Cargá tu cuenta para cobrar</h4>
+       <p class="ayuda">Sin ella no te podemos depositar. El titular tiene que
+         estar escrito como en el banco: si no coincide, la transferencia rebota.</p>
+       <div class="acciones">
+         <button class="btn primario" id="btnCuenta">Cargar tu cuenta</button>
+       </div>`;
 
+  return `
+    <h3 class="titulo-bloque">Tu plata</h3>
+    <section class="tarjeta">
+      ${cuenta}
+      ${retirar}
+      ${comisiones}
+      ${esAdmin && c && !LIQ.editandoCuenta ? bloqueAutomatico(d) : ""}
       ${LIQ.pagos.length ? `
-        <h4 class="liq-sub">Pagos hechos</h4>
+        <h4 class="liq-sub">Retiros hechos</h4>
         <ul class="lista">${LIQ.pagos.map(filaPagoOrg).join("")}</ul>` : ""}
     </section>`;
 }
@@ -2529,8 +2565,10 @@ async function guardarCuenta() {
 async function pedirPagoOrganizador() {
   const d = LIQ.disp, monto = Number(d.disponible || 0);
   if (monto < 0.01) return;
-  if (!confirm(`Pagar ${bs(monto)} a ${d.cuenta.titular}\n` +
-               `${d.cuenta.banco}, cuenta ${d.cuenta.cuenta}.\n\n` +
+  /* La cuenta completa en la confirmación: es el último momento para ver
+     que el destino es el tuyo antes de que la plata salga. */
+  if (!confirm(`Vas a retirar ${bs(monto)} a tu cuenta:\n` +
+               `${d.cuenta.titular}\n${d.cuenta.banco}, cuenta ${d.cuenta.cuenta}.\n\n` +
                `Sale del monedero de TICKETAZO y no se deshace desde acá.`)) return;
 
   const btn = $("#btnPagarOrg");
@@ -2628,7 +2666,15 @@ function bajarLiquidacion() {
 /* El fee viaja aparte en las tres cifras porque no es del organizador: es
    lo de la plataforma. Meterlo adentro del bruto haría que el boliche crea
    que le corresponde y descubra que no cuando cobra menos. */
+/* Desde 0065 el neto es el bruto: las comisiones no se descuentan del
+   giro, así que van debajo del total y fuera de la resta. Una foto cerrada
+   antes de 0065 tiene neto = bruto − comisiones: ésa se sigue mostrando
+   como resta, porque es con la que se pagó. */
 function cuadroCifras(c, titulo) {
+  const resta = Number(c.neto) !== Number(c.bruto);
+  const partes = c.comisiones_entradas != null && c.comisiones_mesas != null ? `
+        <div class="tenue sub"><dt>por entradas</dt><dd>${bs(c.comisiones_entradas)}</dd></div>
+        <div class="tenue sub"><dt>por mesas</dt><dd>${bs(c.comisiones_mesas)}</dd></div>` : "";
   return `
     <div class="liq-cifras">
       <h4>${esc(titulo)}</h4>
@@ -2636,13 +2682,14 @@ function cuadroCifras(c, titulo) {
         <div><dt>Se vendió</dt><dd>${bs(c.bruto)}</dd></div>
         <div class="tenue"><dt>Servicio de TICKETAZO</dt><dd>${bs(c.fee)}</dd></div>
         <div class="tenue"><dt>Pasó por la pasarela</dt><dd>${bs(c.cobrado)}</dd></div>
-        <div><dt>Comisiones de relacionadores</dt><dd>− ${bs(c.comisiones)}</dd></div>
-        ${c.comisiones_entradas != null && c.comisiones_mesas != null ? `
-        <div class="tenue sub"><dt>por entradas</dt><dd>${bs(c.comisiones_entradas)}</dd></div>
-        <div class="tenue sub"><dt>por mesas</dt><dd>${bs(c.comisiones_mesas)}</dd></div>` : ""}
-        <div class="total"><dt>Para el organizador</dt><dd>${bs(c.neto)}</dd></div>
+        ${resta ? `<div><dt>Comisiones de relacionadores</dt><dd>− ${bs(c.comisiones)}</dd></div>${partes}` : ""}
+        <div class="total"><dt>Para vos</dt><dd>${bs(c.neto)}</dd></div>
       </dl>
-      <p class="ayuda">${c.entradas} ${Number(c.entradas) === 1 ? "manilla" : "manillas"}
+      ${!resta && Number(c.comisiones) ? `
+      <dl class="liq-aparte">
+        <div><dt>Comisiones de relacionadores (las pagás vos)</dt><dd>${bs(c.comisiones)}</dd></div>${partes}
+      </dl>` : ""}
+      <p class="ayuda">${c.entradas} ${Number(c.entradas) === 1 ? "entrada" : "entradas"}
          en ${c.ordenes} ${Number(c.ordenes) === 1 ? "compra" : "compras"}.</p>
     </div>`;
 }
