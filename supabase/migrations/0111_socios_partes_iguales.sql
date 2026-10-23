@@ -21,8 +21,19 @@
 -- Los giros tempranos a la Ganadero de José (622,29, 573,89 y 142,71) y la
 -- devolución de 78 no son de ningún socio: son de los tres por igual.
 --
+-- ── quién es socio ──
+-- En 0106 «socio» era «perfil activo en plataforma_operador». Pero esa
+-- tabla es de ACCESO (0069: quien de TICKETAZO ve el negocio entero), no
+-- de propiedad. Con «le toca» calculado sobre toda la ganancia histórica,
+-- darle Plataforma a alguien que no es socio (quien da de alta clientes,
+-- 0105) le daba un cuarto de todo lo ganado desde el principio, y
+-- desactivar un perfil para bloquear un teléfono perdido le repartía la
+-- parte de ese socio a los otros dos. Ahora es una columna aparte,
+-- `plataforma_operador.socio`, que arranca en false: dar acceso no da
+-- plata, y `perfiles.activo` (que es acceso) ya no mueve el reparto.
+--
 -- ── el modelo ──
---   común     = todo lo retirado − lo cobrado por los socios de hoy
+--   común     = todo lo retirado − lo cobrado por los socios
 --               (= los retiros sin socio; escrito así, un retiro de un ex
 --               socio cae en lo común y la cuenta de abajo no se rompe)
 --   le toca   = (ganancia − común) / socios, repartido en CENTAVOS
@@ -49,9 +60,26 @@
 -- el filo, un peso de margen ya es plata de clientes.
 --
 -- Consecuencia que hay que saber: un giro que ya salió por BeePay y pasa la
--- caja NO se puede anotar desde el panel. Se anota con una migración
--- (regla 3) y la caja queda en negativo a la vista, que es lo que pasó.
+-- caja NO se puede anotar desde el panel. Por eso el panel dice que se
+-- anota ANTES de girar: si acá rebota, no se gira. Si igual salió, se
+-- anota con una migración (regla 3) y la caja queda en negativo a la
+-- vista, que es lo que pasó. Una vía «ya salió» que saltee la guardia no
+-- se hizo a propósito: José decidió que la caja manda.
 -- ============================================================
+
+-- ── quién es socio ─────────────────────────────────────────
+alter table plataforma_operador add column if not exists socio boolean not null default false;
+comment on column plataforma_operador.socio is
+  'Socio de TICKETAZO: entra en el reparto de la ganancia en partes iguales (socios_plataforma, 0111). Arranca en false a proposito: ser operador es acceso al panel de Plataforma, no una parte del negocio. Ni perfiles.activo ni sacar el acceso cambian el reparto; un ex socio se marca false a mano, por migracion, y lo que cobro pasa a lo comun.';
+comment on table plataforma_operador is
+  'Quien de TICKETAZO puede ver el negocio entero. Tabla aparte de perfiles a proposito: perfiles tiene policies de update para el admin de cada cliente, y una columna ahi la podria escribir el propio cliente para verse todo. Estar aca NO es ser socio: eso es la columna socio (0111).';
+-- Los tres de hoy. Sólo la primera vez: si ya hay algún socio marcado, lo
+-- de la tabla manda y esta migración no lo pisa.
+update plataforma_operador po set socio = true
+  from perfiles p
+ where p.id = po.perfil_id
+   and p.nombre in ('Jose Menacho', 'Francisco Aguilera', 'Juan Pablo Messmer')
+   and not exists (select 1 from plataforma_operador x where x.socio);
 
 -- ── la cuenta ──────────────────────────────────────────────
 create or replace function socios_plataforma() returns jsonb
@@ -71,13 +99,12 @@ begin
   v_retirado := (v_tot->>'retirado')::numeric;
   v_disp     := (v_tot->>'disponible')::numeric;
 
-  select count(*) into v_n
-    from plataforma_operador po join perfiles p on p.id = po.perfil_id and p.activo;
+  -- Socio es la columna, no el acceso: sin mirar perfiles.activo.
+  select count(*) into v_n from plataforma_operador po where po.socio;
 
   select coalesce(sum(r.monto), 0) into v_cobrado
     from retiro_plataforma r
-   where r.socio_id in (select po.perfil_id from plataforma_operador po
-                          join perfiles p on p.id = po.perfil_id and p.activo);
+   where r.socio_id in (select po.perfil_id from plataforma_operador po where po.socio);
   v_comun   := v_retirado - v_cobrado;
   v_reparto := v_ganancia - v_comun;
 
@@ -100,7 +127,8 @@ begin
                                  then 1 else 0 end) / 100.0)::numeric(12,2) as le_toca,
                  (select coalesce(sum(r.monto), 0) from retiro_plataforma r
                    where r.socio_id = p.id)::numeric(12,2) as cobro
-            from plataforma_operador po join perfiles p on p.id = po.perfil_id and p.activo) s;
+            from plataforma_operador po join perfiles p on p.id = po.perfil_id
+           where po.socio) s;
 
   -- Historia: el último corte y lo ganado desde él, como en 0106.
   select * into v_ult from socio_corte order by al desc limit 1;
@@ -147,7 +175,7 @@ begin
 
   if p_socio is not null then
     select p.nombre into v_nombre from plataforma_operador po join perfiles p on p.id = po.perfil_id
-     where po.perfil_id = p_socio;
+     where po.perfil_id = p_socio and po.socio;
     if v_nombre is null then
       return jsonb_build_object('ok', false, 'motivo', 'Ese socio no existe.');
     end if;
