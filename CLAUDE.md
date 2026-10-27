@@ -117,6 +117,17 @@ rompiéndole el acceso a todos— el día que alguien se va.
   Puerta confirma (sin devolución). Las funciones del sync prenden el
   permiso con `set_config(…, true)`: un `set ticketazo.… = 'on'` en el
   CREATE FUNCTION es de superusuario y la migración no aplica en Supabase.
+- **La entrada del correo la dibuja Vercel, no el navegador.**
+  `app/api/entrada.js` corre el MISMO `app/ticket.js` en Node con
+  `@napi-rs/canvas` (Skia, como Chrome) y `enviar-entradas` le pide una
+  imagen por entrada, firmada con `ENTRADA_FIRMA`. Es la única dependencia
+  npm del sitio (`app/package.json`) y la única razón de que Vercel haga
+  `npm install`: Supabase no corre addons nativos y en Deno no hay un canvas
+  que dibuje igual. Si tocás `ticket.js`, el correo cambia en el mismo
+  deploy; si usás algo de canvas nuevo, probalo con la función (puede no
+  tenerlo). `ENTRADA_FIRMA` tiene que ser el mismo valor en Vercel y en los
+  secrets de Supabase; si no coinciden, el correo sale igual pero con el QR
+  en tabla. Probar lo desplegado: `node scripts/probar-entrada.mjs <archivo>`.
 
 ## Antes de decir que algo anda
 

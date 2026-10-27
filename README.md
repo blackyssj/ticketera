@@ -15,6 +15,7 @@ TICKETAZO es una ticketera multi-tenant con portada pública y landing de autose
 | Carpeta | Qué es |
 |---|---|
 | `app/` | La landing pública. HTML/CSS/JS planos, sin build |
+| `app/api/entrada.js` | La única función de Vercel: dibuja la entrada del correo con el mismo `ticket.js` (Node + `@napi-rs/canvas`) |
 | `supabase/migrations/` | Las 51 migraciones, en orden |
 | `supabase/functions/` | Las 13 Edge Functions |
 | `supabase/seed.sql` | El evento de prueba (Amstel Ferial) |
