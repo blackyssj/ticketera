@@ -128,6 +128,11 @@ rompiéndole el acceso a todos— el día que alguien se va.
   tenerlo). `ENTRADA_FIRMA` tiene que ser el mismo valor en Vercel y en los
   secrets de Supabase; si no coinciden, el correo sale igual pero con el QR
   en tabla. Probar lo desplegado: `node scripts/probar-entrada.mjs <archivo>`.
+  Las imágenes van como adjunto inline (cid) y varios clientes los bajan
+  recién al abrir el correo: hasta probar en modo avión un correo que nunca
+  se abrió (Gmail Android e iPhone, Mail del iPhone), cada entrada con
+  imagen lleva además su QR en tabla al final (`respaldoSinSenal`). No lo
+  saques sin esa prueba: es lo que ve el que abre el correo en la fila.
 
 ## Antes de decir que algo anda
 

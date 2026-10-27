@@ -406,13 +406,16 @@ const etiqueta = (x: any) =>
 /* Una entrada adentro del correo: la imagen de /orden si llegó, y si no
    su QR en tabla (que lee la misma puerta). Abajo, qué entrada es y su
    código, como en el pie de cada pase de /orden. El alto va en el atributo
-   para que el correo no salte mientras carga la imagen. */
-function bloqueEntrada(e: any, x: any, i: number, n: number, img?: Imagen): string {
+   para que el correo no salte mientras carga la imagen. `respaldo`: si su
+   QR en tabla va también al final (ver respaldoSinSenal); el texto que se
+   ve cuando la imagen no carga manda ahí. */
+function bloqueEntrada(e: any, x: any, i: number, n: number, img?: Imagen, respaldo = false): string {
   const F = "font-family:Helvetica,Arial,sans-serif";
+  const alt = `Entrada ${etiqueta(x)}, código #${x.code}` + (respaldo ? ". Si no se ve, su QR está al final del correo." : "");
   const visual = img
     ? `<img src="cid:${img.cid}" width="${ANCHO_ENTRADA}"` +
       (img.ancho && img.alto ? ` height="${Math.round(ANCHO_ENTRADA * img.alto / img.ancho)}"` : "") +
-      ` alt="${esc(`Entrada ${etiqueta(x)}, código #${x.code}`)}" style="display:block;width:${ANCHO_ENTRADA}px;` +
+      ` alt="${esc(alt)}" style="display:block;width:${ANCHO_ENTRADA}px;` +
       `max-width:100%;height:auto;border:0;outline:none;border-radius:10px;${F};font-size:13px;color:#F3EFE2">`
     : qrTabla(`EVT:${e.id}:${x.code}`);
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:22px auto 0"><tr><td align="center">
@@ -430,6 +433,63 @@ function bloqueEntrada(e: any, x: any, i: number, n: number, img?: Imagen): stri
    las tiene todas. */
 const QR_ENTRADAS_TOPE = 10;
 const CORREO_TOPE = 95_000;
+
+/* ── el respaldo sin señal (27/10) ──
+   La imagen de cada entrada viaja como adjunto inline (cid). El HTML el
+   teléfono lo baja junto con el mensaje, y por eso el QR en tabla del
+   26/10 se veía sin señal; los adjuntos, en cambio, varios clientes (Gmail
+   en Android y en iPhone, Mail del iPhone) los bajan recién al abrir el
+   correo. El que paga, no abre el correo y lo abre por primera vez en la
+   fila sin datos vería el texto de la imagen y ningún QR: lo contrario de
+   lo que vino a hacer el QR en el correo. Hasta probarlo en modo avión con
+   un correo que nunca se abrió, en esos tres, cada entrada con imagen
+   lleva además su QR en tabla, al final, para no competir con el arte: es
+   el mismo EVT:<evento>:<código>, lo lee la misma puerta. Si la prueba da
+   que las imágenes están, esto se saca y el correo queda con el arte solo.
+   `filas` son las entradas con respaldo y su lugar en la compra; `conImagen`,
+   cuántas del correo tienen imagen (si son más, el resto está en el link). */
+function respaldoSinSenal(e: any, filas: [any, number][], n: number, conImagen: number): string {
+  if (!filas.length) return "";
+  const F = "font-family:Helvetica,Arial,sans-serif";
+  const cuales = filas.length < conImagen
+    ? `Acá van los QR de las primeras ${filas.length}, sin imágenes; las demás están en el link`
+    : filas.length === 1 ? "Este es el mismo QR, sin imágenes" : "Estos son los mismos QR, sin imágenes";
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;border-top:1px solid #4A3A8A">
+     <tr><td style="padding:18px 0 0">
+      <p style="margin:0;${F};font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#FFE24B">Si no ves ${conImagen === 1 ? "tu entrada" : "tus entradas"}</p>
+      <p style="margin:6px 0 0;${F};font-size:13px;line-height:1.5;color:#A79EC0">Sin señal, algunos teléfonos no muestran las imágenes de un correo que todavía no abriste. ${cuales}: la puerta los lee igual.</p>
+      ${filas.map(([x, i]) => bloqueEntrada(e, x, i, n)).join("")}
+     </td></tr>
+    </table>`;
+}
+
+/* Hasta dónde entra en CORREO_TOPE: `armar(k, b)` arma el correo con las
+   primeras k entradas adentro y, de las que llevan imagen, las primeras b
+   con su respaldo en tabla. Primero se sacan respaldos y recién después
+   entradas: una imagen pesa ~400 bytes de HTML y un respaldo ~13 KB, y la
+   entrada con el arte es lo que se compró. Bytes y no largo del texto:
+   Gmail cuenta bytes, y cada tilde son dos. Sin imágenes (b = 0 siempre)
+   es el mismo recorte de antes, de a una entrada menos. */
+function queEntre(n: number, conImagen: (k: number) => number, armar: (k: number, b: number) => string): string {
+  const bytes = (t: string) => new TextEncoder().encode(t).length;
+  let k = Math.min(n, QR_ENTRADAS_TOPE), b = conImagen(k), html = armar(k, b);
+  while (k > 0 && bytes(html) > CORREO_TOPE) html = b > 0 ? armar(k, --b) : armar(--k, 0);
+  return html;
+}
+
+/* Las primeras k entradas, cada una con su bloque (imagen o QR en tabla), y
+   el respaldo de las primeras b que llevan imagen. */
+function entradasDelCorreo(e: any, ent: any[], imgs: Map<string, Imagen>, k: number, b: number) {
+  const n = ent.length;
+  const conImg = ent.slice(0, k).map((x, i): [any, number] => [x, i]).filter(([x]) => imgs.has(x.code));
+  const respaldadas = new Set(conImg.slice(0, b).map(([x]) => x.code));
+  return {
+    bloques: ent.slice(0, k).map((x, i) => bloqueEntrada(e, x, i, n, imgs.get(x.code), respaldadas.has(x.code))),
+    respaldo: respaldoSinSenal(e, conImg.slice(0, b), n, conImg.length),
+  };
+}
+const conImagenEn = (ent: any[], imgs: Map<string, Imagen>) => (k: number) =>
+  ent.slice(0, k).filter((x) => imgs.has(x.code)).length;
 
 /* ── el correo de una mesa (0108) ──
    Lo que el dueño pidió que llegue: el QR de la mesa y el recibo, las
@@ -451,7 +511,6 @@ function correoMesa(o: any, e: any, mesa: any, ent: any[], link: string,
   /* Cada entrada con su imagen de /orden (o su QR en tabla, si la imagen
      no llegó), y abajo de qué mesa es: es la que pasa el molinete, y el
      comprador tiene que poder distinguirla del recibo, que no lo pasa. */
-  const conQr = ent.slice(0, QR_ENTRADAS_TOPE).map((x: any, i: number) => bloqueEntrada(e, x, i, n, imgs.get(x.code)));
   const soloCodigo = (x: any) =>
     `<tr>
         <td style="padding:7px 12px 7px 0;${F};font-size:13px;color:#A79EC0">${esc(etiqueta(x))}</td>
@@ -459,20 +518,20 @@ function correoMesa(o: any, e: any, mesa: any, ent: any[], link: string,
       </tr>`;
   const parrafo = (txt: string) =>
     `<p style="margin:24px 0 0;${F};font-size:15px;line-height:1.55;color:#F3EFE2">${txt}</p>`;
-  const entradas = (k: number) => {
+  const entradas = (k: number, bloques: string[]) => {
     if (inc === 0 || n === 0) return parrafo("Tu mesa no incluye entradas: para entrar, cada uno necesita la suya.");
     const cuantas = k === n ? (n === 1 ? "Tenés 1, con su QR acá abajo." : `Tenés ${n}, cada una con su QR acá abajo.`)
       : k === 0 ? (n === 1 ? "Tenés 1, con su QR en el link:" : `Tenés ${n}, cada una con su QR en el link:`)
       : `Tenés ${n}: acá abajo van ${k === 1 ? "la primera" : `las primeras ${k}`} con su QR, y todas están en el link.`;
     return parrafo(`Para entrar se usan las entradas de la mesa. ${cuantas} Cada QR vale para un solo ingreso.`) +
-      conQr.slice(0, k).join("") +
+      bloques.join("") +
       (k === n ? "" : (k > 0
         ? `<p style="margin:22px 0 0;${F};font-size:14px;line-height:1.5;color:#A79EC0">${n - k === 1 ? "La que falta" : `Las ${n - k} que faltan`}, con su QR en el link:</p>`
         : "") +
         `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;border-collapse:collapse">${ent.slice(k).map(soloCodigo).join("")}</table>`);
   };
 
-  const armar = (k: number) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#180E3A;margin:0;padding:0">
+  const armar = (k: number, b: number) => { const { bloques, respaldo } = entradasDelCorreo(e, ent, imgs, k, b); return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#180E3A;margin:0;padding:0">
  <tr><td align="center" style="padding:32px 16px">
   <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="width:520px;max-width:100%">
    <tr><td style="padding:0 0 26px"><img src="${SITIO}/logo-correo.png" alt="TICKETAZO" width="180" style="display:block;border:0;outline:none;text-decoration:none;width:180px;height:auto;color:#F3EFE2;${F};font-size:22px;font-weight:bold"></td></tr>
@@ -498,7 +557,7 @@ function correoMesa(o: any, e: any, mesa: any, ent: any[], link: string,
     </td></tr></table>
     <p style="margin:10px 0 0;text-align:center;font-family:Courier,monospace;font-size:13px;color:#F3EFE2">#${esc(mesa.code)}</p>
     <p style="margin:12px 0 0;${F};font-size:13px;line-height:1.5;color:#A79EC0;text-align:center">Este QR es el recibo de tu mesa: mostralo en la puerta y el guardia ve tu reserva. <b style="color:#F3EFE2">No sirve para entrar.</b></p>
-    ${entradas(k)}
+    ${entradas(k, bloques)}
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:22px"><tr>
      <td align="center" bgcolor="#FFE24B" style="border-radius:8px">
       <a href="${link}" style="display:inline-block;padding:14px 26px;${F};font-size:15px;font-weight:bold;color:#180E3A;text-decoration:none">${inc > 0 ? "Ver mi mesa y mis entradas" : "Ver mi mesa"}</a>
@@ -509,19 +568,16 @@ function correoMesa(o: any, e: any, mesa: any, ent: any[], link: string,
       <p style="margin:0;${F};font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#FFE24B">Condiciones de la reserva</p>
       ${condiciones}
      </td></tr>
-    </table>
+    </table>${respaldo ? `
+    ${respaldo}` : ""}
    </td></tr>
    <tr><td style="padding:22px 4px 0;${F};font-size:12px;line-height:1.5;color:#6E6392">TICKETAZO · Entradas y control de puerta · Santa Cruz de la Sierra</td></tr>
   </table>
  </td></tr>
-</table>`;
+</table>`; };
 
-  // De a una menos hasta que entre. Bytes y no largo del texto: Gmail
-  // cuenta bytes, y cada tilde son dos.
-  const bytes = (t: string) => new TextEncoder().encode(t).length;
-  let k = Math.min(n, QR_ENTRADAS_TOPE), html = armar(k);
-  while (k > 0 && bytes(html) > CORREO_TOPE) html = armar(--k);
-  return html;
+  // Si las entradas incluidas no son de esta mesa (inc = 0), no van: tampoco su respaldo.
+  return queEntre(n, inc === 0 ? () => 0 : conImagenEn(ent, imgs), armar);
 }
 
 /* ── el correo de una compra de entradas ──
@@ -551,7 +607,6 @@ function correoEntradas(o: any, e: any, ent: any[], link: string,
                         imgs: Map<string, Imagen> = new Map()): string {
   const F = "font-family:Helvetica,Arial,sans-serif";
   const n = ent.length;
-  const conQr = ent.slice(0, QR_ENTRADAS_TOPE).map((x: any, i: number) => bloqueEntrada(e, x, i, n, imgs.get(x.code)));
   const soloCodigo = (x: any) =>
     `<tr>
         <td style="padding:7px 12px 7px 0;${F};font-size:13px;color:#A79EC0">${esc(etiqueta(x))}</td>
@@ -562,7 +617,7 @@ function correoEntradas(o: any, e: any, ent: any[], link: string,
       : k === 0 ? "Tus QR están en el link: abrilo antes de salir de tu casa."
       : `Acá abajo van ${k === 1 ? "la primera" : `las primeras ${k}`}; todas están en el link.`;
 
-  const armar = (k: number) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#180E3A;margin:0;padding:0">
+  const armar = (k: number, b: number) => { const { bloques, respaldo } = entradasDelCorreo(e, ent, imgs, k, b); return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#180E3A;margin:0;padding:0">
  <tr><td align="center" style="padding:32px 16px">
   <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="width:520px;max-width:100%">
    <tr><td style="padding:0 0 26px"><img src="${SITIO}/logo-correo.png" alt="TICKETAZO" width="180" style="display:block;border:0;outline:none;text-decoration:none;width:180px;height:auto;color:#F3EFE2;${F};font-size:22px;font-weight:bold"></td></tr>
@@ -571,28 +626,25 @@ function correoEntradas(o: any, e: any, ent: any[], link: string,
     <h1 style="margin:0 0 4px;${F};font-size:26px;line-height:1.15;text-transform:uppercase;color:#F3EFE2">${esc(e.nombre)}</h1>
     <p style="margin:0 0 22px;${F};font-size:14px;color:#A79EC0">${esc(e.fecha)} · ${esc(String(e.hora_inicio).slice(0,5))}</p>
     <p style="margin:0 0 6px;${F};font-size:15px;line-height:1.55;color:#F3EFE2">Hola ${esc(o.comprador_nombre)}, tu compra está confirmada. ${n === 1 ? "Tenés 1 entrada" : `Tenés ${n} entradas`}. ${aviso(k)}</p>
-    <p style="margin:0;${F};font-size:13px;line-height:1.5;color:#A79EC0">Si en la puerta no hay señal, este correo igual se abre${imgs.size ? ": abrilo una vez antes de salir, así las entradas quedan guardadas en el teléfono" : ""}. Cada QR vale para un solo ingreso: no lo compartas.</p>
-    ${conQr.slice(0, k).join("")}
+    <p style="margin:0;${F};font-size:13px;line-height:1.5;color:#A79EC0">Si en la puerta no hay señal, este correo igual se abre${respaldo ? ": si no ves las imágenes, al final van los mismos QR sin ellas" : ""}. Cada QR vale para un solo ingreso: no lo compartas.</p>
+    ${bloques.join("")}
     ${k === n ? "" : `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;border-collapse:collapse">${ent.slice(k).map(soloCodigo).join("")}</table>`}
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:26px"><tr>
      <td align="center" bgcolor="#FFE24B" style="border-radius:8px">
       <a href="${link}" style="display:inline-block;padding:14px 26px;${F};font-size:15px;font-weight:bold;color:#180E3A;text-decoration:none">Ver mis entradas</a>
      </td>
     </tr></table>
-    <p style="margin:14px 0 0;${F};font-size:12px;line-height:1.5;color:#6E6392">En el link están siempre, con el arte del evento. Guardalo.</p>
+    <p style="margin:14px 0 0;${F};font-size:12px;line-height:1.5;color:#6E6392">En el link están siempre, con el arte del evento. Guardalo.</p>${respaldo ? `
+    ${respaldo}` : ""}
    </td></tr>
    <tr><td style="padding:22px 4px 0;${F};font-size:12px;line-height:1.5;color:#6E6392">TICKETAZO · Entradas y control de puerta · Santa Cruz de la Sierra</td></tr>
   </table>
  </td></tr>
-</table>`;
+</table>`; };
 
-  // De a una menos hasta que entre, igual que el de la mesa: pasados los
-  // 102 KB Gmail esconde el final detrás de "Ver mensaje completo", y ahí
-  // quedaba el botón. Bytes y no largo del texto: cada tilde son dos.
-  const bytes = (t: string) => new TextEncoder().encode(t).length;
-  let k = Math.min(n, QR_ENTRADAS_TOPE), html = armar(k);
-  while (k > 0 && bytes(html) > CORREO_TOPE) html = armar(--k);
-  return html;
+  // Igual que el de la mesa: pasados los 102 KB Gmail esconde el final
+  // detrás de "Ver mensaje completo", y ahí quedaba el botón.
+  return queEntre(n, conImagenEn(ent, imgs), armar);
 }
 
 Deno.serve(async (req) => {
