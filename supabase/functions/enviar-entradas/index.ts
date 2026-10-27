@@ -487,13 +487,16 @@ const CORREO_TOPE = 95_000;
 function respaldoSinSenal(e: any, filas: [any, number][], n: number, conImagen: number): string {
   if (!filas.length) return "";
   const F = "font-family:Helvetica,Arial,sans-serif";
-  const cuales = filas.length < conImagen
-    ? `Acá van los QR de las primeras ${filas.length}, sin imágenes; las demás están en el link`
-    : filas.length === 1 ? "Este es el mismo QR, sin imágenes" : "Estos son los mismos QR, sin imágenes";
+  const uno = filas.length === 1;
+  const cuales = (filas.length < conImagen
+      ? (uno ? "Acá va el QR de la primera, sin imagen" : `Acá van los QR de las primeras ${filas.length}, sin imágenes`)
+      : (uno ? "Este es el mismo QR, sin imagen" : "Estos son los mismos QR, sin imágenes")) +
+    (uno ? ": la puerta lo lee igual." : ": la puerta los lee igual.") +
+    (filas.length < conImagen ? " Las demás están en el link." : "");
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;border-top:1px solid #4A3A8A">
      <tr><td style="padding:18px 0 0">
       <p style="margin:0;${F};font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#FFE24B">Si no ves ${conImagen === 1 ? "tu entrada" : "tus entradas"}</p>
-      <p style="margin:6px 0 0;${F};font-size:13px;line-height:1.5;color:#A79EC0">Sin señal, algunos teléfonos no muestran las imágenes de un correo que todavía no abriste. ${cuales}: la puerta los lee igual.</p>
+      <p style="margin:6px 0 0;${F};font-size:13px;line-height:1.5;color:#A79EC0">Sin señal, algunos teléfonos no muestran las imágenes de un correo que todavía no abriste. ${cuales}</p>
       ${filas.map(([x, i]) => bloqueEntrada(e, x, i, n)).join("")}
      </td></tr>
     </table>`;
