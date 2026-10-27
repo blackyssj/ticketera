@@ -24,7 +24,10 @@ TODAS = ["og", "eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden
 # excepción — solo la llama estado-orden, del lado del servidor, con
 # cabeceras de service_role — así que va con JWT exigido. Antes mandaba
 # False para las seis por igual; eso la dejaba pública sin que nadie lo
-# hubiera decidido.
+# hubiera decidido. La reja sola no alcanza: la anon key también es un JWT
+# del proyecto. Desde el 27/10 la función mira adentro quién llama: la
+# service_role (crear-orden, estado-orden, barrer-pagos) o una sesión con
+# perfil activo (el panel); la anon key y un comprador no.
 # `equipo` va con JWT exigido igual que enviar-entradas, pero por otro
 # motivo: no la llama el público, la llama un admin logueado. La función
 # valida la sesión por su cuenta contra /auth/v1/user —esa es la guardia de

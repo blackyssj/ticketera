@@ -683,10 +683,45 @@ function correoEntradas(o: any, e: any, ent: any[], link: string,
   return queEntre(n, conImagenEn(ent, imgs), armar);
 }
 
+/* ── quién puede pedir un correo (27/10) ──
+   Lo piden tres funciones del servidor (crear-orden, estado-orden y
+   barrer-pagos) con la service_role, y el panel con la sesión del que
+   atiende. verify_jwt (desplegar-funciones.py) solo exige un JWT firmado
+   por el proyecto, y la anon key lo es, y es pública (app/config.js): con
+   ella cualquiera con el uuid de una compra, la suya o la de un link
+   reenviado, repetía este POST en un loop. Eso gastaba el cupo de Resend;
+   desde que cada correo dibuja hasta diez entradas en Vercel, gasta además
+   el cómputo del proyecto que sirve ticketazo.com.bo entero. Una sesión de
+   comprador tampoco alcanza: comparte el rol `authenticated` con el staff
+   (regla 2 de CLAUDE.md) y la cuenta se crea sin verificar el correo.
+   Así que pasa la service_role, o una sesión con perfil activo, que es lo
+   mismo que pide el panel para entrar (cualquier rol: el que atiende puede
+   figurar como rrpp). El perfil sale de la base, como en enviar-links: el
+   JWT no se decodifica, se le pregunta a /auth/v1/user. */
+function mismoTexto(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+async function quienPide(req: Request): Promise<{ motivo: string; status: number } | null> {
+  const token = /^Bearer\s+(.+)$/i.exec(req.headers.get("Authorization") ?? "")?.[1]?.trim();
+  if (!token) return { motivo: "Falta la sesión.", status: 401 };
+  if (mismoTexto(token, KEY)) return null;
+  const r = await fetch(`${SB}/auth/v1/user`, { headers: { apikey: KEY, Authorization: `Bearer ${token}` } });
+  const u = r.ok ? await r.json().catch(() => null) : (await r.body?.cancel(), null);
+  if (!u?.id) return { motivo: "Tu sesión venció. Entrá de nuevo.", status: 401 };
+  const yo = await uno(`perfiles?id=eq.${u.id}&select=activo`);
+  if (!yo?.activo) return { motivo: "Solo el equipo puede mandar el correo de una compra.", status: 403 };
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ ok: false, motivo: "Usá POST." }, 405);
   try {
+    const no = await quienPide(req);
+    if (no) return json({ ok: false, motivo: no.motivo }, no.status);
     const { orden } = await req.json();
     if (!orden) return json({ ok: false, motivo: "Falta la orden." }, 400);
 
