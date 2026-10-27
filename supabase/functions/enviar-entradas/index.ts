@@ -323,7 +323,10 @@ const PESO_IMAGENES = 900_000;
    el teléfono el max-width la lleva al ancho que haya. */
 const ANCHO_ENTRADA = 464;
 
-type Imagen = { cid: string; tipo: string; bytes: Uint8Array; ancho: number; alto: number };
+/* conArte: si salió sobre el arte del evento o la propia de TICKETAZO
+   (X-Entrada-Variante). La propia es la que corresponde a un evento sin
+   arte, y la que sale cuando el arte no llegó a tiempo. */
+type Imagen = { cid: string; tipo: string; bytes: Uint8Array; ancho: number; alto: number; conArte: boolean };
 
 const hex = (b: ArrayBuffer) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join("");
 let llave: Promise<CryptoKey> | null = null;
@@ -352,7 +355,12 @@ async function imagenesDeEntradas(ordenId: string, codes: string[]): Promise<Map
   }
   const porCode = new Map<string, any>((d.entradas ?? []).map((t: any) => [t.code, t]));
   const tope = Math.max(90_000, Math.floor(PESO_IMAGENES / codes.length));
-  const una = async (code: string): Promise<boolean> => {
+  const esperaArte = Boolean(d.fase?.arte_url || d.evento.arte_url);
+  const sinArte: string[] = [];
+  /* Devuelve si la entrada quedó con imagen; en un reintento (`otraVez`),
+     si esta vez vino con el arte. Un reintento que falla no le saca la
+     imagen que ya tenía. */
+  const una = async (code: string, otraVez = false): Promise<boolean> => {
     const t = porCode.get(code), resta = hasta - Date.now();
     if (!t || resta < 1_000) return false;
     try {
@@ -366,30 +374,53 @@ async function imagenesDeEntradas(ordenId: string, codes: string[]): Promise<Map
       });
       const tipo = r.headers.get("content-type") ?? "";
       if (!r.ok || !/^image\/(jpeg|png)$/.test(tipo)) {
-        await r.body?.cancel();
-        throw new Error(`respondió ${r.status} ${tipo}`);
+        // El motivo va al log: "Faltan fuentes en el deploy: …" se arregla distinto que una firma que no coincide.
+        const motivo = tipo.includes("json") ? (await r.json().catch(() => null))?.motivo : await r.body?.cancel();
+        throw new Error(`respondió ${r.status} ${motivo ?? tipo}`);
       }
       const bytes = new Uint8Array(await r.arrayBuffer());
-      if ((d.fase?.arte_url || d.evento.arte_url) && r.headers.get("x-entrada-variante") !== "arte")
-        console.error(`entrada ${code}: el arte no cargó en el servidor, va la entrada propia`);
-      out.set(code, { cid: `entrada-${code}`, tipo, bytes,
+      const conArte = r.headers.get("x-entrada-variante") === "arte";
+      if (esperaArte && !conArte) {
+        console.error(`entrada ${code}: el arte no cargó en el servidor` +
+                      (otraVez ? " tampoco al reintentar, va la entrada propia" : ", se reintenta al final"));
+        if (otraVez) return false;
+        sinArte.push(code);
+      }
+      out.set(code, { cid: `entrada-${code}`, tipo, bytes, conArte,
                       ancho: Number(r.headers.get("x-entrada-ancho")) || 0,
                       alto: Number(r.headers.get("x-entrada-alto")) || 0 });
       return true;
     } catch (e) {
-      console.error(`entrada ${code} sin diseño, va con el QR en tabla: ${e}`);
+      console.error(otraVez ? `entrada ${code}: el reintento falló, queda la entrada propia: ${e}`
+                            : `entrada ${code} sin diseño, va con el QR en tabla: ${e}`);
       return false;
     }
+  };
+  const deAVarias = async (lista: string[], otraVez = false) => {
+    let i = 0;
+    await Promise.all(Array.from({ length: IMG_A_LA_VEZ }, async () => {
+      while (i < lista.length) await una(lista[i++], otraVez);
+    }));
   };
   /* La primera sola: calienta la instancia y deja el arte en su caché, así
      las otras no lo bajan cada una por su lado. Y si la primera no sale
      (Vercel caído, firma que no coincide), no se insiste con las demás:
      fallarían igual y el botón "reenviar" del panel esperaría el doble. */
   if (!(await una(codes[0]))) return out;
-  let i = 1;
-  await Promise.all(Array.from({ length: IMG_A_LA_VEZ }, async () => {
-    while (i < codes.length) await una(codes[i++]);
-  }));
+  await deAVarias(codes.slice(1));
+  /* Las que salieron sin el arte del evento se piden otra vez, si queda
+     tiempo. Pasa sobre todo con la primera: en una instancia fría el arte
+     pesado (el PNG de 2,2 MB de Dark Garden) puede tardar más de los 4 s que
+     lo espera app/api/entrada.js, y la entrada sale con el diseño propio
+     de TICKETAZO. Justo lo que el dueño reclamó, y solo quedaba en el log.
+     Si alguna otra sí lo trajo, el arte ya está en la caché de la instancia
+     y el reintento sale en milisegundos. Si ninguna lo trajo, se prueba con
+     una sola: si tampoco, el bucket está caído y reintentar las demás solo
+     demora el correo (y el botón "reenviar" del panel). */
+  if (sinArte.length) {
+    const otra = sinArte.splice(0);
+    if ([...out.values()].some((m) => m.conArte) || await una(otra.shift()!, true)) await deAVarias(otra, true);
+  }
   return out;
 }
 
@@ -687,13 +718,12 @@ Deno.serve(async (req) => {
     /* Solo las que quedaron en el HTML: si CORREO_TOPE dejó afuera alguna,
        su imagen no viaja colgando como un adjunto suelto. En el orden de
        la compra, que es como aparecen en la lista de adjuntos del correo. */
-    const adjuntos = lista.flatMap((x, i) => {
-      const m = imgs.get(x.code);
-      return m && html.includes(`cid:${m.cid}`)
-        ? [{ filename: `entrada-${i + 1}-${x.code}.${m.tipo === "image/png" ? "png" : "jpg"}`,
-             content: base64(m.bytes), content_type: m.tipo, content_id: m.cid }]
-        : [];
-    });
+    const van = lista.map((x, i) => ({ i, m: imgs.get(x.code), code: x.code }))
+      .filter(({ m }) => m && html.includes(`cid:${m.cid}`)) as { i: number; m: Imagen; code: string }[];
+    const adjuntos = van.map(({ i, m, code }) => ({
+      filename: `entrada-${i + 1}-${code}.${m.tipo === "image/png" ? "png" : "jpg"}`,
+      content: base64(m.bytes), content_type: m.tipo, content_id: m.cid,
+    }));
 
     const enviar = (cuerpo: string, adj: unknown[]) => fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -707,7 +737,7 @@ Deno.serve(async (req) => {
     });
     let r = await enviar(html, adjuntos);
     let j = await r.json().catch(() => ({}));
-    let conDiseno = adjuntos.length;
+    let conDiseno = adjuntos.length, conArte = van.filter(({ m }) => m.conArte).length;
     /* Si Resend no acepta el correo con los adjuntos (un 4xx de validación:
        un adjunto que no le gusta, el tamaño), sale el de antes, todo en
        tablas. Un 5xx o un 429 no se reintenta: puede haberlo encolado, y
@@ -718,7 +748,7 @@ Deno.serve(async (req) => {
                     `${JSON.stringify(j).slice(0, 300)}; va con el QR en tabla`);
       r = await enviar(armar(new Map()), []);
       j = await r.json().catch(() => ({}));
-      conDiseno = 0;
+      conDiseno = conArte = 0;
     }
     if (!r.ok) {
       // Un correo que no sale no puede tumbar una venta ya cobrada.
@@ -726,8 +756,10 @@ Deno.serve(async (req) => {
       return json({ ok: true, enviado: false, motivo: "No se pudo enviar el correo.", link });
     }
     const adentro = Math.min(lista.length, QR_ENTRADAS_TOPE);
-    if (FIRMA && adentro) console.log(`orden ${o.id}: ${conDiseno}/${adentro} entradas con el diseño del evento`);
-    return json({ ok: true, enviado: true, id: j.id, link, con_diseno: conDiseno });
+    // Con el arte del organizador, o con el diseño propio de TICKETAZO (evento sin arte, o arte que no llegó).
+    if (FIRMA && adentro)
+      console.log(`orden ${o.id}: ${conDiseno}/${adentro} entradas con imagen, ${conArte} con el arte del evento`);
+    return json({ ok: true, enviado: true, id: j.id, link, con_diseno: conDiseno, con_arte: conArte });
   } catch (err) {
     return json({ ok: false, motivo: String((err as Error).message ?? err) }, 500);
   }
