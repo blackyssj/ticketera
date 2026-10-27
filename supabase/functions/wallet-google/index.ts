@@ -20,8 +20,7 @@
    entra en el link ni con una sola entrada: medido con un evento real da
    2.589 caracteres, y Google dice que pasados los 1.800 el navegador puede
    cortar el link y el guardado falla. Además el flaco deja el nombre del
-   comprador fuera de la URL (no queda en historiales ni en los escáneres de
-   links del correo).
+   comprador fuera de la URL (no queda en el historial del navegador).
 
    Con ids `<issuer>.<uuid>` entran 6 entradas en 1.752 caracteres; la 7ª ya
    se pasa. Por eso un link lleva una TANDA de hasta 6 (`?parte=N`). El
@@ -36,22 +35,27 @@
    `pago_ref`: ese camino existe en `orden` sólo para la vuelta de la
    pasarela, y para cuando alguien toca este botón ya tiene el uuid.
 
-   Responde de tres formas:
-     GET ?estado=1                        → {configurado, modo}: la página
-                                            decide si muestra el botón.
-     GET ?orden=<uuid>[&parte=N]&formato=json → {ok, url}: el botón de la
-                                            página, que avisa sin recargar.
-     GET ?orden=<uuid>[&parte=N]          → 302 a Google, o de vuelta a
-                                            /orden con `wallet_aviso`. Para
-                                            un link suelto (el del correo).
+   Responde de dos formas, y sólo una toca Google:
+     GET  ?estado=1               → {configurado, modo}: la página decide
+                                    si muestra el botón.
+     POST ?orden=<uuid>[&parte=N] → {ok, url} o {ok:false, aviso, motivo}:
+                                    el toque del botón. Recién acá se crean
+                                    en Google la clase y los objetos, con el
+                                    nombre del comprador adentro.
+   Un GET con `orden` (un link copiado de algún lado) no arma nada: vuelve a
+   /orden/?id=<uuid>#wallet, que es donde está el botón.
+
+   Por qué el pase no se arma con un GET: los escáneres de links de los
+   buzones (Outlook Safe Links, Defender, Proofpoint) abren cada link del
+   correo de la compra antes que la persona, a veces en un navegador con JS.
+   Si un GET armara el pase, Google recibiría el nombre del comprador sin que
+   nadie tocara nada, y /privacidad dice que eso pasa "sólo si lo pedís". Por
+   eso el botón del correo lleva a /orden/?id=<uuid>#wallet y no acá, y lo
+   que arma el pase es un POST: un escáner no toca botones ni manda POST. Va
+   sin cuerpo y sin cabeceras, así que el navegador no hace el OPTIONS previo.
    Nunca HTML: la pasarela de Supabase reescribe todo text/html a text/plain
    con un CSP sandbox (ver og/index.ts), y una página de error de acá
    saldría como texto crudo.
-
-   GET con efecto está bien acá: los escáneres de links de Gmail y Outlook
-   van a abrir el del correo antes que la persona, y lo único que pasa es que
-   se crean en Google una clase y unos objetos que iban a existir igual
-   (por id, así que repetir no duplica). En nuestra base no se escribe nada.
 
    APAGADA hasta que estén los secrets (los carga José con
    scripts/secretos.py, que toma un archivo):
@@ -104,8 +108,9 @@ const FONDO = "#180E3A";
    guardar un pase que nace vencido no le sirve a nadie. */
 const PASADO_MS = 12 * 3600e3;
 
-/* Lo que la persona lee. Los mismos textos los tiene app/wallet.js para el
-   camino del 302 (`wallet_aviso`): si cambian acá, cambiarlos allá. */
+/* Lo que la persona lee, en el toast de la página. app/wallet.js tiene una
+   copia del de `error`, para cuando la función ni contesta: si cambia acá,
+   cambiarlo allá. */
 const MOTIVO = {
   off:       "Google Wallet todavía no está disponible.",
   nada:      "Esta compra no tiene entradas para agregar.",
@@ -424,12 +429,14 @@ Deno.serve(async (req) => {
     });
   }
 
-  const comoJson = u.searchParams.get("formato") === "json";
   const id = String(u.searchParams.get("orden") ?? "").trim().toLowerCase();
+  /* Un GET no arma el pase nunca (ver arriba: los escáneres de links). Lo
+     manda a la página de la compra, donde el botón está a un toque. */
+  if (req.method !== "POST") return ir(ES_UUID(id) ? `${SITIO}/orden/?id=${id}#wallet` : `${SITIO}/orden/`);
+
   const parte = Number(u.searchParams.get("parte") ?? "1");
-  if (!ES_UUID(id) || !Number.isInteger(parte) || parte < 1 || parte > 100) {
-    return comoJson ? json({ ok: false, motivo: MOTIVO.noexiste }, 400) : ir(`${SITIO}/orden/`);
-  }
+  if (!ES_UUID(id) || !Number.isInteger(parte) || parte < 1 || parte > 100)
+    return json({ ok: false, aviso: "noexiste", motivo: MOTIVO.noexiste }, 400);
 
   let r: Resultado;
   try {
@@ -438,11 +445,6 @@ Deno.serve(async (req) => {
     console.error("wallet-google:", String((err as Error).message ?? err));
     r = { aviso: "error", status: 502 };
   }
-
-  if ("url" in r) return comoJson ? json({ ok: true, ...r }) : ir(r.url);
-  if (comoJson) return json({ ok: false, aviso: r.aviso, motivo: MOTIVO[r.aviso] }, r.status);
-  /* De vuelta a /orden, que es la página del comprador y sabe avisar. Una
-     compra sin pagar vuelve sin aviso: /orden ya sabe esperar el pago. */
-  const vuelta = `${SITIO}/orden/?id=${id}`;
-  return ir(r.aviso === "pendiente" || r.aviso === "noexiste" ? vuelta : `${vuelta}&wallet_aviso=${r.aviso}`);
+  if ("url" in r) return json({ ok: true, ...r });
+  return json({ ok: false, aviso: r.aviso, motivo: MOTIVO[r.aviso] }, r.status);
 });

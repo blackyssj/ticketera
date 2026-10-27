@@ -19,13 +19,15 @@
    computadora el pase se guarda en la cuenta de Google, pero en la puerta
    hace falta en el teléfono, y ahí el comprador abre este mismo link. El
    botón del correo (más adelante) sí va siempre, porque un correo no sabe
-   en qué teléfono se abre; lleva la aclaración "En Android".
+   en qué teléfono se abre; lleva la aclaración "En Android" y apunta a
+   /orden/?id=<uuid>#wallet, NUNCA a la función: los escáneres de links de
+   los buzones abren todo lo que trae el correo, y el pase (con el nombre
+   del comprador) sólo se arma cuando una persona toca este botón.
 
-   El toque pide el link por fetch y recién ahí navega, en vez de ser un
-   link que se va: armar el pase tarda uno o dos segundos (Google crea la
-   clase y los objetos) y así la página dice "Preparando tu pase…" y, si
-   algo falla, avisa sin recargarse. El href igual apunta a la función,
-   que contesta con un 302 a Google: abrir en otra pestaña también anda. */
+   Por eso es un <button> y no un link: lo que arma el pase es un POST
+   (wallet-google no hace nada con un GET). Tarda uno o dos segundos
+   (Google crea la clase y los objetos), así que la página dice "Preparando
+   tu pase…" y, si algo falla, avisa sin recargarse. */
 (() => {
 "use strict";
 
@@ -39,14 +41,9 @@ const ALT = "Agregar a Google Wallet";
 /* El mismo tope que la función: con 7 entradas el link pasa de los 1.800
    caracteres y el navegador lo puede cortar. Una compra de más va en tandas. */
 const TANDA = 6;
-/* Los textos de wallet-google (MOTIVO), para cuando la función vuelve a
-   /orden con un 302 (`wallet_aviso`) en vez de contestar al fetch. */
-const AVISOS = {
-  off:    "Google Wallet todavía no está disponible.",
-  nada:   "Esta compra no tiene entradas para agregar.",
-  pasado: "Este evento ya pasó.",
-  error:  "No pudimos agregarla a Google Wallet. Probá de nuevo en un rato.",
-};
+/* El `error` de MOTIVO en wallet-google, para cuando la función ni
+   contesta. Los demás avisos los manda ella. */
+const AVISO_ERROR = "No pudimos agregarla a Google Wallet. Probá de nuevo en un rato.";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
   ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
@@ -65,10 +62,10 @@ const esAndroid = () =>
   (navigator.userAgentData && navigator.userAgentData.platform === "Android") ||
   /Android/i.test(navigator.userAgent || "");
 
-function conTope(url, ms) {
+function conTope(url, ms, init = {}) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms);
-  return fetch(url, { signal: ctl.signal }).finally(() => clearTimeout(t));
+  return fetch(url, { ...init, signal: ctl.signal }).finally(() => clearTimeout(t));
 }
 
 /* Una sola consulta por carga, aunque la pidan las dos mitades de la
@@ -103,47 +100,29 @@ function botones(ordenId, cuantas) {
   for (let p = 1; p <= partes; p++) {
     const desde = (p - 1) * TANDA + 1, hasta = Math.min(n, p * TANDA);
     const rotulo = partes < 2 ? "" : desde === hasta ? `Entrada ${desde}` : `Entradas ${desde} a ${hasta}`;
-    const href = `${FN}?orden=${encodeURIComponent(ordenId)}&parte=${p}`;
     html += `<div class="gwallet">` +
       (rotulo ? `<span class="gwallet-rotulo">${rotulo}</span>` : "") +
-      `<a class="gwallet-btn" href="${esc(href)}" data-gwallet="${esc(ordenId)}" data-parte="${p}" rel="nofollow">` +
-        `<img src="${BOTON}" alt="${esc(ALT + (rotulo ? ` (${rotulo.toLowerCase()})` : ""))}" height="48" decoding="async"></a>` +
+      `<button type="button" class="gwallet-btn" data-gwallet="${esc(ordenId)}" data-parte="${p}">` +
+        `<img src="${BOTON}" alt="${esc(ALT + (rotulo ? ` (${rotulo.toLowerCase()})` : ""))}" height="48" decoding="async"></button>` +
       `<span class="gwallet-espera" role="status" hidden>Preparando tu pase…</span>` +
       `</div>`;
   }
   return html;
 }
 
-/* Lo que trae el 302 de vuelta (?wallet_aviso=…): se lee una vez y se saca
-   de la barra, para que recargar no repita el cartel ni quede en el link
-   que la persona copia. */
-function avisoDeVuelta() {
-  try {
-    const u = new URL(location.href);
-    const a = u.searchParams.get("wallet_aviso");
-    if (!a) return "";
-    u.searchParams.delete("wallet_aviso");
-    history.replaceState(history.state, "", u.pathname + u.search + u.hash);
-    return AVISOS[a] || "";
-  } catch { return ""; }
-}
-
 /* ── el toque ── */
 let ocupado = false;
 function soltar() {
   ocupado = false;
-  document.querySelectorAll("a[data-gwallet][aria-busy]").forEach(a => {
+  document.querySelectorAll("[data-gwallet][aria-busy]").forEach(a => {
     a.removeAttribute("aria-busy");
     const e = a.parentElement && a.parentElement.querySelector(".gwallet-espera");
     if (e) e.hidden = true;
   });
 }
 document.addEventListener("click", async ev => {
-  const a = ev.target.closest && ev.target.closest("a[data-gwallet]");
-  if (!a) return;
-  // Con un modificador (otra pestaña, otra ventana) que vaya el link: la función contesta con un 302.
-  if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
-  ev.preventDefault();
+  const a = ev.target.closest && ev.target.closest("button[data-gwallet]");
+  if (!a || ev.defaultPrevented) return;
   if (ocupado) return;
   ocupado = true;
   a.setAttribute("aria-busy", "true");
@@ -151,8 +130,9 @@ document.addEventListener("click", async ev => {
   if (espera) espera.hidden = false;
   const avisar = typeof GWallet.avisar === "function" ? GWallet.avisar : () => {};
   try {
+    // Sin cuerpo ni cabeceras: un POST "simple", sin OPTIONS previo.
     const r = await conTope(`${FN}?orden=${encodeURIComponent(a.dataset.gwallet)}` +
-                            `&parte=${encodeURIComponent(a.dataset.parte || "1")}&formato=json`, 25000);
+                            `&parte=${encodeURIComponent(a.dataset.parte || "1")}`, 25000, { method: "POST" });
     const j = await r.json().catch(() => null);
     if (j && j.ok && typeof j.url === "string" && j.url.startsWith("https://pay.google.com/")) {
       location.href = j.url;
@@ -161,14 +141,14 @@ document.addEventListener("click", async ev => {
       setTimeout(soltar, 4000);
       return;
     }
-    avisar((j && j.motivo) || AVISOS.error);
+    avisar((j && j.motivo) || AVISO_ERROR);
   } catch {
-    avisar(AVISOS.error);
+    avisar(AVISO_ERROR);
   }
   soltar();
 });
 // Volver con "atrás" desde Google trae la página congelada como quedó: con el botón ocupado.
 addEventListener("pageshow", soltar);
 
-const GWallet = window.GWallet = { listo, botones, avisoDeVuelta, avisar: null };
+const GWallet = window.GWallet = { listo, botones, avisar: null };
 })();

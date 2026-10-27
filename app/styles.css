@@ -908,13 +908,13 @@ a.btn{display:inline-flex;align-items:center;justify-content:center;text-decorat
 /* "Agregar a Google Wallet" (wallet.js). El botón es la imagen de Google
    tal cual: no se le cambia color, radio ni proporción, mide 48 de alto
    (el mínimo de su guía) y lleva 8 de aire de cada lado que ningún texto
-   invade — por eso el aire es padding del propio link. Centrado: abajo de
+   invade — por eso el aire es padding del propio botón. Centrado: abajo de
    un botón a todo el ancho, uno más angosto pegado a la izquierda se lee
    como un resto. */
 .gwallet-caja{margin-top:14px;display:flex;flex-direction:column;align-items:center;gap:10px}
 .gwallet{display:flex;flex-direction:column;align-items:center;gap:2px}
 .gwallet-rotulo{font-family:var(--dato);font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--tinta-60)}
-.gwallet-btn{display:block;padding:8px;line-height:0;border-radius:28px}
+.gwallet-btn{display:block;padding:8px;margin:0;border:0;background:none;line-height:0;border-radius:28px;cursor:pointer}
 .gwallet-btn img{display:block;height:48px;width:auto}
 .gwallet-btn:focus-visible{outline:2px solid var(--tinta);outline-offset:0}
 .gwallet-btn[aria-busy="true"]{cursor:progress}

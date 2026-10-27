@@ -245,7 +245,7 @@
 
 /* "Agregar a Google Wallet" (wallet.js): la imagen de Google tal cual, 48
    de alto (el mínimo de su guía) y 8 de aire que nada invade, hecho con el
-   padding del link. El -8 de margen deja la imagen alineada con el resto
+   padding del botón. El -8 de margen deja la imagen alineada con el resto
    del talón sin comerse ese aire. Las mismas reglas que styles.css para
    /orden: estas dos páginas no comparten hoja. */
 .compra .gwallet-caja{margin:10px 0 0 -8px;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
@@ -254,7 +254,7 @@
   padding-left:8px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
   color:var(--hueso-40);
 }
-.compra .gwallet-btn{display:block;padding:8px;line-height:0;border-radius:28px}
+.compra .gwallet-btn{display:block;padding:8px;margin:0;border:0;background:none;line-height:0;border-radius:28px;cursor:pointer}
 .compra .gwallet-btn img{display:block;height:48px;width:auto}
 .compra .gwallet-btn:focus-visible{outline:2px solid var(--fluor);outline-offset:0}
 .compra .gwallet-btn[aria-busy="true"]{cursor:progress}

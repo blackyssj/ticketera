@@ -397,10 +397,6 @@ async function cargar() {
   $("#pie").textContent =
     `Orden #${String(r.orden.id).slice(0, 8).toUpperCase()}. ` +
     `Pasá este número si necesitás ayuda con tu compra.`;
-
-  // Vuelve de wallet-google por el 302 (el link suelto, sin JS) con algo que decir.
-  const aviso = window.GWallet ? window.GWallet.avisoDeVuelta() : "";
-  if (aviso) avisar(aviso);
 }
 
 /* ── Google Wallet ───────────────────────────────────────────────
@@ -409,7 +405,11 @@ async function cargar() {
    para una noche que ya pasó: la función diría "este evento ya pasó" y un
    botón que sólo sirve para recibir esa respuesta sobra. 36 h desde la
    apertura cubre la noche (cierra ~06:00) más las 12 h que la función todavía
-   lo acepta. */
+   lo acepta.
+
+   `#wallet` es como llega el botón del correo: la página baja hasta el
+   botón, y es la persona la que lo toca (ver wallet.js: un escáner de
+   links abre el correo, no toca botones). */
 function pintarWallet(ordenId, validas, ev) {
   const W = window.GWallet, caja = $("#walletCaja");
   if (!W || !caja || !validas) return;
@@ -421,6 +421,7 @@ function pintarWallet(ordenId, validas, ev) {
     if (!ok) return;
     caja.innerHTML = W.botones(ordenId, validas);
     caja.hidden = false;
+    if (location.hash === "#wallet") caja.scrollIntoView({ block: "center" });
   });
 }
 
