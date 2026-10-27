@@ -289,10 +289,15 @@ function claseDelEvento(cfg: Cfg, e: any, org: any) {
   // Con la marca de título (0104) es la casa y la noche: "BOWIE · Crush", como /orden.
   const marca = org?.titulo_marca === true && !!org?.nombre;
   const nombre = marca ? `${String(org.nombre).toUpperCase()} · ${e.nombre}` : String(e.nombre);
-  /* El afiche cuadrado (og) es el que mejor entra como banner; el flyer
-     vertical es el respaldo. Si el banner es el og, el flyer entero va
-     abajo, en los detalles del pase. */
-  const hero = https(e.og_url) ? e.og_url : https(e.flyer_url) ? e.flyer_url : null;
+  /* El banner (heroImage) es una franja apaisada, cerca de 3:1, a todo el
+     ancho del frente del pase. Sólo el og (el afiche para compartir, que no
+     es vertical) puede ir ahí. El flyer vertical NO es respaldo: recortado
+     a una franja queda una tira del medio con el texto cortado, y hay
+     muchos eventos sin og (los espejos de Puerta, por ejemplo). Sin og el
+     pase va sin banner, con el color del evento y el logo. El flyer va
+     siempre entero abajo, en los detalles. Cómo recorta Google el og
+     cuadrado se mira en la prueba demo, antes de pedir producción. */
+  const hero = https(e.og_url) ? e.og_url : null;
   const afiche = https(e.flyer_url) && e.flyer_url !== hero ? e.flyer_url : null;
   /* "Cómo llegar": el punto exacto si lo hay, si no el link del lugar que
      cargó el organizador (el mismo orden que la página del evento). */
