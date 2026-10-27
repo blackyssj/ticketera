@@ -316,7 +316,12 @@ const IMG_A_LA_VEZ = 4;
    se achica (mismo dibujo, menos píxeles) para que el correo no pase de
    ~1 MB, que en la fila se baja con datos móviles. */
 const PESO_IMAGENES = 900_000;
-const ANCHO_ENTRADA = 300;      // en el correo; la imagen tiene 2-3 veces eso para pantallas densas
+/* El ancho de la columna del correo (520 menos 28 de cada lado). Con 300
+   el QR adentro de la imagen quedaba en ~130 px, más chico que el de la
+   tabla del 26/10 (165): el guardia tenía que acercar el lector, en la fila
+   y de noche. Las imágenes miden 560-1000 px, así que no pierden nitidez; en
+   el teléfono el max-width la lleva al ancho que haya. */
+const ANCHO_ENTRADA = 464;
 
 type Imagen = { cid: string; tipo: string; bytes: Uint8Array; ancho: number; alto: number };
 
