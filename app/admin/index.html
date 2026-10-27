@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Big+Shoulders+Display:wght@700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/admin/admin.css?v=62">
+<link rel="stylesheet" href="/admin/admin.css?v=63">
 <link rel="manifest" href="/admin/manifest.json">
 <!-- La tinta de la marca: es lo que hay arriba de todo en la pantalla de
      entrar del teléfono. Adentro del panel lo cambia mostrar() (admin.js):
@@ -32,7 +32,17 @@
       document.documentElement.dataset.sesion = "revisando";
       setTimeout(() => { delete document.documentElement.dataset.sesion; }, 1500);
     }
-  } catch (e) { /* sin localStorage no hay sesión guardada que esperar */ }
+    /* El tema, acá y no en admin.js: si se leyera después, cada carga
+       empezaría en claro y saltaría a oscuro cuando el script llegue.
+       Ese fogonazo blanco, en un teléfono a oscuras en la puerta, se ve
+       en la cara. Tiene que estar puesto ANTES del primer dibujo.
+
+       Se guarda en el navegador y no en la cuenta porque del mismo
+       usuario entran cuatro personas: en la cuenta, el que elige oscuro
+       se lo cambia a los otros tres. */
+    if (localStorage.getItem("ticketazo.tema") === "oscuro")
+      document.documentElement.dataset.tema = "oscuro";
+  } catch (e) { /* sin localStorage no hay sesión guardada ni tema que recordar */ }
 </script>
 <script>
   /* Ruta ABSOLUTA. Con "sw.js" a secas, quien entra por /admin (sin
@@ -73,6 +83,14 @@
     <span class="marca">TICKET<span>AZO</span></span>
     <nav class="tabs" id="tabs"></nav>
     <span class="yo" id="yo"></span>
+    <!-- Claro u oscuro. Sin texto al lado: en el teléfono la cabecera ya
+         lleva la marca, las pestañas, quién sos y Salir, y una palabra más
+         empuja «Salir» fuera de la pantalla. El título dice qué hace. -->
+    <button class="btn plano chico btn-tema" id="btnTema" type="button"
+            aria-pressed="false" title="Cambiar a oscuro">
+      <span class="tema-icono" aria-hidden="true"></span>
+      <span class="solo-lectores">Cambiar entre claro y oscuro</span>
+    </button>
     <button class="btn plano chico" id="btnSalir">Salir</button>
   </header>
   <!-- La cabecera de un evento abierto: nombre, link y sus pestañas. Vive
@@ -108,7 +126,7 @@
 <!-- El CSV que se le manda al contador: separador, encoding y la
      neutralizacion de formulas viven ahi, no repartidos por las pantallas. -->
 <script src="/admin/csv.js?v=30"></script>
-<script src="/admin/admin.js?v=83"></script>
+<script src="/admin/admin.js?v=84"></script>
 <script src="/admin/puerta.js?v=38"></script>
 </body>
 </html>
