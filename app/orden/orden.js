@@ -403,9 +403,9 @@ async function cargar() {
    Qué hace falta para que aparezca lo decide wallet.js (Android, la
    función configurada, el botón oficial). Acá sólo el dónde, y no ofrecerlo
    para una noche que ya pasó: la función diría "este evento ya pasó" y un
-   botón que sólo sirve para recibir esa respuesta sobra. 36 h desde la
-   apertura cubre la noche (cierra ~06:00) más las 12 h que la función todavía
-   lo acepta.
+   botón que sólo sirve para recibir esa respuesta sobra. W.vigente hace la
+   misma cuenta que la función (fin del evento + 12 h) con el fin que manda
+   `orden`; una `orden` desplegada antes de hora_fin cae en las 06:00.
 
    `#wallet` es como llega el botón del correo: la página baja hasta el
    botón, y es la persona la que lo toca (ver wallet.js: un escáner de
@@ -414,7 +414,7 @@ function pintarWallet(ordenId, validas, ev) {
   const W = window.GWallet, caja = $("#walletCaja");
   if (!W || !caja || !validas) return;
   const abre = Date.parse(`${ev.fecha}T${String(ev.hora_inicio || "21:00").slice(0, 5)}:00-04:00`);
-  if (Number.isFinite(abre) && Date.now() > abre + 36 * 3600e3) return;
+  if (!W.vigente(abre, ev.hora_fin)) return;
   W.avisar = avisar;
   // No se espera: el botón es un extra sobre una página que ya cumplió.
   W.listo().then(ok => {

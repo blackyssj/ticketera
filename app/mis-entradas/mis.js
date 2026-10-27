@@ -178,12 +178,15 @@ function tarjetaCompra(c, pasada) {
   const etq = c.enCuenta === true  ? `<span class="etq">En tu cuenta</span>`
             : c.enCuenta === false ? `<span class="etq local">Sólo en este teléfono</span>` : "";
   const quien = c.organizador || c.org;
-  /* Google Wallet (wallet.js decide si corresponde): sólo en lo que viene,
-     y sólo si hay entradas. Lo que ya pasó no se ofrece — la función diría
-     "este evento ya pasó" — y una mesa sin entradas no tiene nada con qué
-     entrar. La cuenta puede incluir alguna ya usada; en ese caso la última
+  /* Google Wallet (wallet.js decide si corresponde), sólo si hay entradas:
+     una mesa sin entradas no tiene nada con qué entrar. NO se ata a
+     `pasada`, que se cuenta desde la apertura: a las 22:30 de una noche que
+     abrió a las 21:00 la tarjeta ya está en "Pasadas" y el comprador está
+     en la fila, que es cuando más sirve. Se ofrece mientras la función lo
+     acepte (W.vigente; sin la hora de fin, que mis_compras() no trae, las
+     06:00). La cuenta puede incluir alguna ya usada; en ese caso la última
      tanda vuelve con "no tiene entradas para agregar", que es cierto. */
-  const wallet = walletOk && !pasada && n > 0
+  const wallet = walletOk && n > 0 && window.GWallet.vigente(d)
     ? `<div class="gwallet-caja">${window.GWallet.botones(c.id, n)}</div>` : "";
   return `<article class="evento compra${pasada ? " pasada" : ""}">
     <div class="afiche">

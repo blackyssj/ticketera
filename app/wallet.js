@@ -44,6 +44,10 @@ const TANDA = 6;
 /* El `error` de MOTIVO en wallet-google, para cuando la función ni
    contesta. Los demás avisos los manda ella. */
 const AVISO_ERROR = "No pudimos agregarla a Google Wallet. Probá de nuevo en un rato.";
+/* Hasta cuándo se ofrece: la misma cuenta que wallet-google para aceptarlo
+   (horario() + PASADO_MS), así no hay botón que sólo sirva para recibir
+   "este evento ya pasó". */
+const DESPUES_MS = 12 * 3600e3;
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
   ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
@@ -66,6 +70,23 @@ function conTope(url, ms, init = {}) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms);
   return fetch(url, { ...init, signal: ctl.signal }).finally(() => clearTimeout(t));
+}
+
+/* ¿Todavía se ofrece? `abre` es la apertura (Date o ms), `horaFin` "HH:MM".
+   El fin es ese día a esa hora en Bolivia (UTC-4 todo el año), y si no es
+   posterior a la apertura es del día siguiente: la regla de horario() en
+   wallet-google. Sin la hora de fin (Mis entradas: mis_compras() no la trae)
+   va la 06:00, el default de la columna y el fin de casi todos los eventos.
+   Sin fecha no se esconde nada: que decida la función. */
+function vigente(abre, horaFin) {
+  const t = abre instanceof Date ? abre.getTime() : abre == null ? NaN : Number(abre);
+  if (!Number.isFinite(t)) return true;
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(horaFin || "06:00")) || [0, 6, 0];
+  const BO = 4 * 3600e3;
+  const medianoche = Math.floor((t - BO) / 864e5) * 864e5 + BO;   // 00:00 en Bolivia del día que abre
+  let fin = medianoche + (Number(m[1]) * 60 + Number(m[2])) * 60e3;
+  if (fin <= t) fin += 864e5;
+  return Date.now() <= fin + DESPUES_MS;
 }
 
 /* Una sola consulta por carga, aunque la pidan las dos mitades de la
@@ -150,5 +171,5 @@ document.addEventListener("click", async ev => {
 // Volver con "atrás" desde Google trae la página congelada como quedó: con el botón ocupado.
 addEventListener("pageshow", soltar);
 
-const GWallet = window.GWallet = { listo, botones, avisar: null };
+const GWallet = window.GWallet = { listo, botones, vigente, avisar: null };
 })();

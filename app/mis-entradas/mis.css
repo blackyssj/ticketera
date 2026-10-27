@@ -268,6 +268,24 @@
 .compra.pasada{opacity:.6}
 .compra.pasada:hover{transform:none;box-shadow:inset 0 0 0 1px var(--canto)}
 .compra.pasada .papel{filter:grayscale(.7)}
+/* Una noche que abrió hace un rato ya está en "Pasadas" (se cuenta desde la
+   apertura) y puede llevar el botón de Google Wallet: es justo cuando el
+   comprador está en la fila. Ese botón no se apaga —Google pide su imagen
+   tal cual, y apagado se lee como deshabilitado—, así que esa tarjeta se
+   apaga por partes, menos la caja del botón. El fondo pasa al talón con el
+   60% de opacidad: el afiche apagado tiene que quedar sobre la pared, como
+   cuando se apaga la tarjeta entera, y no sobre el fondo de la tarjeta
+   (medido contra una pasada sin botón: el papel salía más claro). Sin
+   :has() (navegadores viejos) queda la regla de arriba: el botón apagado,
+   pero anda. */
+.compra.pasada:has(.gwallet-caja){
+  opacity:1;background:transparent;
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--canto) 60%,transparent);
+}
+.compra.pasada:has(.gwallet-caja) .talon{background:color-mix(in srgb,var(--tinta-2) 60%,transparent)}
+.compra.pasada:has(.gwallet-caja) .afiche,
+.compra.pasada:has(.gwallet-caja) .perf::before,
+.compra.pasada:has(.gwallet-caja) .talon>:not(.gwallet-caja){opacity:.6}
 
 /* ── el toast con deshacer ──
    Mismo mecanismo que el resto del sitio (abajo, centrado, entra desde el

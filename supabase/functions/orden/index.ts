@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
                     motivo: "Esta compra todavía no está pagada." });
     }
 
-    const e = await uno(`eventos?id=eq.${o.evento_id}&select=id,nombre,lugar,fecha,hora_inicio,arte_url`);
+    const e = await uno(`eventos?id=eq.${o.evento_id}&select=id,nombre,lugar,fecha,hora_inicio,hora_fin,arte_url`);
     const ent = await rest(`entradas?orden_id=eq.${id}&select=code,precio,estado,used_at,fase_id,tipo_entrada(nombre,categoria),mesas(etiqueta,categoria)&order=created_at`);
     /* El recibo de la mesa (0108), aparte y con red como lo de 0104: si la
        función todavía no existe o falla, la página de entradas sale igual.
@@ -139,6 +139,11 @@ Deno.serve(async (req) => {
         // Cruda además del texto: "Mis entradas" ordena por fecha real.
         fecha: e.fecha,
         hora_inicio: String(e.hora_inicio).slice(0,5),
+        /* Para el botón de Google Wallet: se ofrece hasta 12 h después del
+           fin, la misma cuenta que hace wallet-google para aceptarlo. Sin
+           esto la página tenía que adivinar el fin y mostraba un botón que
+           sólo servía para recibir "este evento ya pasó". */
+        hora_fin: e.hora_fin ? String(e.hora_fin).slice(0,5) : null,
         fecha_txt: `${DIA[f.getDay()]} ${f.getDate()} ${MES[f.getMonth()]} · ${String(e.hora_inicio).slice(0,5)}`,
         arte_url: e.arte_url ?? null,
         titulo_marca: marca,
