@@ -394,6 +394,78 @@ function correoMesa(o: any, e: any, mesa: any, ent: any[], link: string): string
   return html;
 }
 
+/* ── el correo de una compra de entradas ──
+   Violeta y fluor, los mismos valores que portada.css y que la plantilla
+   de recuperar contraseña (supabase/plantillas-correo/). Antes iba en
+   negro, rojo y dorado cerveza: la paleta de Amstel, que quedó de cuando
+   la ticketera vestía un solo evento. Un comprador recibe estos dos
+   correos y tienen que parecer del mismo lado.
+
+   Tablas y estilos en línea, no divs con flex: Outlook renderiza con el
+   motor de Word y descarta casi todo el CSS moderno. Feo de escribir,
+   igual en todos lados. Hexadecimales sólidos y ninguna rgba: los clientes
+   viejos la ignoran y dejarían el texto en negro sobre violeta.
+
+   Cada entrada va con su QR adentro del correo (26/10). Antes el correo
+   decía "abrí ese link en la puerta: ahí están los QR", y el link necesita
+   señal: en la fila de un boliche lleno, el que no tenía datos no podía
+   mostrar su entrada. El correo sí queda guardado en el teléfono. Es el
+   mismo QR que dibuja ticket.js (EVT:<evento>:<código>), así que lo lee
+   tanto nuestra puerta como la de Plataforma Puerta en Bowie y BurTown.
+   Los mismos topes que el de la mesa: diez QR y CORREO_TOPE; las que no
+   entran van con su código y están todas en el link. */
+function correoEntradas(o: any, e: any, ent: any[], link: string): string {
+  const F = "font-family:Helvetica,Arial,sans-serif";
+  const n = ent.length;
+  const conQr = ent.slice(0, QR_ENTRADAS_TOPE).map((x: any, i: number) =>
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:22px auto 0"><tr><td align="center">
+     ${qrTabla(`EVT:${e.id}:${x.code}`)}
+     <p style="margin:10px 0 0;${F};font-size:13px;color:#F3EFE2;text-align:center">${esc(etiqueta(x))}${n > 1 ? ` · ${i + 1} de ${n}` : ""}</p>
+     <p style="margin:2px 0 0;font-family:Courier,monospace;font-size:13px;color:#A79EC0;text-align:center">#${esc(x.code)}</p>
+    </td></tr></table>`);
+  const soloCodigo = (x: any) =>
+    `<tr>
+        <td style="padding:7px 12px 7px 0;${F};font-size:13px;color:#A79EC0">${esc(etiqueta(x))}</td>
+        <td style="padding:7px 0;font-family:Courier,monospace;font-size:13px;color:#F3EFE2">#${esc(x.code)}</td>
+      </tr>`;
+  const aviso = (k: number) =>
+    k === n ? (n === 1 ? "Mostrá este QR en la puerta." : "Mostrá estos QR en la puerta, uno por persona.")
+      : k === 0 ? "Tus QR están en el link: abrilo antes de salir de tu casa."
+      : `Acá abajo van ${k === 1 ? "la primera" : `las primeras ${k}`}; todas están en el link.`;
+
+  const armar = (k: number) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#180E3A;margin:0;padding:0">
+ <tr><td align="center" style="padding:32px 16px">
+  <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="width:520px;max-width:100%">
+   <tr><td style="padding:0 0 26px"><img src="${SITIO}/logo-correo.png" alt="TICKETAZO" width="180" style="display:block;border:0;outline:none;text-decoration:none;width:180px;height:auto;color:#F3EFE2;${F};font-size:22px;font-weight:bold"></td></tr>
+   <tr><td style="background:#231550;border-radius:10px;padding:32px 28px">
+    <p style="margin:0 0 6px;${F};font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#FFE24B">${esc(e.lugar)}</p>
+    <h1 style="margin:0 0 4px;${F};font-size:26px;line-height:1.15;text-transform:uppercase;color:#F3EFE2">${esc(e.nombre)}</h1>
+    <p style="margin:0 0 22px;${F};font-size:14px;color:#A79EC0">${esc(e.fecha)} · ${esc(String(e.hora_inicio).slice(0,5))}</p>
+    <p style="margin:0 0 6px;${F};font-size:15px;line-height:1.55;color:#F3EFE2">Hola ${esc(o.comprador_nombre)}, tu compra está confirmada. ${n === 1 ? "Tenés 1 entrada" : `Tenés ${n} entradas`}. ${aviso(k)}</p>
+    <p style="margin:0;${F};font-size:13px;line-height:1.5;color:#A79EC0">Si en la puerta no hay señal, este correo igual se abre. Cada QR vale para un solo ingreso: no lo compartas.</p>
+    ${conQr.slice(0, k).join("")}
+    ${k === n ? "" : `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;border-collapse:collapse">${ent.slice(k).map(soloCodigo).join("")}</table>`}
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:26px"><tr>
+     <td align="center" bgcolor="#FFE24B" style="border-radius:8px">
+      <a href="${link}" style="display:inline-block;padding:14px 26px;${F};font-size:15px;font-weight:bold;color:#180E3A;text-decoration:none">Ver mis entradas</a>
+     </td>
+    </tr></table>
+    <p style="margin:14px 0 0;${F};font-size:12px;line-height:1.5;color:#6E6392">En el link están siempre, con el arte del evento. Guardalo.</p>
+   </td></tr>
+   <tr><td style="padding:22px 4px 0;${F};font-size:12px;line-height:1.5;color:#6E6392">TICKETAZO · Entradas y control de puerta · Santa Cruz de la Sierra</td></tr>
+  </table>
+ </td></tr>
+</table>`;
+
+  // De a una menos hasta que entre, igual que el de la mesa: pasados los
+  // 102 KB Gmail esconde el final detrás de "Ver mensaje completo", y ahí
+  // quedaba el botón. Bytes y no largo del texto: cada tilde son dos.
+  const bytes = (t: string) => new TextEncoder().encode(t).length;
+  let k = Math.min(n, QR_ENTRADAS_TOPE), html = armar(k);
+  while (k > 0 && bytes(html) > CORREO_TOPE) html = armar(--k);
+  return html;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ ok: false, motivo: "Usá POST." }, 405);
@@ -420,47 +492,7 @@ Deno.serve(async (req) => {
       return json({ ok: true, enviado: false, motivo: "El envío de correos no está configurado.", link });
     }
 
-    /* ── el correo, con la marca de TICKETAZO ──
-       Violeta y fluor, los mismos valores que portada.css y que la
-       plantilla de recuperar contraseña (supabase/plantillas-correo/).
-       Antes iba en negro, rojo y dorado cerveza: la paleta de Amstel, que
-       quedó de cuando la ticketera vestía un solo evento. Un comprador
-       recibe estos dos correos y tienen que parecer del mismo lado.
-
-       Tablas y estilos en línea, no divs con flex: Outlook renderiza con
-       el motor de Word y descarta casi todo el CSS moderno. Feo de
-       escribir, igual en todos lados.
-
-       Hexadecimales sólidos y ninguna rgba: los clientes viejos la ignoran
-       y dejarían el texto en negro sobre violeta, o sea invisible. */
-    const filas = (ent ?? []).map((x: any) =>
-      `<tr>
-        <td style="padding:7px 12px 7px 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;color:#A79EC0">${esc(etiqueta(x))}</td>
-        <td style="padding:7px 0;font-family:Courier,monospace;font-size:13px;color:#F3EFE2">#${esc(x.code)}</td>
-      </tr>`).join("");
-
-    const html = mesa?.code ? correoMesa(o, e, mesa, ent ?? [], link) : `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#180E3A;margin:0;padding:0">
- <tr><td align="center" style="padding:32px 16px">
-  <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="width:520px;max-width:100%">
-   <tr><td style="padding:0 0 26px"><img src="${SITIO}/logo-correo.png" alt="TICKETAZO" width="180" style="display:block;border:0;outline:none;text-decoration:none;width:180px;height:auto;color:#F3EFE2;font-family:Helvetica,Arial,sans-serif;font-size:22px;font-weight:bold"></td></tr>
-   <tr><td style="background:#231550;border-radius:10px;padding:32px 28px">
-    <p style="margin:0 0 6px;font-family:Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#FFE24B">${esc(e.lugar)}</p>
-    <h1 style="margin:0 0 4px;font-family:Helvetica,Arial,sans-serif;font-size:26px;line-height:1.15;text-transform:uppercase;color:#F3EFE2">${esc(e.nombre)}</h1>
-    <p style="margin:0 0 22px;font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#A79EC0">${esc(e.fecha)} · ${esc(String(e.hora_inicio).slice(0,5))}</p>
-    <p style="margin:0 0 24px;font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#F3EFE2">Hola ${esc(o.comprador_nombre)}, tu compra está confirmada. ${n === 1 ? "Tenés 1 entrada" : `Tenés ${n} entradas`}.</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-     <td align="center" bgcolor="#FFE24B" style="border-radius:8px">
-      <a href="${link}" style="display:inline-block;padding:14px 26px;font-family:Helvetica,Arial,sans-serif;font-size:15px;font-weight:bold;color:#180E3A;text-decoration:none">Ver mis entradas</a>
-     </td>
-    </tr></table>
-    <p style="margin:22px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:#A79EC0">Abrí ese link en la puerta: ahí están los QR. Guardalo, sirve siempre.</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;border-collapse:collapse">${filas}</table>
-    <p style="margin:22px 0 0;font-family:Helvetica,Arial,sans-serif;font-size:12px;color:#6E6392">Cada QR vale para un solo ingreso.</p>
-   </td></tr>
-   <tr><td style="padding:22px 4px 0;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#6E6392">TICKETAZO · Entradas y control de puerta · Santa Cruz de la Sierra</td></tr>
-  </table>
- </td></tr>
-</table>`;
+    const html = mesa?.code ? correoMesa(o, e, mesa, ent ?? [], link) : correoEntradas(o, e, ent ?? [], link);
 
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
