@@ -178,6 +178,13 @@ function tarjetaCompra(c, pasada) {
   const etq = c.enCuenta === true  ? `<span class="etq">En tu cuenta</span>`
             : c.enCuenta === false ? `<span class="etq local">Sólo en este teléfono</span>` : "";
   const quien = c.organizador || c.org;
+  /* Google Wallet (wallet.js decide si corresponde): sólo en lo que viene,
+     y sólo si hay entradas. Lo que ya pasó no se ofrece — la función diría
+     "este evento ya pasó" — y una mesa sin entradas no tiene nada con qué
+     entrar. La cuenta puede incluir alguna ya usada; en ese caso la última
+     tanda vuelve con "no tiene entradas para agregar", que es cierto. */
+  const wallet = walletOk && !pasada && n > 0
+    ? `<div class="gwallet-caja">${window.GWallet.botones(c.id, n)}</div>` : "";
   return `<article class="evento compra${pasada ? " pasada" : ""}">
     <div class="afiche">
       <div class="papel">
@@ -198,6 +205,7 @@ function tarjetaCompra(c, pasada) {
         ${c.enCuenta === true ? "" : `<button type="button" class="quitar" data-quitar="${esc(c.id)}">Quitar</button>`}
       </div>
       ${c.enCuenta === false ? `<button type="button" class="vincular" data-vincular="${esc(c.id)}">Guardar en mi cuenta</button>` : ""}
+      ${wallet}
     </div>
   </article>`;
 }
@@ -225,6 +233,13 @@ function cartelVacio(conSesion) {
   </div>`;
 }
 
+/* Google Wallet llega después de la primera pintada (le pregunta a la
+   función si está configurada): cuando contesta que sí, se repinta lo último
+   que se pintó, con el botón. Repintar y no meter el botón a mano en cada
+   tarjeta: la próxima pintada (la cuenta que llega, un "Quitar") lo borraría. */
+let walletOk = false;
+let ultimaPintada = null;
+
 /* ── pintar la lista ──
    Próximas primero (la que sigue, antes), pasadas después (la más
    reciente arriba: es la que alguien más probablemente vino a revisar).
@@ -232,6 +247,7 @@ function cartelVacio(conSesion) {
    una entrada que ya se pagó por no poder leerle la fecha es peor que
    dejarla arriba sin ordenar bien. */
 function pintarLista(compras, conSesion, cargando) {
+  ultimaPintada = [compras, conSesion, cargando];
   const ahora = Date.now();
   const enriquecidas = compras.map(c => {
     const d = fechaDe(c);
@@ -626,6 +642,15 @@ const errorDelLink = delLink && delLink.error ? delLink.error : "";
 
 verFormulario(tokenRecuperacion ? "clave" : (errorDelLink ? "olvide" : "cuenta"));
 pintar();
+
+if (window.GWallet) {
+  window.GWallet.avisar = texto => avisar(texto);
+  window.GWallet.listo().then(ok => {
+    if (!ok) return;
+    walletOk = true;
+    if (ultimaPintada) pintarLista(...ultimaPintada);
+  });
+}
 
 if (tokenRecuperacion) {
   /* pintar() esconde la caja de entrar cuando encuentra una sesión

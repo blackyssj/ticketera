@@ -13,7 +13,7 @@
      imagen del ticket (crossorigin) van por pilas de conexión distintas. -->
 <link rel="preconnect" href="https://mjotxzcddhqqpuhkcetl.supabase.co" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Inter+Tight:wght@400;500;600&family=DM+Mono:wght@400;500&family=Inter:wght@500&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../styles.css?v=49">
+<link rel="stylesheet" href="../styles.css?v=50">
 </head>
 <body>
 
@@ -66,6 +66,12 @@
         <p class="guardar-nota">También podés mantener apretada la entrada y
           elegir <b>Guardar imagen</b>, o sacarle una captura de pantalla.</p>
       </div>
+
+      <!-- "Agregar a Google Wallet" (wallet.js): sólo en Android y cuando
+           la función está configurada; si no, esto no aparece nunca. Fuera
+           de #acciones a propósito: el pase no depende de que el canvas
+           haya podido dibujar la entrada. -->
+      <div class="gwallet-caja" id="walletCaja" hidden></div>
 
       <div class="link-recuperar" id="bloqueLink" hidden>
         <div>
@@ -123,12 +129,13 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<!-- defer en los cinco: corren en este mismo orden, pero el de jsdelivr ya
+<!-- defer en los seis: corren en este mismo orden, pero el de jsdelivr ya
      no frena el pedido de la orden mientras abre su conexión. -->
 <script defer src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script defer src="../config.js"></script>
 <script defer src="../cuenta.js?v=4"></script>
 <script defer src="../ticket.js?v=31"></script>
-<script defer src="orden.js?v=33"></script>
+<script defer src="../wallet.js?v=1"></script>
+<script defer src="orden.js?v=34"></script>
 </body>
 </html>

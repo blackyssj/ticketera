@@ -372,6 +372,11 @@ async function cargar() {
     ? (n ? "Guardar la mesa y las entradas" : "Guardar el recibo") : "Guardar las entradas";
   $("#acciones").hidden = !pases.some(p => p.png);
 
+  /* Google Wallet: sólo las válidas (una usada o anulada no se ofrece, y
+     la función tampoco la manda). El recibo de la mesa nunca: su QR no da
+     ingreso y un pase de Wallet se lee como "con esto entro". */
+  pintarWallet(r.orden.id, entradas.filter(e => e.estado === "valida").length, r.evento);
+
   /* El link con el uuid es el único camino de vuelta si el correo se pierde
      o el teléfono cambia de dueño de pestaña. Se muestra entero y con un
      botón para copiarlo, no escondido en la barra de direcciones. */
@@ -392,6 +397,31 @@ async function cargar() {
   $("#pie").textContent =
     `Orden #${String(r.orden.id).slice(0, 8).toUpperCase()}. ` +
     `Pasá este número si necesitás ayuda con tu compra.`;
+
+  // Vuelve de wallet-google por el 302 (el link suelto, sin JS) con algo que decir.
+  const aviso = window.GWallet ? window.GWallet.avisoDeVuelta() : "";
+  if (aviso) avisar(aviso);
+}
+
+/* ── Google Wallet ───────────────────────────────────────────────
+   Qué hace falta para que aparezca lo decide wallet.js (Android, la
+   función configurada, el botón oficial). Acá sólo el dónde, y no ofrecerlo
+   para una noche que ya pasó: la función diría "este evento ya pasó" y un
+   botón que sólo sirve para recibir esa respuesta sobra. 36 h desde la
+   apertura cubre la noche (cierra ~06:00) más las 12 h que la función todavía
+   lo acepta. */
+function pintarWallet(ordenId, validas, ev) {
+  const W = window.GWallet, caja = $("#walletCaja");
+  if (!W || !caja || !validas) return;
+  const abre = Date.parse(`${ev.fecha}T${String(ev.hora_inicio || "21:00").slice(0, 5)}:00-04:00`);
+  if (Number.isFinite(abre) && Date.now() > abre + 36 * 3600e3) return;
+  W.avisar = avisar;
+  // No se espera: el botón es un extra sobre una página que ya cumplió.
+  W.listo().then(ok => {
+    if (!ok) return;
+    caja.innerHTML = W.botones(ordenId, validas);
+    caja.hidden = false;
+  });
 }
 
 /* ── la cuenta del comprador ──────────────────────────────────────
