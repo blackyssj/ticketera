@@ -1,8 +1,9 @@
-/* enviar-entradas — el correo con el link a las entradas.
-   Manda un LINK, no adjuntos: el ticket se dibuja en canvas del lado del
-   cliente, así que adjuntarlo obligaría a renderizarlo en el servidor o a
-   que el navegador suba nueve PNG. El link además sigue sirviendo cuando el
-   comprador borra el correo o cambia de teléfono.
+/* enviar-entradas — el correo con las entradas y el link a /orden.
+   Cada entrada va adentro del correo: desde el 27/10 como la imagen de
+   /orden, con el arte del evento (la dibuja app/api/entrada.js en Vercel con
+   el mismo ticket.js), y si esa imagen no llega, con su QR en una tabla
+   (26/10). El link sigue: sirve cuando el comprador borra el correo o
+   cambia de teléfono, y tiene todas las entradas.
    Si no hay RESEND_API_KEY no falla: registra y sigue. Que no se pueda mandar
    un correo no puede tumbar una venta ya cobrada.
 
@@ -280,6 +281,120 @@ function qrTabla(texto: string, px = 5): string {
     `</td></tr></table>`;
 }
 
+/* ── la entrada con el arte del evento (27/10) ──
+   El QR en tabla del 26/10 llegó, y el dueño lo miró y dijo que "llegó
+   pero no con el diseño que tiene la entrada de cada evento": lo que se
+   compra es la pieza con el arte del organizador, la de /orden. Esa imagen
+   la dibuja app/api/entrada.js (una función de Vercel en Node) corriendo
+   el MISMO ticket.js; acá no se puede, porque ticket.js necesita un canvas
+   de verdad y en una Edge Function no hay ninguno que lo dibuje igual (ver
+   el comentario de arriba de ese archivo).
+
+   Va adjunta e inline (cid), no como <img src="https://…">: el adjunto
+   viaja ADENTRO del mensaje, así que el teléfono que bajó el correo la
+   muestra sin señal en la fila, que fue la razón de meter los QR en el
+   correo. Y una imagen remota la bloquean varios clientes hasta que uno
+   toca "mostrar imágenes".
+
+   Nada de esto puede trabar un correo, y menos una venta:
+     · sin ENTRADA_FIRMA no se intenta (se despliega apagado y se prende
+       cargando el secret, acá y en Vercel);
+     · cada entrada tiene su tope de tiempo y todas juntas otro: la que no
+       llegue a tiempo, o falle, va con su QR en tabla como el 26/10;
+     · si Resend rechaza el correo con adjuntos, sale otra vez sin ellos.
+   Los datos del dibujo se le piden a la función `orden`, la misma que usa
+   /orden: marca, fecha_txt, la fase con su sello, si es una fecha de
+   Puerta. Copiar ese armado acá era la forma segura de que el correo y la
+   página dibujaran entradas distintas. */
+const FIRMA = Deno.env.get("ENTRADA_FIRMA");
+const RENDER = Deno.env.get("ENTRADA_RENDER_URL") ?? `${SITIO}/api/entrada`;
+const IMG_ESPERA_MS = 8_000;    // una entrada; el arranque en frío de la de Vercel es 1-2 s
+const IMG_TOTAL_MS = 15_000;    // todas juntas: el botón "reenviar" del panel espera esto
+const IMG_A_LA_VEZ = 4;
+/* Lo que pesan todas las imágenes de un correo, más o menos. Una entrada
+   de /orden pesa 150-440 KB y con una o dos va tal cual; con diez, cada una
+   se achica (mismo dibujo, menos píxeles) para que el correo no pase de
+   ~1 MB, que en la fila se baja con datos móviles. */
+const PESO_IMAGENES = 900_000;
+const ANCHO_ENTRADA = 300;      // en el correo; la imagen tiene 2-3 veces eso para pantallas densas
+
+type Imagen = { cid: string; tipo: string; bytes: Uint8Array; ancho: number; alto: number };
+
+const hex = (b: ArrayBuffer) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join("");
+let llave: Promise<CryptoKey> | null = null;
+function firmar(ts: string, cuerpo: string): Promise<string> {
+  llave ??= crypto.subtle.importKey("raw", new TextEncoder().encode(FIRMA!),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return llave.then((k) => crypto.subtle.sign("HMAC", k, new TextEncoder().encode(`${ts}.${cuerpo}`))).then(hex);
+}
+
+/** Las imágenes de las entradas `codes`, por código. Las que no llegan no
+    están en el mapa: esas van con el QR en tabla. Nunca tira. */
+async function imagenesDeEntradas(ordenId: string, codes: string[]): Promise<Map<string, Imagen>> {
+  const out = new Map<string, Imagen>();
+  if (!FIRMA || !codes.length) return out;
+  const hasta = Date.now() + IMG_TOTAL_MS;
+  let d: any;
+  try {
+    const r = await fetch(`${SB}/functions/v1/orden`, {
+      method: "POST", headers: H, body: JSON.stringify({ orden: ordenId }), signal: AbortSignal.timeout(6_000),
+    });
+    d = await r.json();
+    if (!r.ok || d?.estado !== "pagada" || !d.evento) throw new Error(d?.motivo ?? `respondió ${r.status}`);
+  } catch (e) {
+    console.error(`entradas con diseño: la función orden no dio los datos de ${ordenId}: ${e}`);
+    return out;
+  }
+  const porCode = new Map<string, any>((d.entradas ?? []).map((t: any) => [t.code, t]));
+  const tope = Math.max(90_000, Math.floor(PESO_IMAGENES / codes.length));
+  const una = async (code: string): Promise<boolean> => {
+    const t = porCode.get(code), resta = hasta - Date.now();
+    if (!t || resta < 1_000) return false;
+    try {
+      const cuerpo = JSON.stringify({ t: { code: t.code, cliente: t.cliente, etiqueta: t.etiqueta },
+                                      evento: d.evento, fase: d.fase, tope });
+      const ts = String(Math.floor(Date.now() / 1000));
+      const r = await fetch(RENDER, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-ts": ts, "x-firma": await firmar(ts, cuerpo) },
+        body: cuerpo, signal: AbortSignal.timeout(Math.min(IMG_ESPERA_MS, resta)),
+      });
+      const tipo = r.headers.get("content-type") ?? "";
+      if (!r.ok || !/^image\/(jpeg|png)$/.test(tipo)) {
+        await r.body?.cancel();
+        throw new Error(`respondió ${r.status} ${tipo}`);
+      }
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      if ((d.fase?.arte_url || d.evento.arte_url) && r.headers.get("x-entrada-variante") !== "arte")
+        console.error(`entrada ${code}: el arte no cargó en el servidor, va la entrada propia`);
+      out.set(code, { cid: `entrada-${code}`, tipo, bytes,
+                      ancho: Number(r.headers.get("x-entrada-ancho")) || 0,
+                      alto: Number(r.headers.get("x-entrada-alto")) || 0 });
+      return true;
+    } catch (e) {
+      console.error(`entrada ${code} sin diseño, va con el QR en tabla: ${e}`);
+      return false;
+    }
+  };
+  /* La primera sola: calienta la instancia y deja el arte en su caché, así
+     las otras no lo bajan cada una por su lado. Y si la primera no sale
+     (Vercel caído, firma que no coincide), no se insiste con las demás:
+     fallarían igual y el botón "reenviar" del panel esperaría el doble. */
+  if (!(await una(codes[0]))) return out;
+  let i = 1;
+  await Promise.all(Array.from({ length: IMG_A_LA_VEZ }, async () => {
+    while (i < codes.length) await una(codes[i++]);
+  }));
+  return out;
+}
+
+// btoa necesita un string binario; de a tramos, que un spread de 400 KB revienta la pila.
+function base64(b: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
 /* El nombre de cada entrada en la lista. Las que vienen con una mesa dicen
    de cuál (0108): son las que pasan el molinete, y el comprador tiene que
    poder distinguirlas del recibo, que no lo pasa. */
@@ -287,6 +402,25 @@ const etiqueta = (x: any) =>
   x.tipo_entrada?.categoria === "mesa" ? `Entrada · ${x.tipo_entrada.nombre}`
     : x.tipo_entrada?.nombre
       ?? ((x.mesas?.categoria === "lounge" ? "Lounge " : "Mesa ") + (x.mesas?.etiqueta ?? ""));
+
+/* Una entrada adentro del correo: la imagen de /orden si llegó, y si no
+   su QR en tabla (que lee la misma puerta). Abajo, qué entrada es y su
+   código, como en el pie de cada pase de /orden. El alto va en el atributo
+   para que el correo no salte mientras carga la imagen. */
+function bloqueEntrada(e: any, x: any, i: number, n: number, img?: Imagen): string {
+  const F = "font-family:Helvetica,Arial,sans-serif";
+  const visual = img
+    ? `<img src="cid:${img.cid}" width="${ANCHO_ENTRADA}"` +
+      (img.ancho && img.alto ? ` height="${Math.round(ANCHO_ENTRADA * img.alto / img.ancho)}"` : "") +
+      ` alt="${esc(`Entrada ${etiqueta(x)}, código #${x.code}`)}" style="display:block;width:${ANCHO_ENTRADA}px;` +
+      `max-width:100%;height:auto;border:0;outline:none;border-radius:10px;${F};font-size:13px;color:#F3EFE2">`
+    : qrTabla(`EVT:${e.id}:${x.code}`);
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:22px auto 0"><tr><td align="center">
+     ${visual}
+     <p style="margin:10px 0 0;${F};font-size:13px;color:#F3EFE2;text-align:center">${esc(etiqueta(x))}${n > 1 ? ` · ${i + 1} de ${n}` : ""}</p>
+     <p style="margin:2px 0 0;font-family:Courier,monospace;font-size:13px;color:#A79EC0;text-align:center">#${esc(x.code)}</p>
+    </td></tr></table>`;
+}
 
 /* Cuántas entradas de la mesa van con su QR adentro del correo. El dueño
    pidió que lleguen los QR, no solo el link. Dos topes: diez, que es una
@@ -303,7 +437,8 @@ const CORREO_TOPE = 95_000;
    reserva. El mismo cascarón que el de entradas (paleta, tablas, estilos
    en línea) para que parezcan del mismo lado. El carnet va enmascarado:
    un correo se reenvía, y el completo lo ve el guardia en su pantalla. */
-function correoMesa(o: any, e: any, mesa: any, ent: any[], link: string): string {
+function correoMesa(o: any, e: any, mesa: any, ent: any[], link: string,
+                    imgs: Map<string, Imagen> = new Map()): string {
   const F = "font-family:Helvetica,Arial,sans-serif";
   const fila = (k: string, v: string) =>
     `<tr><td style="padding:6px 14px 6px 0;${F};font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#A79EC0;vertical-align:top;white-space:nowrap">${k}</td>` +
@@ -313,15 +448,10 @@ function correoMesa(o: any, e: any, mesa: any, ent: any[], link: string): string
   const condiciones = (Array.isArray(mesa.condiciones) ? mesa.condiciones : [])
     .map((c: string) => `<p style="margin:4px 0 0;${F};font-size:14px;line-height:1.5;color:#F3EFE2">· ${esc(c)}</p>`).join("");
 
-  /* Cada entrada con su QR, dibujado igual que el del recibo, y abajo de
-     qué mesa es: es la que pasa el molinete, y el comprador tiene que
-     poder distinguirla del recibo, que no lo pasa. */
-  const conQr = ent.slice(0, QR_ENTRADAS_TOPE).map((x: any, i: number) =>
-    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:22px auto 0"><tr><td align="center">
-     ${qrTabla(`EVT:${e.id}:${x.code}`)}
-     <p style="margin:10px 0 0;${F};font-size:13px;color:#F3EFE2;text-align:center">${esc(etiqueta(x))}${n > 1 ? ` · ${i + 1} de ${n}` : ""}</p>
-     <p style="margin:2px 0 0;font-family:Courier,monospace;font-size:13px;color:#A79EC0;text-align:center">#${esc(x.code)}</p>
-    </td></tr></table>`);
+  /* Cada entrada con su imagen de /orden (o su QR en tabla, si la imagen
+     no llegó), y abajo de qué mesa es: es la que pasa el molinete, y el
+     comprador tiene que poder distinguirla del recibo, que no lo pasa. */
+  const conQr = ent.slice(0, QR_ENTRADAS_TOPE).map((x: any, i: number) => bloqueEntrada(e, x, i, n, imgs.get(x.code)));
   const soloCodigo = (x: any) =>
     `<tr>
         <td style="padding:7px 12px 7px 0;${F};font-size:13px;color:#A79EC0">${esc(etiqueta(x))}</td>
@@ -413,16 +543,15 @@ function correoMesa(o: any, e: any, mesa: any, ent: any[], link: string): string
    mismo QR que dibuja ticket.js (EVT:<evento>:<código>), así que lo lee
    tanto nuestra puerta como la de Plataforma Puerta en Bowie y BurTown.
    Los mismos topes que el de la mesa: diez QR y CORREO_TOPE; las que no
-   entran van con su código y están todas en el link. */
-function correoEntradas(o: any, e: any, ent: any[], link: string): string {
+   entran van con su código y están todas en el link. Desde el 27/10 cada
+   una va con la imagen de /orden si llegó (ver imagenesDeEntradas): un
+   <img cid:> pesa casi nada en el HTML, así que CORREO_TOPE sigue
+   midiendo lo mismo, el HTML, que es lo que Gmail corta. */
+function correoEntradas(o: any, e: any, ent: any[], link: string,
+                        imgs: Map<string, Imagen> = new Map()): string {
   const F = "font-family:Helvetica,Arial,sans-serif";
   const n = ent.length;
-  const conQr = ent.slice(0, QR_ENTRADAS_TOPE).map((x: any, i: number) =>
-    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:22px auto 0"><tr><td align="center">
-     ${qrTabla(`EVT:${e.id}:${x.code}`)}
-     <p style="margin:10px 0 0;${F};font-size:13px;color:#F3EFE2;text-align:center">${esc(etiqueta(x))}${n > 1 ? ` · ${i + 1} de ${n}` : ""}</p>
-     <p style="margin:2px 0 0;font-family:Courier,monospace;font-size:13px;color:#A79EC0;text-align:center">#${esc(x.code)}</p>
-    </td></tr></table>`);
+  const conQr = ent.slice(0, QR_ENTRADAS_TOPE).map((x: any, i: number) => bloqueEntrada(e, x, i, n, imgs.get(x.code)));
   const soloCodigo = (x: any) =>
     `<tr>
         <td style="padding:7px 12px 7px 0;${F};font-size:13px;color:#A79EC0">${esc(etiqueta(x))}</td>
@@ -442,7 +571,7 @@ function correoEntradas(o: any, e: any, ent: any[], link: string): string {
     <h1 style="margin:0 0 4px;${F};font-size:26px;line-height:1.15;text-transform:uppercase;color:#F3EFE2">${esc(e.nombre)}</h1>
     <p style="margin:0 0 22px;${F};font-size:14px;color:#A79EC0">${esc(e.fecha)} · ${esc(String(e.hora_inicio).slice(0,5))}</p>
     <p style="margin:0 0 6px;${F};font-size:15px;line-height:1.55;color:#F3EFE2">Hola ${esc(o.comprador_nombre)}, tu compra está confirmada. ${n === 1 ? "Tenés 1 entrada" : `Tenés ${n} entradas`}. ${aviso(k)}</p>
-    <p style="margin:0;${F};font-size:13px;line-height:1.5;color:#A79EC0">Si en la puerta no hay señal, este correo igual se abre. Cada QR vale para un solo ingreso: no lo compartas.</p>
+    <p style="margin:0;${F};font-size:13px;line-height:1.5;color:#A79EC0">Si en la puerta no hay señal, este correo igual se abre${imgs.size ? ": abrilo una vez antes de salir, así las entradas quedan guardadas en el teléfono" : ""}. Cada QR vale para un solo ingreso: no lo compartas.</p>
     ${conQr.slice(0, k).join("")}
     ${k === n ? "" : `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;border-collapse:collapse">${ent.slice(k).map(soloCodigo).join("")}</table>`}
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:26px"><tr>
@@ -492,24 +621,56 @@ Deno.serve(async (req) => {
       return json({ ok: true, enviado: false, motivo: "El envío de correos no está configurado.", link });
     }
 
-    const html = mesa?.code ? correoMesa(o, e, mesa, ent ?? [], link) : correoEntradas(o, e, ent ?? [], link);
+    // Las que van adentro del correo (las primeras QR_ENTRADAS_TOPE), con su imagen si llega.
+    const lista: any[] = ent ?? [];
+    const imgs = await imagenesDeEntradas(o.id, lista.slice(0, QR_ENTRADAS_TOPE).map((x) => x.code));
+    const armar = (m: Map<string, Imagen>) =>
+      mesa?.code ? correoMesa(o, e, mesa, lista, link, m) : correoEntradas(o, e, lista, link, m);
+    const html = armar(imgs);
+    /* Solo las que quedaron en el HTML: si CORREO_TOPE dejó afuera alguna,
+       su imagen no viaja colgando como un adjunto suelto. En el orden de
+       la compra, que es como aparecen en la lista de adjuntos del correo. */
+    const adjuntos = lista.flatMap((x, i) => {
+      const m = imgs.get(x.code);
+      return m && html.includes(`cid:${m.cid}`)
+        ? [{ filename: `entrada-${i + 1}-${x.code}.${m.tipo === "image/png" ? "png" : "jpg"}`,
+             content: base64(m.bytes), content_type: m.tipo, content_id: m.cid }]
+        : [];
+    });
 
-    const r = await fetch("https://api.resend.com/emails", {
+    const enviar = (cuerpo: string, adj: unknown[]) => fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${RESEND}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         from: DESDE, to: [o.comprador_email],
         subject: mesa?.code ? `Tu mesa — ${e.nombre}` : `Tus entradas — ${e.nombre}`,
-        html,
+        html: cuerpo,
+        ...(adj.length ? { attachments: adj } : {}),
       }),
     });
-    const j = await r.json().catch(() => ({}));
+    let r = await enviar(html, adjuntos);
+    let j = await r.json().catch(() => ({}));
+    let conDiseno = adjuntos.length;
+    /* Si Resend no acepta el correo con los adjuntos (un 4xx de validación:
+       un adjunto que no le gusta, el tamaño), sale el de antes, todo en
+       tablas. Un 5xx o un 429 no se reintenta: puede haberlo encolado, y
+       dos correos iguales confunden más que uno que no llegó (el link y el
+       botón "reenviar" del panel siguen estando). */
+    if (!r.ok && adjuntos.length && [400, 413, 422].includes(r.status)) {
+      console.error(`resend rechazó el correo con imágenes de ${o.id} (${r.status}): ` +
+                    `${JSON.stringify(j).slice(0, 300)}; va con el QR en tabla`);
+      r = await enviar(armar(new Map()), []);
+      j = await r.json().catch(() => ({}));
+      conDiseno = 0;
+    }
     if (!r.ok) {
       // Un correo que no sale no puede tumbar una venta ya cobrada.
       console.error(`resend falló para ${o.id}: ${JSON.stringify(j).slice(0, 300)}`);
       return json({ ok: true, enviado: false, motivo: "No se pudo enviar el correo.", link });
     }
-    return json({ ok: true, enviado: true, id: j.id, link });
+    const adentro = Math.min(lista.length, QR_ENTRADAS_TOPE);
+    if (FIRMA && adentro) console.log(`orden ${o.id}: ${conDiseno}/${adentro} entradas con el diseño del evento`);
+    return json({ ok: true, enviado: true, id: j.id, link, con_diseno: conDiseno });
   } catch (err) {
     return json({ ok: false, motivo: String((err as Error).message ?? err) }, 500);
   }
