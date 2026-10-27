@@ -88,6 +88,10 @@
       "destination": "/admin/index.html"
     },
     {
+      "source": "/orden/:id/wallet",
+      "destination": "https://mjotxzcddhqqpuhkcetl.supabase.co/functions/v1/wallet-google?orden=:id"
+    },
+    {
       "source": "/orden",
       "destination": "/orden/index.html"
     },
