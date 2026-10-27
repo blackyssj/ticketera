@@ -1,4 +1,11 @@
 {
+  "regions": ["gru1"],
+  "functions": {
+    "api/entrada.js": {
+      "maxDuration": 15,
+      "includeFiles": "{ticket.js,api/_fuentes/**}"
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",

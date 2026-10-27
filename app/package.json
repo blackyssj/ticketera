@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "Solo para api/entrada.js (la entrada del correo). El sitio sigue sin build: esto no lo toca.",
+  "dependencies": {
+    "@napi-rs/canvas": "1.0.11",
+    "qrcode-generator": "1.4.4"
+  }
+}
