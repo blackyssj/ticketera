@@ -53,6 +53,17 @@ if (!r.ok) { console.error(`con firma: ${r.status} ${await r.text()}`); process.
 const buf = Buffer.from(await r.arrayBuffer());
 const salida = `entrada-prueba.${r.headers.get("content-type") === "image/png" ? "png" : "jpg"}`;
 fs.writeFileSync(salida, buf);
+const variante = r.headers.get("x-entrada-variante"), fuentes = r.headers.get("x-entrada-fuentes") ?? "";
 console.log(`con firma: ${r.status} en ${ms} ms · ${r.headers.get("content-type")} · ` +
   `${r.headers.get("x-entrada-ancho")}x${r.headers.get("x-entrada-alto")} · ${Math.round(buf.length / 1024)} KB · ` +
-  `variante ${r.headers.get("x-entrada-variante")} (tiene que ser "arte") → ${salida}`);
+  `variante ${variante} · fuentes ${fuentes || "?"} → ${salida}`);
+/* Un 200 solo no alcanza: una entrada sin el arte (el bucket no respondió)
+   o sin fuentes (un deploy sin api/_fuentes) también vuelve 200 si la
+   función es vieja. Que diga "arte" y que traiga todas las fuentes; y mirá
+   la imagen igual, que el código, el nombre y la fecha estén escritos. */
+const [cargadas, total] = fuentes.split("/").map(Number);
+const mal = [];
+if (variante !== "arte") mal.push(`la variante tiene que ser "arte" y es "${variante}": el arte de LÜMEN no cargó`);
+if (!(total > 0 && cargadas === total)) mal.push(`X-Entrada-Fuentes tiene que ser n/n y es "${fuentes}": ¿es el deploy de esta rama?`);
+if (mal.length) { console.error("MAL:\n- " + mal.join("\n- ")); process.exit(1); }
+console.log(`bien. Abrí ${salida} y mirá que se lean el código, "Prueba Ñandú" y la fecha.`);

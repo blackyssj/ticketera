@@ -55,8 +55,18 @@ const FUENTES = [
   ["Inter Tight", "InterTight-600.ttf"],
   ["Space Grotesk", "SpaceGrotesk-700.ttf"],
 ];
-for (const [familia, archivo] of FUENTES)
-  GlobalFonts.registerFromPath(aca(`./_fuentes/${archivo}`), familia);
+/* Si una no se carga, registerFromPath devuelve null y NO tira: sin esto
+   la función seguía y respondía 200 con una entrada a la que le faltaba
+   todo el texto (el código, el nombre, la fecha, "powered by"), y
+   enviar-entradas la adjuntaba como buena en todas las ventas. Pasa si el
+   deploy no trae api/_fuentes (el includeFiles de vercel.json) o si se
+   cambia una ruta. Las que faltan se anotan acá y el POST responde 503
+   con sus nombres: el correo cae al QR en tabla y queda en el log. */
+const FUENTES_FALTAN = FUENTES
+  .filter(([familia, archivo]) => GlobalFonts.registerFromPath(aca(`./_fuentes/${archivo}`), familia) == null)
+  .map(([, archivo]) => archivo);
+if (FUENTES_FALTAN.length)
+  console.error(`entrada: no se cargaron ${FUENTES_FALTAN.join(", ")}; responde 503 hasta el próximo deploy`);
 
 /* ── el arte ──
    Solo de los dos buckets públicos de donde sale el arte de verdad: el
@@ -245,6 +255,9 @@ export async function POST(request) {
   if (cuerpo.length > 16_384) return error("Pedido demasiado grande.", 413);
   if (!firmaValida(secreto, request.headers.get("x-ts"), cuerpo, request.headers.get("x-firma")))
     return error("Firma inválida.", 401);
+  // Después de la firma: al que no firma no le contamos qué archivos tenemos.
+  if (FUENTES_FALTAN.length)
+    return error(`Faltan fuentes en el deploy: ${FUENTES_FALTAN.join(", ")}.`, 503);
 
   let pedido;
   try { pedido = leerPedido(JSON.parse(cuerpo.toString("utf8"))); } catch { pedido = null; }
@@ -266,6 +279,8 @@ export async function POST(request) {
     return respuesta(buf, 200, {
       "Content-Type": tipo,
       "X-Entrada-Variante": variante,
+      // Para scripts/probar-entrada.mjs: el deploy trae las fuentes y este control.
+      "X-Entrada-Fuentes": `${FUENTES.length}/${FUENTES.length}`,
       ...(m ? { "X-Entrada-Ancho": String(m.ancho), "X-Entrada-Alto": String(m.alto) } : {}),
     });
   } catch (e) {
