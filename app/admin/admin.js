@@ -172,6 +172,49 @@ function limpiarPuerta() {
    cuenta: con un mismo usuario de portero en dos teléfonos, el que salía
    en uno dejaba al otro a la hora dando "permission denied" en cada QR,
    en plena fila. */
+/* ── claro u oscuro ──
+   El panel pasó a claro el 18 de octubre, con los contrastes medidos uno
+   por uno, y eso sigue siendo lo que viene de fábrica. Esto existe porque
+   varios clientes extrañan el oscuro: es una elección, no un cambio.
+
+   Se guarda en el NAVEGADOR y no en la cuenta, y no es una comodidad: del
+   mismo usuario entran cuatro personas del mismo boliche. Guardado en la
+   cuenta, el que elige oscuro se lo cambia a los otros tres.
+
+   Quien lo pone ANTES de que se dibuje la página es el script del <head>;
+   acá sólo vive el botón. Si se leyera desde este archivo, cada carga
+   empezaría en claro y saltaría a oscuro medio segundo después.
+
+   La barra del navegador del teléfono sigue al tema: sin eso, en oscuro
+   queda una franja violeta arriba de una página casi negra. */
+function pintarBotonTema() {
+  const b = $("#btnTema");
+  if (!b) return;
+  const oscuro = document.documentElement.dataset.tema === "oscuro";
+  b.setAttribute("aria-pressed", String(oscuro));
+  b.title = oscuro ? "Cambiar a claro" : "Cambiar a oscuro";
+  const meta = document.querySelector('meta[name="theme-color"]');
+  /* Sólo fuera de la puerta: ahí la barra la maneja mostrar(), que la
+     pone casi negra para que el teléfono no tire luz en la cara del que
+     escanea. Pisarla desde acá le rompería eso. */
+  if (meta && document.body.dataset.pantalla !== "puerta")
+    meta.setAttribute("content", oscuro ? "#131316" : "#FFFFFF");
+}
+
+$("#btnTema").addEventListener("click", () => {
+  const oscuro = document.documentElement.dataset.tema === "oscuro";
+  if (oscuro) delete document.documentElement.dataset.tema;
+  else document.documentElement.dataset.tema = "oscuro";
+  try {
+    localStorage.setItem("ticketazo.tema", oscuro ? "claro" : "oscuro");
+  } catch (e) {
+    /* Safari en navegación privada tira al escribir. El tema igual cambia
+       en esta pestaña: lo único que se pierde es que lo recuerde. */
+  }
+  pintarBotonTema();
+});
+pintarBotonTema();
+
 $("#btnSalir").addEventListener("click", async () => {
   if (!limpiarPuerta()) return;
   await sb.auth.signOut({ scope: "local" });

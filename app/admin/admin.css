@@ -30,6 +30,18 @@
   --fluor-suave:#FFF8D1;
   --fluor-borde:#F2DC72;
   --crema:#F6F1E4;
+  --total-fondo:#180E3A;   /* fondo de la tarjeta del total */
+  /* La palabra «TICKET» de la cabecera. Token propio y no --txt:
+     así el tema claro queda EXACTAMENTE como estaba —este es el
+     mismo #180E3A de siempre— y el oscuro puede aclararlo sin
+     arrastrar al resto del texto de la página. */
+  --marca-cabecera:#180E3A;
+  /* La letra de la pastilla amarilla. Token propio por lo mismo:
+     en claro es este ambar oscuro de siempre, y en oscuro tiene
+     que aclararse porque el fondo pasa a ser amarillo translucido
+     sobre negro. --aviso no sirve: vale para texto sobre la
+     pagina, no sobre un taco amarillo. */
+  --amarilla-txt:#6B5400;
 
   /* la pila de superficies: el fondo apenas tinto, la tarjeta blanca */
   --noche:#F7F6FB;          /* fondo de la página */
@@ -106,6 +118,107 @@
   --cruza:cubic-bezier(.77,0,.175,1);     /* va de un lugar a otro que ya está en pantalla */
   --entra:cubic-bezier(.32,.72,0,1);      /* lo que se desliza, como la marca de pestaña */
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   EL TEMA OSCURO
+   ══════════════════════════════════════════════════════════════════
+   Se prende con data-tema="oscuro" en el <html>, y lo decide cada
+   persona desde el botón de la cabecera. Claro sigue siendo lo que
+   viene de fábrica: este archivo pasó a claro con los contrastes
+   medidos uno por uno, y eso no se revierte — el oscuro es para el que
+   lo pide.
+
+   Por qué se guarda en el navegador y no en la cuenta: varias personas
+   del mismo boliche entran con el MISMO usuario. Guardado en la cuenta,
+   el que elige oscuro se lo cambia a los otros cuatro.
+
+   Acá se redefinen SOLO los colores. Tipografías, radios, tiempos y
+   curvas son los mismos: un tema no cambia la forma de las cosas, y
+   repetirlos sería un segundo lugar donde se desincronizan.
+
+   Los valores de superficie y texto salen de la paleta que el panel
+   tuvo hasta el 18 de octubre — la que los clientes extrañan — y no de
+   un oscuro inventado. Lo que sí es nuevo es el acento: el violeta de
+   la marca sobre fondo oscuro necesita subir de luminosidad para
+   seguir siendo legible, así que se aclara en vez de copiarse tal cual.
+   ══════════════════════════════════════════════════════════════════ */
+:root[data-tema="oscuro"]{
+  color-scheme:dark;
+
+  /* La tinta de marca NO se aclara, y es lo contrario de lo que parece:
+     casi siempre es TEXTO SOBRE EL FLUOR —el taco «AZO», la franja de
+     «operando como»— y sobre amarillo la letra tiene que ser oscura en
+     los dos temas. Además es el fondo del panel de la izquierda al
+     entrar, que también es oscuro siempre. Lo que sí cambia de lado es
+     el logo de la cabecera, y ese pasa a usar --txt. */
+  --marca-tinta:#180E3A;
+  --marca-tinta-2:#231550;
+  --marca-violeta:#3A2478;
+  --fluor:#FFE24B;
+  --fluor-suave:rgba(255,226,75,.14);
+  --fluor-borde:rgba(255,226,75,.34);
+  --crema:#F6F1E4;
+  /* La tarjeta del total es la única que usa la tinta de FONDO. En claro
+     es casi negra y resalta sobre la página blanca; en oscuro eso
+     desaparecería contra el fondo, así que sube a un violeta profundo
+     que sigue siendo marca y se despega igual. */
+  --total-fondo:#241A4D;
+  /* Acá sí cambia de lado, y no es opcional: el violeta tinta
+     sobre la cabecera oscura da 1.4:1 y la palabra desaparece. */
+  --marca-cabecera:#ECECEE;
+  --amarilla-txt:#F0CE7A;
+
+  /* La pila de superficies, de la paleta vieja. El fondo NO es negro
+     puro: sobre negro, las sombras no existen y todo queda plano. */
+  --noche:#131316;
+  --sup:#1A1A1F;
+  --sup-2:#212127;
+  --sup-3:#2A2A31;
+  /* En oscuro el campo SÍ va hundido: más abajo que la tarjeta es lo
+     que se lee como «acá se escribe». Es al revés que en claro, donde
+     un pozo se lee como deshabilitado. */
+  --hundido:#0E0E11;
+
+  --linea:rgba(236,236,238,.09);
+  --linea-2:rgba(236,236,238,.16);
+  --linea-3:rgba(236,236,238,.28);
+  --cab-vidrio:rgba(19,19,22,.86);
+
+  /* Los tres niveles, contra --noche (#131316) */
+  --txt:#ECECEE;            /* 15.8:1 */
+  --txt-2:#A0A0A8;          /* 7.4:1  */
+  --txt-3:#8A8A93;          /* 5.3:1: AA también en 12px */
+  --txt-placeholder:#6B6B74;
+
+  /* El violeta sube de luminosidad: #5B34D9 sobre #131316 da 2.4:1 y no
+     se puede leer. Éste da 6.1:1 y sigue siendo el mismo violeta. */
+  --acento:#A48FE8;
+  --acento-hover:#B9A8F0;
+  --acento-suave:rgba(140,114,243,.16);
+  --acento-anillo:rgba(140,114,243,.34);
+  /* Sobre un acento claro, el texto va oscuro. En claro es al revés. */
+  --sobre-acento:#17122B;
+  --rojo:#A48FE8;
+  --rojo-claro:#B9A8F0;
+  --rojo-suave:rgba(140,114,243,.22);
+
+  --dorado:#D9A441;
+
+  --ok:#4CC38A;      --ok-bg:rgba(76,195,138,.13);    --ok-borde:rgba(76,195,138,.32);
+  --aviso:#D9A441;   --aviso-bg:rgba(217,164,65,.13); --aviso-borde:rgba(217,164,65,.32);
+  --peligro:#FF6369; --peligro-bg:rgba(255,99,105,.13); --peligro-borde:rgba(255,99,105,.32);
+  /* El toast se invierte: en claro es una caja oscura sobre la página
+     clara, así que en oscuro tiene que ser clara para seguir destacando. */
+  --toast-fondo:#ECECEE; --toast-txt:#17122B;
+
+  /* Las sombras de color no se ven sobre oscuro: van en negro y más
+     marcadas, que es lo único que separa una tarjeta del fondo cuando
+     los dos son oscuros. */
+  --sombra-1:0 1px 2px rgba(0,0,0,.40);
+  --sombra-2:0 1px 3px rgba(0,0,0,.46),0 1px 2px rgba(0,0,0,.30);
+  --sombra-3:0 12px 32px -8px rgba(0,0,0,.60),0 2px 6px rgba(0,0,0,.36);
+}
+
 
 /* ─── la puerta, de noche ───
    La única pantalla que sigue oscura. El portero la mira con la fila
@@ -242,7 +355,10 @@ html[data-sesion="revisando"] .entrar>.caja{display:none}
    va de fondo y no de letra porque sobre blanco no se lee (1.3:1). */
 .marca{
   font:800 22px/1 var(--marca-fuente);letter-spacing:.01em;text-transform:uppercase;
-  color:var(--marca-tinta);white-space:nowrap;
+  /* Token propio: la tinta de marca es para lo que va sobre el flúor
+     —amarillo siempre— y acá la palabra va sobre la cabecera, que sí
+     cambia con el tema. En claro vale el mismo color de siempre. */
+  color:var(--marca-cabecera);white-space:nowrap;
 }
 .marca>span{
   background:var(--fluor);color:var(--marca-tinta);
@@ -415,7 +531,7 @@ main{max-width:var(--carril);margin:0 auto;padding:32px 24px 96px}
 .pastilla.roja{background:var(--peligro-bg);color:var(--peligro);box-shadow:inset 0 0 0 1px var(--peligro-borde)}
 /* «A mano» en Plataforma y el estado de pago que no está en el mapa. La
    clase la pedía admin.js y no existía: salía texto pelado, sin pastilla. */
-.pastilla.amarilla{background:var(--fluor-suave);color:#6B5400;box-shadow:inset 0 0 0 1px var(--fluor-borde)}
+.pastilla.amarilla{background:var(--fluor-suave);color:var(--amarilla-txt);box-shadow:inset 0 0 0 1px var(--fluor-borde)}
 
 /* ─── estados que dicen qué hacer ─── */
 .vacio{
@@ -754,7 +870,7 @@ form:not(#formEntrar) .error:empty{display:none}
    tarjeta más de la pila. */
 .total{
   display:flex;align-items:center;gap:20px;margin:16px 0 24px;padding:20px 24px;
-  background:var(--marca-tinta);border:0;border-radius:var(--r);
+  background:var(--total-fondo);border:0;border-radius:var(--r);
   color:var(--crema);box-shadow:var(--sombra-2);
 }
 .total h3{font-size:16px;font-weight:600;color:var(--crema)}
@@ -2637,4 +2753,38 @@ select{transition:border-color .15s ease,box-shadow .15s ease}
   .total-partes{margin-left:0}
   .total-partes>div{text-align:left}
   .total-partes+.monto{margin-left:0}
+}
+
+/* ─── el botón de claro / oscuro ───
+   Un cuadrado con el ícono solo. En el teléfono la cabecera ya lleva la
+   marca, las pestañas, quién sos y «Salir»: una palabra más y «Salir» se
+   va de la pantalla, que es el botón que no puede faltar.
+
+   El ícono se dibuja con CSS y no con un SVG ni una fuente de íconos: son
+   dos formas, y el proyecto no suma dependencias por eso. En claro se ve
+   la luna (lo que vas a obtener si apretás); en oscuro, el sol. */
+.btn-tema{
+  display:inline-grid;place-items:center;
+  width:30px;height:30px;padding:0;flex:0 0 auto;
+}
+.tema-icono{
+  position:relative;display:block;width:14px;height:14px;border-radius:50%;
+  border:1.6px solid currentColor;
+  /* La luna: un círculo al que otro le come un pedazo. El que come es del
+     color de la cabecera, así que sigue al tema sin tocar nada. */
+  box-shadow:inset -4px -1px 0 0 currentColor;
+}
+:root[data-tema="oscuro"] .tema-icono{
+  /* El sol: el círculo lleno y los rayos. Se va el mordisco. */
+  width:10px;height:10px;box-shadow:none;background:currentColor;border-color:transparent;
+}
+:root[data-tema="oscuro"] .tema-icono::before{
+  content:"";position:absolute;inset:-5px;border-radius:50%;
+  border:1.6px dotted currentColor;
+}
+/* Para quien usa lector de pantalla: el botón tiene que decir qué hace,
+   aunque en la pantalla sea sólo una forma. */
+.solo-lectores{
+  position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;
 }
