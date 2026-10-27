@@ -17,7 +17,7 @@ BASE = pathlib.Path(__file__).resolve().parent.parent / "supabase" / "functions"
 TODAS = ["og", "eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden",
          "barrer-pagos", "puerta-sync",
          "orden", "enviar-entradas", "enviar-links", "equipo", "cuenta",
-         "contacto", "liquidar", "pago-callback"]
+         "contacto", "liquidar", "pago-callback", "wallet-google"]
 
 # Por defecto False: eventos, evento, crear-orden, iniciar-pago, estado-orden y
 # orden las llama el público con la anon key, sin sesión. enviar-entradas es la
@@ -40,8 +40,13 @@ TODAS = ["og", "eventos", "evento", "crear-orden", "iniciar-pago", "estado-orden
 # `enviar-links` la aprieta un admin o un staff desde el panel, asi que
 # siempre hay sesion: la reja va puesta. Adentro igual se revalida contra
 # /auth/v1/user y se mira el rol EN LA BASE, porque el JWT no lo lleva.
+# `wallet-google` va SIN JWT exigido, igual que `orden`: la abre un link (el
+# botón de la página y, más adelante, el del correo) que no lleva cabecera
+# Authorization. La guardia es la misma que en `orden`: el uuid de la compra.
+# Sin sus secrets contesta "no configurado" y la página no muestra el botón.
 VERIFY_JWT = {"og": False, "enviar-entradas": True, "equipo": True,
-               "enviar-links": True, "liquidar": True, "pago-callback": False}
+               "enviar-links": True, "liquidar": True, "pago-callback": False,
+               "wallet-google": False}
 
 def main() -> int:
     token = pat()
