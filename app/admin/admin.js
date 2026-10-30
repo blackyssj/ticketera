@@ -3470,9 +3470,18 @@ async function refrescarResumen(eventoId) {
 function bloqueCifras(r) {
   const v = r.vendido, p = r.puerta;
   const avance = Math.max(0, Math.min(100, Number(p.porcentaje) || 0));
+  /* Las cortesías van aparte. vendido.manillas cuenta toda manilla viva
+     —vendida o regalada— y un evento con 40 invitados de prensa decía que
+     había vendido 40 más de las que vendió. El canal «cortesia» de
+     resumen_evento trae cuántas son, así que se restan acá y se muestran
+     en su propia cifra. «Ya entraron» sí las incluye: es el aforo, y un
+     invitado ocupa lugar igual que el que pagó. */
+  const cort = (r.canales || []).find(c => c.canal === "cortesia") || {};
+  const nCort = Number(cort.manillas || 0);
+  const vendidas = Math.max(0, Number(v.manillas || 0) - nCort);
   return `<div class="cifras">
     <div class="cifra-grande">
-      <span class="valor">${num(v.manillas)}</span>
+      <span class="valor">${num(vendidas)}</span>
       <span class="rotulo">Manillas vendidas</span>
       <span class="pie">${num(v.ordenes)} ${v.ordenes === 1 ? "orden pagada" : "órdenes pagadas"}
         · ${num(v.unidades)} ${v.unidades === 1 ? "unidad" : "unidades"}</span>
@@ -3485,8 +3494,17 @@ function bloqueCifras(r) {
     <div class="cifra-grande">
       <span class="valor">${num(p.usadas)}<i> de ${num(p.emitidas)}</i></span>
       <span class="rotulo">Ya entraron</span>
-      <span class="pie">${pct(p.porcentaje)} · faltan ${num(p.faltan)}</span>
+      <span class="pie">${pct(p.porcentaje)} · faltan ${num(p.faltan)}${
+        nCort ? ` · incluye ${num(nCort)} ${nCort === 1 ? "cortesía" : "cortesías"}` : ""}</span>
       <span class="avance"><i style="width:${avance}%"></i></span>
+    </div>
+    <div class="cifra-grande">
+      <span class="valor">${num(nCort)}</span>
+      <span class="rotulo">Cortesías</span>
+      <span class="pie">${nCort
+        ? `${num(cort.manillas_usadas || 0)} ya entraron${Number(cort.manillas_anuladas)
+            ? ` · ${num(cort.manillas_anuladas)} anuladas` : ""} · no suman a lo vendido`
+        : "Ninguna regalada todavía."}</span>
     </div>
   </div>`;
 }
