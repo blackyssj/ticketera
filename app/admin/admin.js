@@ -3470,9 +3470,18 @@ async function refrescarResumen(eventoId) {
 function bloqueCifras(r) {
   const v = r.vendido, p = r.puerta;
   const avance = Math.max(0, Math.min(100, Number(p.porcentaje) || 0));
+  /* Las cortesías van aparte. vendido.manillas cuenta toda manilla viva
+     —vendida o regalada— y un evento con 40 invitados de prensa decía que
+     había vendido 40 más de las que vendió. El canal «cortesia» de
+     resumen_evento trae cuántas son, así que se restan acá y se muestran
+     en su propia cifra. «Ya entraron» sí las incluye: es el aforo, y un
+     invitado ocupa lugar igual que el que pagó. */
+  const cort = (r.canales || []).find(c => c.canal === "cortesia") || {};
+  const nCort = Number(cort.manillas || 0);
+  const vendidas = Math.max(0, Number(v.manillas || 0) - nCort);
   return `<div class="cifras">
     <div class="cifra-grande">
-      <span class="valor">${num(v.manillas)}</span>
+      <span class="valor">${num(vendidas)}</span>
       <span class="rotulo">Manillas vendidas</span>
       <span class="pie">${num(v.ordenes)} ${v.ordenes === 1 ? "orden pagada" : "órdenes pagadas"}
         · ${num(v.unidades)} ${v.unidades === 1 ? "unidad" : "unidades"}</span>
@@ -3485,8 +3494,17 @@ function bloqueCifras(r) {
     <div class="cifra-grande">
       <span class="valor">${num(p.usadas)}<i> de ${num(p.emitidas)}</i></span>
       <span class="rotulo">Ya entraron</span>
-      <span class="pie">${pct(p.porcentaje)} · faltan ${num(p.faltan)}</span>
+      <span class="pie">${pct(p.porcentaje)} · faltan ${num(p.faltan)}${
+        nCort ? ` · incluye ${num(nCort)} ${nCort === 1 ? "cortesía" : "cortesías"}` : ""}</span>
       <span class="avance"><i style="width:${avance}%"></i></span>
+    </div>
+    <div class="cifra-grande">
+      <span class="valor">${num(nCort)}</span>
+      <span class="rotulo">Cortesías</span>
+      <span class="pie">${nCort
+        ? `${num(cort.manillas_usadas || 0)} ya entraron${Number(cort.manillas_anuladas)
+            ? ` · ${num(cort.manillas_anuladas)} anuladas` : ""} · no suman a lo vendido`
+        : "Ninguna regalada todavía."}</span>
     </div>
   </div>`;
 }
@@ -5093,12 +5111,9 @@ async function pantallaCortesias(eventoId) {
   if (res.error) { $("#main").innerHTML = `<p class="error">${esc(res.error.message)}</p>`; return; }
 
   const r = res.data || {};
-  const faseId = r.evento && r.evento.fase_id;
-  /* El arte de la fase gana sobre el del evento, como en ticket.js: una
-     preventa se distingue a simple vista. */
-  const fase = faseId
-    ? (await sb.from("evento_fase").select("id,nombre,arte_url").eq("id", faseId).single()).data
-    : null;
+  /* Sin fase (0114): una cortesía no se vende en ninguna, así que se
+     dibuja con el arte del evento y no con el de la fase que esté abierta. */
+  const fase = null;
 
   Object.assign(CORT, { evento: eventoId, ev: ev.data, fase, ultimas: null,
                         lista: [], total: 0, anulando: null,
@@ -5109,13 +5124,12 @@ async function pantallaCortesias(eventoId) {
       <button class="btn plano chico" id="btnVolver">← ${esc(ev.data.nombre)}</button>
       <h2>Cortesías</h2>
     </div>
-    ${faseId ? "" : `<p class="vacio">Este evento no tiene ninguna fase abierta hoy, así que
-      no hay contra qué descontar el cupo. Abrí una fase en «Entradas y precios» y volvé.</p>`}
     <section class="tarjeta cortesias">
       <h3>Regalar entradas</h3>
-      <p class="ayuda explica">Salen sin precio y sin compra, a nombre de quien digas, y
-        <b>consumen cupo</b>: una cortesía ocupa un lugar igual que una entrada vendida.
-        Hasta 50 por vez.</p>
+      <p class="ayuda explica">Salen sin precio y sin compra, a nombre de quien digas.
+        <b>No dependen de una fase ni descuentan del stock</b>: se pueden regalar antes de
+        que abra la venta, con una fase agotada o con todo cerrado. No suman a las manillas
+        vendidas; el tablero las cuenta aparte. Hasta 50 por vez.</p>
       <form class="form-cortesias" id="formCortesias">
         <label><span>Producto</span>
           <select id="cTipo" required>
@@ -5133,7 +5147,7 @@ async function pantallaCortesias(eventoId) {
           <input id="cMotivo" required maxlength="200" autocomplete="off"
                  placeholder="canje por la transmisión, invitados del DJ…"></label>
         <div class="acciones">
-          <button class="btn primario" id="btnEmitir"${faseId ? "" : " disabled"}>Emitir</button>
+          <button class="btn primario" id="btnEmitir">Emitir</button>
         </div>
         <p class="error" id="cError"></p>
       </form>
@@ -5147,7 +5161,7 @@ async function pantallaCortesias(eventoId) {
   zc.onclick = clicEnCortesias;
   zc.onsubmit = enviarEnCortesias;
   if (!CORT.productos.length) {
-    $("#cError").textContent = "Este evento todavía no tiene ningún producto con precio en la fase de hoy.";
+    $("#cError").textContent = "Este evento todavía no tiene ningún tipo de entrada. Creá uno en «Entradas y precios».";
     $("#btnEmitir").disabled = true;
   }
   await cargarCortesias();
@@ -5272,11 +5286,11 @@ async function emitirCortesias() {
   if (res.data && res.data.productos) refrescarSelectorCortesias(res.data.productos);
 }
 
-/* Lo que se puede regalar: lo que se vende o tiene cupo. Una mesa que no
-   incluye entradas (0108) no tiene manillas que regalar: emitir_cortesias
-   la rechaza (MESA_SIN_ENTRADAS) y acá ni se ofrece. */
-const cortesiaPosible = p => (p.en_venta || p.quedan != null)
-  && !(p.categoria === "mesa" && Number(p.manillas_por_unidad) === 0);
+/* Lo que se puede regalar: cualquier tipo del evento, se venda hoy o no
+   (0114: la cortesía no depende de la fase ni del cupo). La única
+   excepción es la mesa que no incluye entradas (0108): no tiene manillas
+   que regalar y emitir_cortesias la rechaza (MESA_SIN_ENTRADAS). */
+const cortesiaPosible = p => !(p.categoria === "mesa" && Number(p.manillas_por_unidad) === 0);
 
 function refrescarSelectorCortesias(productos) {
   CORT.productos = productos.filter(cortesiaPosible);
@@ -5286,9 +5300,10 @@ function refrescarSelectorCortesias(productos) {
   sel.innerHTML = CORT.productos.map(p => opcionDeProducto(p, p.tipo_id === elegido)).join("");
 }
 
+/* Sin «quedan»: el stock de venta no limita una cortesía, y mostrarlo
+   haría creer que sí. */
 const opcionDeProducto = (p, elegido) => `<option value="${esc(p.tipo_id)}"${
-  elegido ? " selected" : ""}>${esc(p.nombre)}${
-  p.quedan == null ? " · sin tope" : ` · quedan ${num(p.quedan)}`}${
+  elegido ? " selected" : ""}>${esc(p.nombre)}${p.activo === false ? " · inactivo" : ""}${
   p.manillas_por_unidad > 1 ? ` · ${num(p.manillas_por_unidad)} manillas por unidad` : ""}</option>`;
 
 function pintarEmitidas() {
@@ -5299,8 +5314,7 @@ function pintarEmitidas() {
   z.innerHTML = `
     <section class="tarjeta emitidas">
       <h3>${num(codes.length)} ${codes.length === 1 ? "cortesía emitida" : "cortesías emitidas"}</h3>
-      <p class="ayuda">${esc(d.tipo)} a nombre de <b>${esc(d.para)}</b>.${
-        d.quedan == null ? "" : ` Quedan ${num(d.quedan)} para vender.`}</p>
+      <p class="ayuda">${esc(d.tipo)} a nombre de <b>${esc(d.para)}</b>.</p>
       <div class="codigos" id="codigosCortesias">${codes.map(c =>
         `<code>${esc(c)}</code>`).join(" ")}</div>
       <div class="acciones">
