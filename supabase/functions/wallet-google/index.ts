@@ -243,8 +243,15 @@ async function asegurarClase(clase: Record<string, unknown>, token: string) {
     r = await google("POST", "eventTicketClass", clase, token);
     // Otro pedido la creó entre medio: con un PUT más queda al día.
     if (r.status === 409) r = await google("PUT", `eventTicketClass/${encodeURIComponent(id)}`, clase, token);
+    if (r.status < 200 || r.status >= 300) throw fallaGoogle("clase", r);
+  } else if (r.status < 200 || r.status >= 300) {
+    /* La clase existe (no dio 404) y no se pudo poner al día: un 429 o un
+       503 de Google. El pase se puede guardar igual con la versión que ya
+       tiene, así que no se le corta el toque al comprador. No se anota como
+       hecha: el próximo pedido vuelve a intentar el PUT. */
+    console.warn(fallaGoogle("clase (sigue la vieja)", r).message);
+    return;
   }
-  if (r.status < 200 || r.status >= 300) throw fallaGoogle("clase", r);
   clasesHechas.set(id, cuerpo);
 }
 
@@ -426,11 +433,15 @@ Deno.serve(async (req) => {
   if (u.searchParams.has("estado")) {
     const cfg = configuracion();
     const ok = !("falta" in cfg);
-    /* Cinco minutos de caché en el navegador: la página lo pregunta en cada
-       carga y la respuesta cambia una vez en la vida (cuando se cargan los
-       secrets o se prende el modo). */
+    /* Cinco minutos de caché en el navegador, pero sólo para la respuesta
+       final (configurado y en "on"): la página lo pregunta en cada carga y
+       eso ya no cambia. Un "no configurado" o un "demo" se cachearían
+       justo en el momento en que alguien carga los secrets o prende el modo
+       y prueba enseguida: vería el botón ausente cinco minutos sin motivo. */
+    const fijo = ok && (cfg as Cfg).modo === "on";
     return new Response(JSON.stringify({ ok: true, configurado: ok, modo: ok ? (cfg as Cfg).modo : null }), {
-      headers: { ...CORS, "Content-Type": "application/json", "Cache-Control": "public, max-age=300" },
+      headers: { ...CORS, "Content-Type": "application/json",
+                 "Cache-Control": fijo ? "public, max-age=300" : "no-store" },
     });
   }
 
