@@ -33,11 +33,16 @@
 
 const CFG = window.CONFIG || {};
 const FN = `${CFG.SUPABASE_URL}/functions/v1/wallet-google`;
-/* El archivo oficial de Google, sin tocar: "Add to Google Wallet",
-   variante primaria, en español de Latinoamérica (del zip de SVG de
-   developers.google.com/wallet/.../brand-guidelines). */
+/* El archivo oficial de Google, sin tocar: la variante condensada en español
+   de Latinoamérica (del zip de SVG de
+   developers.google.com/wallet/.../brand-guidelines). La primaria mide 363 de
+   ancho a los 48 de alto que exige la guía, más 8 de aire por lado: no entra
+   en un teléfono, y la guía prohíbe achicarla. La imagen dice "Billetera de
+   Google" y no se puede cambiar. En nuestros textos va "Google Wallet", que es
+   lo que la guía pide para Bolivia porque no está en su lista de países con
+   nombre propio. */
 const BOTON = "/wallet/agregar-a-google-wallet.svg";
-const ALT = "Agregar a Google Wallet";
+const ALT = "Agregar a la Billetera de Google";
 /* El mismo tope que la función: con 7 entradas el link pasa de los 1.800
    caracteres y el navegador lo puede cortar. Una compra de más va en tandas. */
 const TANDA = 6;
