@@ -2146,11 +2146,11 @@ end $$;
 --    normal, y el error dice cuántas entraron. Después sí, con el
 --    parámetro explícito, y ahí queda anotado cuántas se incluyeron.
 -- 4) Anular libera la mesa asignada y la deja disponible de verdad.
--- 5) Una cortesía sale con canal cortesia, precio 0, sin orden, a nombre
---    de quien se dijo — y BAJA EL CUPO. Se prueban los dos casos de la
---    conversión a unidades: la entrada suelta (1 manilla = 1 unidad) y el
---    combo de 10 (3 manillas regaladas = 1 unidad, porque esa mesa ya no
---    se vende).
+-- 5) Una cortesía sale con canal cortesia, precio 0, sin orden, SIN FASE
+--    (fase_id null, 0114) y a nombre de quien se dijo. No toca el cupo de
+--    venta (0065) y tampoco lo necesita: sale con el tipo agotado, con la
+--    venta cerrada y con un tipo apagado que no tiene precio en ninguna
+--    fase. Se prueba con la entrada suelta y con el combo de 10.
 -- 6) Pasarse del tope rebota y el error dice cuál es el tope.
 -- 7) Una revisión manual confirmada emite sus entradas; otra anulada
 --    queda sin ninguna. La confirmada TOMA cupo (pasa a pagada) y la
@@ -2181,8 +2181,12 @@ declare v_org    uuid := '00380038-0038-4038-8038-000000000001';
         v_m1     uuid := '00380038-0038-4038-8038-00000000000b';
         v_gen2   uuid := '00380038-0038-4038-8038-00000000000c';
         v_fase2  uuid := '00380038-0038-4038-8038-00000000000d';
+        v_ev3    uuid := '00380038-0038-4038-8038-00000000000e';
+        v_fase3  uuid := '00380038-0038-4038-8038-00000000000f';
+        v_agot   uuid := '00380038-0038-4038-8038-000000000010';
+        v_off    uuid := '00380038-0038-4038-8038-000000000011';
         v_o1 uuid; v_o2 uuid; v_o3 uuid; v_o4 uuid;
-        v_o5 uuid; v_o6 uuid; v_o7 uuid; v_o8 uuid;
+        v_o5 uuid; v_o6 uuid; v_o7 uuid; v_o8 uuid; v_o9 uuid;
         v_e_perm uuid; v_e_suelta uuid; v_e_cort uuid;
         v_antes int; v_desp int; v_n int; v_r jsonb; v_b admin_bitacora;
         v_actor uuid; v_sql text; v_paso boolean;
@@ -2417,22 +2421,30 @@ begin
   if jsonb_array_length(v_r->'codes') <> 4 then
     raise exception 'TEST_FAIL: se pidieron 4 cortesias y volvieron %', v_r->'codes';
   end if;
+  -- 0114: ninguna fase vendió esta entrada, así que ninguna la lleva. Con
+  -- una fase grabada, «Por fase» le inflaría las ventas a la que estaba
+  -- abierta ese día.
+  if v_r->>'fase_id' is not null then
+    raise exception 'TEST_FAIL: la cortesia dice tener fase: %', v_r;
+  end if;
   select count(*) into v_n from entradas
    where evento_id = v_ev and canal = 'cortesia' and precio = 0 and orden_id is null
-     and cliente = 'Radio Line' and fase_id = v_fase and tipo_id = v_gen;
+     and cliente = 'Radio Line' and fase_id is null and tipo_id = v_gen;
   if v_n <> 4 then
     raise exception 'TEST_FAIL: las cortesias no salieron como cortesias: % filas', v_n;
   end if;
   -- 0065: el cupo es el limite de VENTA, no el aforo. Cuatro cortesias no
-  -- le sacan cuatro entradas al organizador para vender.
+  -- le sacan cuatro entradas al organizador para vender. v_fase ya no es la
+  -- fase de la cortesía: es dónde se mide lo que queda para vender. Esto
+  -- cuida a disponibilidad_tipo(), que hoy sólo mira orden_items: salta si
+  -- alguien vuelve a restar cortesías por tipo.
   if v_desp <> v_antes then
     raise exception 'TEST_FAIL: 4 cortesias no tenian que tocar el cupo de venta: % -> %',
       v_antes, v_desp;
   end if;
 
-  -- El combo: 3 manillas regaladas de un producto que emite 10 por unidad
-  -- son UNA unidad de cupo. Redondear para abajo sería vender esa mesa
-  -- otra vez con tres personas ya sentadas.
+  -- El combo: regalar 3 manillas de un producto que emite 10 por unidad
+  -- tampoco toca el cupo. La mesa se sigue pudiendo vender (0065).
   reset role;  v_antes := disponibilidad_tipo(v_fase, v_combo);  set local role authenticated;
   perform emitir_cortesias(v_ev, v_combo, 3, 'El DJ', 'la mesa del dj y su gente');
   reset role;  v_desp := disponibilidad_tipo(v_fase, v_combo);  set local role authenticated;
@@ -2441,7 +2453,56 @@ begin
       v_antes, v_desp;
   end if;
 
-  -- anular una cortesía SÍ devuelve su lugar: no tiene orden que la sostenga
+  -- 0114: regalar no depende de lo que se esté vendiendo. Antes esto rebotaba
+  -- con SIN_CUPO y SIN_FASE: no se podía invitar al DJ porque la preventa se
+  -- agotó. Evento propio para no mover las cuentas de v_ev que siguen abajo.
+  -- Las dos premisas se verifican: con un tipo que no estuviera agotado o una
+  -- fase todavía abierta, estas emisiones saldrían también con la función de
+  -- antes y no probarían nada.
+  reset role;
+  perform set_config('request.jwt.claim.sub', '', true);
+  insert into eventos (id, organizador_id, slug, nombre, fecha, estado) values
+    (v_ev3, v_org, 'evento-0038c', 'Evento 0038 sin venta', current_date + 10, 'publicado');
+  insert into tipo_entrada (id, organizador_id, evento_id, nombre, categoria, manillas, orden, activo) values
+    (v_agot, v_org, v_ev3, 'Agotada 0038', 'entrada', 1, 1, true),
+    (v_off,  v_org, v_ev3, 'Apagada 0038', 'entrada', 1, 2, false);
+  insert into evento_fase (id, organizador_id, evento_id, nombre, desde, hasta) values
+    (v_fase3, v_org, v_ev3, 'F1', now() - interval '1 hour', now() + interval '10 days');
+  insert into fase_precio (organizador_id, fase_id, tipo_id, precio, cupo) values
+    (v_org, v_fase3, v_agot, 100, 1);
+  v_o9 := (crear_orden(v_ev3, jsonb_build_array(jsonb_build_object('tipo_id', v_agot, 'cantidad', 1)),
+                       jsonb_build_object('nombre', 'Cliente Nueve', 'telefono', '70000009'),
+                       null::uuid, null::text, null::uuid)->>'orden')::uuid;
+  perform emitir_orden(v_o9);
+  if disponibilidad_tipo(v_fase3, v_agot) <> 0 then
+    raise exception 'TEST_FAIL: el tipo tenia que quedar agotado para probar esto';
+  end if;
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  set local role authenticated;
+
+  perform emitir_cortesias(v_ev3, v_agot, 2, 'Con Agotado', 'el dj y su pareja, la preventa se agoto');
+
+  -- la venta ya cerró: no queda ninguna fase abierta
+  reset role;
+  update evento_fase set hasta = now() - interval '1 minute' where id = v_fase3;
+  if fase_vigente(v_ev3) is not null then
+    raise exception 'TEST_FAIL: el evento tenia que quedar sin fase abierta para probar esto';
+  end if;
+  set local role authenticated;
+  perform emitir_cortesias(v_ev3, v_agot, 1, 'Sin Fase', 'prensa que confirmo despues del cierre');
+
+  -- de un tipo apagado, sin precio en ninguna fase: de un tipo sólo hace
+  -- falta el nombre que lee la puerta y cuántas manillas da
+  perform emitir_cortesias(v_ev3, v_off, 1, 'Tipo Apagado', 'producto fuera de venta, solo para invitados');
+
+  select count(*) into v_n from entradas
+   where evento_id = v_ev3 and canal = 'cortesia' and precio = 0 and orden_id is null
+     and fase_id is null and estado = 'valida';
+  if v_n <> 4 then
+    raise exception 'TEST_FAIL: agotado, sin fase y apagado tenian que dar 4 cortesias sin fase: % filas', v_n;
+  end if;
+
+  -- anular una cortesía no devuelve nada: nunca ocupó un lugar
   select id into v_e_cort from entradas
    where evento_id = v_ev and canal = 'cortesia' and cliente = 'Radio Line' order by id limit 1;
   reset role;  v_antes := disponibilidad_tipo(v_fase, v_gen);  set local role authenticated;
@@ -2700,7 +2761,7 @@ begin
   if v_paso then raise exception 'TEST_FAIL: entro una fila con el motivo en blanco'; end if;
 
   reset role;
-  raise notice 'OK anular devuelve el cupo, exige motivo y frena en las usadas; las cortesias consumen cupo con tope; la revision manual se resuelve por los dos lados y todo queda firmado';
+  raise notice 'OK anular devuelve el cupo, exige motivo y frena en las usadas; las cortesias salen sin fase y sin mirar el cupo, con tope; la revision manual se resuelve por los dos lados y todo queda firmado';
 end $$;
 
 -- ============================================================
