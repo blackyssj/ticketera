@@ -2419,7 +2419,7 @@ begin
   end if;
   select count(*) into v_n from entradas
    where evento_id = v_ev and canal = 'cortesia' and precio = 0 and orden_id is null
-     and cliente = 'Radio Line' and fase_id = v_fase and tipo_id = v_gen;
+     and cliente = 'Radio Line' and fase_id is null and tipo_id = v_gen;   -- 0114: sin fase
   if v_n <> 4 then
     raise exception 'TEST_FAIL: las cortesias no salieron como cortesias: % filas', v_n;
   end if;
