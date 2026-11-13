@@ -878,6 +878,108 @@ async function subirImagen(archivo, ev, ext, def) {
   return url;
 }
 
+/* ── dónde va el QR (0115) ──
+   Los artes de los clientes no tienen el hueco en el mismo lugar: uno lleva el
+   logo arriba, otro el line-up abajo. Antes la caja del QR estaba clavada en la
+   medida de Puerta y la única salida era pedir que rehagan la imagen. Ahora se
+   corre desde acá, mirando la entrada de verdad: la vista previa la dibuja el
+   mismo ticket.js que dibuja la del comprador, con un código de muestra, así
+   que lo que se ve es lo que va a salir.
+
+   Dos perillas y no un arrastre: la caja va siempre centrada a lo ancho, así
+   que alcanza con la altura y el tamaño, y un deslizador se usa igual con el
+   dedo en el teléfono que con el mouse. */
+const QR_DEF = { y: 29, tam: 52 };
+const pctQR = (v, def) => v == null || v === "" ? def : Math.round(Number(v) * 100);
+
+function ajusteQRHtml(ev) {
+  const y = pctQR(ev.arte_qr_y, QR_DEF.y), tam = pctQR(ev.arte_qr_tam, QR_DEF.tam);
+  return `
+    <div class="qr-ajuste">
+      <span class="qr-ajuste-titulo">Dónde va el QR</span>
+      <label><span>Altura <b id="qrYTxt">${y}%</b></span>
+        <input type="range" id="qrY" min="0" max="70" step="1" value="${y}"></label>
+      <label><span>Tamaño <b id="qrTamTxt">${tam}%</b></span>
+        <input type="range" id="qrTam" min="25" max="75" step="1" value="${tam}"></label>
+      <p class="ayuda">Mové los dos hasta que el QR caiga en una zona libre del arte.
+        Debajo del QR van el código y el nombre: dejales lugar.</p>
+      <div class="acciones">
+        <button type="button" class="btn primario chico" id="qrGuardar">Guardar posición</button>
+        <button type="button" class="btn plano chico" id="qrDefecto">Volver a la medida de siempre</button>
+      </div>
+      <p class="arte-estado" id="qrEstado" role="status" aria-live="polite"></p>
+    </div>`;
+}
+
+function cablearAjusteQR(caja, ev) {
+  const inY = caja.querySelector("#qrY"), inTam = caja.querySelector("#qrTam");
+  const img = caja.querySelector(".arte-vista"), est = caja.querySelector("#qrEstado");
+  if (!inY || !inTam || !img) return;
+  const muestra = { code: "7KQ2MX9PLA4D", cliente: "Nombre Apellido" };
+  let turno = 0, espera;
+
+  /* Se dibuja con un pequeño respiro entre movimientos: arrastrar el
+     deslizador dispara decenas de eventos y cada dibujo baja el arte y arma
+     un JPEG. `turno` descarta el dibujo viejo si llega después del nuevo. */
+  const dibujar = () => {
+    clearTimeout(espera);
+    espera = setTimeout(async () => {
+      const mio = ++turno;
+      if (typeof window.dibujarTicket !== "function") return;
+      try {
+        const png = await window.dibujarTicket(muestra, {
+          ...ev, arte_url: conVersion(ev.arte_url), entrada_puerta: false,
+          arte_qr_y: Number(inY.value) / 100, arte_qr_tam: Number(inTam.value) / 100,
+        }, null);
+        if (mio === turno) img.src = png;
+      } catch { /* si no se pudo dibujar, queda el arte solo */ }
+    }, 120);
+  };
+  const leyenda = () => {
+    caja.querySelector("#qrYTxt").textContent = inY.value + "%";
+    caja.querySelector("#qrTamTxt").textContent = inTam.value + "%";
+    const cambio = Number(inY.value) !== pctQR(ev.arte_qr_y, QR_DEF.y)
+      || Number(inTam.value) !== pctQR(ev.arte_qr_tam, QR_DEF.tam);
+    est.textContent = cambio ? "Sin guardar: las entradas siguen saliendo con la posición anterior." : "";
+    est.className = "arte-estado" + (cambio ? " trabajando" : "");
+  };
+  inY.oninput = inTam.oninput = () => { leyenda(); dibujar(); };
+  caja.querySelector("#qrDefecto").onclick = () => {
+    inY.value = QR_DEF.y; inTam.value = QR_DEF.tam; leyenda(); dibujar();
+  };
+  caja.querySelector("#qrGuardar").onclick = async e => {
+    const y = Number(inY.value), tam = Number(inTam.value);
+    /* La medida de siempre se guarda como null y no como 0,29: así, si algún
+       día cambia la de Puerta, los eventos que nunca la tocaron la siguen. */
+    const fila = {
+      arte_qr_y: y === QR_DEF.y ? null : y / 100,
+      arte_qr_tam: tam === QR_DEF.tam ? null : tam / 100,
+    };
+    await conBoton(e.currentTarget, "Guardando…", async () => {
+      const { data, error } = await sb.from("eventos").update(fila).eq("id", ev.id).select("id");
+      if (error) {
+        est.textContent = /arte_qr/.test(error.message || "")
+          ? "La base todavía no tiene esta opción (falta la migración 0115)."
+          : "No se pudo guardar: " + sinCodigo(error.message);
+        est.className = "arte-estado mal";
+        return;
+      }
+      if (!data || !data.length) {
+        est.textContent = "No se pudo guardar: la base no lo permitió.";
+        est.className = "arte-estado mal";
+        return;
+      }
+      Object.assign(ev, fila);
+      leyenda();
+      est.textContent = "Guardado. Las entradas nuevas y las que se vuelvan a abrir salen así.";
+      est.className = "arte-estado ok";
+      avisar("Posición del QR guardada.");
+    });
+  };
+  leyenda();
+  dibujar();
+}
+
 /* La vista previa manda sobre la URL: el organizador reconoce su imagen de un
    vistazo y una dirección larga no le dice nada. En el arte va marcada encima
    la caja del QR; en el flyer, el recorte 4:5 de la cartelera. Los dos por el
@@ -900,10 +1002,13 @@ function cablearImagen(ev, def) {
       <h3>${esc(def.titulo)}</h3>
       <p class="ayuda">${esc(def.ayuda)}</p>
       <div class="arte-cuerpo">
-        ${url ? `
+        ${url && def.lienzo === "arte" ? `
+          <div class="arte-lienzo arte vista-entrada">
+            <img class="arte-vista" src="${esc(conVersion(url))}" alt="${esc(def.alt(ev))}">
+          </div>`
+        : url ? `
           <div class="arte-lienzo ${esc(def.lienzo)}">
             <img src="${esc(conVersion(url))}" alt="${esc(def.alt(ev))}">
-            ${def.lienzo === "arte" ? `<span class="arte-qr" aria-hidden="true"><i>QR</i></span>` : ""}
           </div>`
         : `<div class="arte-lienzo ${esc(def.lienzo)} sin-arte">
             ${def.lienzo === "arte" ? `<span class="arte-qr" aria-hidden="true"><i>QR</i></span>` : ""}
@@ -915,9 +1020,11 @@ function cablearImagen(ev, def) {
           <p class="ayuda">PNG, JPG o WEBP, hasta 5 MB. Se sube apenas la elegís.</p>
           ${url ? `<button type="button" class="btn plano chico arte-quitar">${esc(def.quitar)}</button>` : ""}
           <p class="arte-estado" role="status" aria-live="polite"></p>
+          ${url && def.lienzo === "arte" ? ajusteQRHtml(ev) : ""}
         </div>
       </div>`;
     cablearControles();
+    if (url && def.lienzo === "arte") cablearAjusteQR(caja, ev);
   };
 
   const trabajando = si => {
@@ -5103,7 +5210,7 @@ function eventoParaTicket(e) {
 async function pantallaCortesias(eventoId) {
   $("#main").innerHTML = `<p class="cargando">Cargando…</p>`;
   const [ev, res] = await Promise.all([
-    sb.from("eventos").select("id,nombre,slug,lugar,fecha,hora_inicio,arte_url")
+    sb.from("eventos").select("*")
       .eq("id", eventoId).single(),
     sb.rpc("resumen_evento", { p_evento: eventoId }),
   ]);

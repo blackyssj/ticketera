@@ -30,7 +30,7 @@
 /* Subir esto cuando cambie la lista de abajo. Cambiar el nombre es lo
    que borra el cache anterior: sin eso, un shell viejo puede sobrevivir
    a un despliegue y nadie entiende por qué el portero ve otra cosa. */
-const CACHE = "puerta-v61";
+const CACHE = "puerta-v62";
 
 /* Rutas absolutas, iguales a las del HTML. Con rutas relativas, lo que se
    guardaba dependía de por dónde había entrado el portero: entrando por
@@ -39,12 +39,12 @@ const CACHE = "puerta-v61";
 const SHELL = [
   "/admin/",
   "/admin/index.html",
-  "/admin/admin.css?v=63",
-  "/admin/admin.js?v=86",
+  "/admin/admin.css?v=64",
+  "/admin/admin.js?v=87",
   "/admin/puerta.js?v=38",
   "/admin/csv.js?v=30",
   "/config.js",
-  "/ticket.js?v=31",
+  "/ticket.js?v=32",
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js",
   "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js",
   "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js",

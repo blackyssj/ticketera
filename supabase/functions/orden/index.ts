@@ -113,11 +113,15 @@ Deno.serve(async (req) => {
            igual que la de Puerta, y fase_online dice qué fase inventó el
            espejo (esa no lleva sello).
          · titulo_marca: el título es "BOWIE" y la noche va abajo. */
-    const [fase, espejo, org] = await Promise.all([
+    /* qr: dónde va el QR sobre el arte del evento (0115). Aparte y con red,
+       como espejo y org: si la columna no existe todavía, la entrada sale
+       con la medida de siempre. */
+    const [fase, espejo, org, qr] = await Promise.all([
       faseId
         ? uno(`evento_fase?id=eq.${faseId}&select=id,nombre,arte_url`) : Promise.resolve(null),
       uno(`puerta_evento?evento_id=eq.${e.id}&select=fase_online`).catch(() => null),
       uno(`organizadores?id=eq.${o.organizador_id}&select=nombre,titulo_marca`).catch(() => null),
+      uno(`eventos?id=eq.${e.id}&select=arte_qr_y,arte_qr_tam`).catch(() => null),
     ]);
 
     const MES = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
@@ -146,6 +150,8 @@ Deno.serve(async (req) => {
         hora_fin: e.hora_fin ? String(e.hora_fin).slice(0,5) : null,
         fecha_txt: `${DIA[f.getDay()]} ${f.getDate()} ${MES[f.getMonth()]} · ${String(e.hora_inicio).slice(0,5)}`,
         arte_url: e.arte_url ?? null,
+        arte_qr_y: qr?.arte_qr_y == null ? null : Number(qr.arte_qr_y),
+        arte_qr_tam: qr?.arte_qr_tam == null ? null : Number(qr.arte_qr_tam),
         titulo_marca: marca,
         entrada_puerta: !!espejo,
       },

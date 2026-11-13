@@ -118,6 +118,11 @@ Deno.serve(async (req) => {
       return json({ ok: false, motivo }, status);
     }
     const o = d.organizador, e = d.evento, fase = d.fase;
+    /* Dónde va el QR sobre el arte (0115). Aparte de evento_publico, para no
+       redefinir esa función por dos números, y con red: si falla o la
+       columna no existe todavía, la entrada sale con la medida de siempre. */
+    const qr = await rest(`eventos?id=eq.${e.id}&select=arte_qr_y,arte_qr_tam`)
+      .then((f: any[]) => f?.[0] ?? null).catch(() => null);
 
     // `disponible` viene null cuando el tipo no tiene tope: 9999 es el
     // "sin tope" que el front ya entiende. Con tope, lo que queda de verdad
@@ -238,6 +243,8 @@ Deno.serve(async (req) => {
                   ? ["Inscripción", "Gratis"] : ["Pago", "QR o tarjeta"]],
         tope_entradas_orden: e.tope_entradas_orden,
         arte_url: e.arte_url ?? null,
+        arte_qr_y: qr?.arte_qr_y == null ? null : Number(qr.arte_qr_y),
+        arte_qr_tam: qr?.arte_qr_tam == null ? null : Number(qr.arte_qr_tam),
         /* La marca del organizador (0062). Van los tres o no va ninguno:
            la base los valida como hexadecimal y acá se pasan tal cual —
            el front decide si pinta. Con null, la página sale con la

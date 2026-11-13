@@ -172,6 +172,33 @@ function fuenteRotulo(t) {
   return Promise.race([bajar, new Promise(ok => setTimeout(ok, 3000))]);
 }
 
+/* Dónde va el QR sobre el arte (0115). Por defecto, la medida de Puerta: el
+   52% del ancho, centrado, desde el 29% de la altura. El organizador la puede
+   cambiar por evento desde el panel (arte_qr_y, arte_qr_tam), porque cada
+   arte tiene su logo y su line-up en otro lugar. Sólo vale para el arte del
+   EVENTO: si la fase trae el suyo (Puerta), manda la medida de Puerta, que es
+   para la que se diseñó ese arte.
+
+   Los topes repiten los de la base y además la caja se sube si no entra: debajo
+   del QR van el código y el nombre, y una entrada con el nombre cortado contra
+   el borde se discute en la puerta. */
+const QR_Y = 0.29, QR_TAM = 0.52;
+function cajaQR(evento, fase, W, H) {
+  const propio = !(fase && fase.arte_url);
+  const num = (v, def, min, max) => {
+    const n = Number(v);
+    return v == null || v === "" || !Number.isFinite(n) ? def : Math.min(max, Math.max(min, n));
+  };
+  const tam = propio ? num(evento && evento.arte_qr_tam, QR_TAM, 0.25, 0.75) : QR_TAM;
+  const y = propio ? num(evento && evento.arte_qr_y, QR_Y, 0, 0.70) : QR_Y;
+  const caja = W * tam;
+  /* Código, nombre y rótulo (≈ H·0,055 + W·0,13) y, abajo de todo, la firma
+     «powered by TICKETAZO» (≈ H·0,05): ninguno se puede pisar. */
+  const debajo = H * 0.105 + W * 0.13;
+  const by = Math.max(H * 0.01, Math.min(H * y, H - caja - debajo));
+  return { caja, bx: (W - caja) / 2, by };
+}
+
 async function sobreArte(t, evento, fase, arte) {
   const puerta = !!(evento && evento.entrada_puerta);
   // En paralelo con la imagen: las dos cosas viajan a la vez.
@@ -183,7 +210,8 @@ async function sobreArte(t, evento, fase, arte) {
   const x = c.getContext("2d");
   x.drawImage(img, 0, 0, W, H);
 
-  const caja = W * 0.52, bx = (W - caja) / 2, by = H * 0.29, rad = caja * 0.07;
+  const { caja, bx, by } = cajaQR(evento, fase, W, H);
+  const rad = caja * 0.07;
   x.fillStyle = "#fff";
   x.beginPath(); x.roundRect(bx, by, caja, caja, rad); x.fill();
 
