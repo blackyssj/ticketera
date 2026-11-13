@@ -112,17 +112,24 @@ Deno.serve(async (req) => {
     }
     if (!org || !ev) return json({ ok: false, motivo: "Falta organizador o evento." }, 400);
 
-    const d = await rpc("evento_publico", { p_org: org, p_slug: ev });
+    /* Dónde va el QR sobre el arte (0115). Aparte de evento_publico, para no
+       redefinir esa función por dos números, y EN PARALELO con ella: se busca
+       por el link (slug del organizador y del evento) y no por el id, que
+       recién se sabría después. Así la página no espera un viaje más. Con
+       red: si falla, no encuentra el evento o la columna no existe todavía,
+       la entrada sale con la medida de siempre — y la compra no se entera. */
+    const [d, qr] = await Promise.all([
+      rpc("evento_publico", { p_org: org, p_slug: ev }),
+      rest(`eventos?slug=eq.${encodeURIComponent(ev)}` +
+           `&organizadores.slug=eq.${encodeURIComponent(org)}` +
+           `&select=arte_qr_y,arte_qr_tam,organizadores!inner(slug)&limit=1`)
+        .then((f: any[]) => f?.[0] ?? null).catch(() => null),
+    ]);
     if (!d || d.falta || !d.evento) {
       const [motivo, status] = FALTA[d?.falta] ?? FALTA.evento;
       return json({ ok: false, motivo }, status);
     }
     const o = d.organizador, e = d.evento, fase = d.fase;
-    /* Dónde va el QR sobre el arte (0115). Aparte de evento_publico, para no
-       redefinir esa función por dos números, y con red: si falla o la
-       columna no existe todavía, la entrada sale con la medida de siempre. */
-    const qr = await rest(`eventos?id=eq.${e.id}&select=arte_qr_y,arte_qr_tam`)
-      .then((f: any[]) => f?.[0] ?? null).catch(() => null);
 
     // `disponible` viene null cuando el tipo no tiene tope: 9999 es el
     // "sin tope" que el front ya entiende. Con tope, lo que queda de verdad
